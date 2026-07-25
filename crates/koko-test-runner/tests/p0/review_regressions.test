@@ -1,0 +1,118 @@
+# Phase 0 — regression fixtures for issues found in the P0 adversarial review.
+-DATASET CSV empty
+
+--
+
+-CASE SumInt64WidensToInt128
+-STATEMENT CREATE NODE TABLE T(id INT64, v INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, v: 9223372036854775807})
+---- ok
+-STATEMENT CREATE (:T {id: 2, v: 9223372036854775807})
+---- ok
+# SUM widens to INT128 like C++ (audit V3) — two i64::MAX values sum exactly.
+-STATEMENT MATCH (t:T) RETURN sum(t.v)
+---- 1
+18446744073709551614
+
+-CASE SumOverNonNumericRejected
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'a'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN sum(p.name)
+---- error
+Binder exception: Function SUM did not receive correct arguments:
+Actual:   (STRING)
+Expected: DISTINCT (INT128) -> INT128
+          (INT128) -> INT128
+          DISTINCT (INT64) -> INT128
+          (INT64) -> INT128
+          DISTINCT (INT32) -> INT128
+          (INT32) -> INT128
+          DISTINCT (INT16) -> INT128
+          (INT16) -> INT128
+          DISTINCT (INT8) -> INT128
+          (INT8) -> INT128
+          DISTINCT (SERIAL) -> INT128
+          (SERIAL) -> INT128
+          DISTINCT (UINT128) -> UINT128
+          (UINT128) -> UINT128
+          DISTINCT (UINT64) -> UINT128
+          (UINT64) -> UINT128
+          DISTINCT (UINT32) -> UINT128
+          (UINT32) -> UINT128
+          DISTINCT (UINT16) -> UINT128
+          (UINT16) -> UINT128
+          DISTINCT (UINT8) -> UINT128
+          (UINT8) -> UINT128
+          DISTINCT (DOUBLE) -> DOUBLE
+          (DOUBLE) -> DOUBLE
+          DISTINCT (FLOAT) -> DOUBLE
+          (FLOAT) -> DOUBLE
+
+-CASE AvgOverNonNumericRejected
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT MATCH (p:P) RETURN avg(p.name)
+---- error
+Binder exception: Function AVG did not receive correct arguments:
+Actual:   (STRING)
+Expected: DISTINCT (INT128) -> DOUBLE
+          (INT128) -> DOUBLE
+          DISTINCT (INT64) -> DOUBLE
+          (INT64) -> DOUBLE
+          DISTINCT (INT32) -> DOUBLE
+          (INT32) -> DOUBLE
+          DISTINCT (INT16) -> DOUBLE
+          (INT16) -> DOUBLE
+          DISTINCT (INT8) -> DOUBLE
+          (INT8) -> DOUBLE
+          DISTINCT (SERIAL) -> DOUBLE
+          (SERIAL) -> DOUBLE
+          DISTINCT (UINT128) -> DOUBLE
+          (UINT128) -> DOUBLE
+          DISTINCT (UINT64) -> DOUBLE
+          (UINT64) -> DOUBLE
+          DISTINCT (UINT32) -> DOUBLE
+          (UINT32) -> DOUBLE
+          DISTINCT (UINT16) -> DOUBLE
+          (UINT16) -> DOUBLE
+          DISTINCT (UINT8) -> DOUBLE
+          (UINT8) -> DOUBLE
+          DISTINCT (DOUBLE) -> DOUBLE
+          (DOUBLE) -> DOUBLE
+          DISTINCT (FLOAT) -> DOUBLE
+          (FLOAT) -> DOUBLE
+
+-CASE CreateTypeMismatchRejected
+-STATEMENT CREATE NODE TABLE P(id INT64, v INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1, v: 2.5})
+---- ok
+-STATEMENT MATCH (n:P {id: 1}) RETURN n.v
+---- 1
+2
+-STATEMENT CREATE (:P {id: 2, v: 'oops'})
+---- error
+Conversion exception: Cast failed. Could not convert "oops" to INT64.
+
+-CASE IntToDoubleWideningAllowed
+-STATEMENT CREATE NODE TABLE P(id INT64, score DOUBLE, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1, score: 5})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.score
+---- 1
+5.000000
+
+-CASE SignedZeroGroupsAsOne
+-STATEMENT CREATE NODE TABLE P(id INT64, v DOUBLE, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1, v: 0.0})
+---- ok
+-STATEMENT CREATE (:P {id: 2, v: -0.0})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.v, count(*)
+---- 1
+0.000000|2

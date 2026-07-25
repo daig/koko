@@ -1,0 +1,85 @@
+-DATASET CSV empty
+--
+-CASE DecimalCast
+-STATEMENT RETURN CAST(127, 'DECIMAL(3, 0)')
+---- 1
+127
+-STATEMENT RETURN CAST(127, 'DECIMAL(3, 1)')
+---- error
+Overflow exception: To Decimal Cast Failed: 127 is not in DECIMAL(3, 1) range
+-STATEMENT RETURN CAST(1000, 'DECIMAL(3, 0)')
+---- error
+Overflow exception: To Decimal Cast Failed: 1000 is not in DECIMAL(3, 0) range
+-STATEMENT RETURN CAST('-99999999999999999999999999999999999999', 'DECIMAL(38, 0)')
+---- 1
+-99999999999999999999999999999999999999
+-STATEMENT RETURN CAST(CAST(123.123, 'DECIMAL'), 'DECIMAL(18, 2)')
+---- 1
+123.12
+-STATEMENT RETURN CAST(CAST(123.125, 'DECIMAL'), 'DECIMAL(18, 2)')
+---- 1
+123.13
+-STATEMENT RETURN CAST(CAST(-123.125, 'DECIMAL'), 'DECIMAL(18, 2)')
+---- 1
+-123.13
+-STATEMENT RETURN CAST(CAST(999.99, 'DECIMAL'), 'DECIMAL(5, 2)')
+---- 1
+999.99
+-STATEMENT RETURN CAST(CAST(CAST(999.99, 'DECIMAL'), 'DECIMAL(5, 2)'), 'DECIMAL(4, 1)')
+---- error
+Overflow exception: Decimal Cast Failed: input 999.99 is not in range of DECIMAL(4, 1)
+
+-CASE DecimalToString
+-STATEMENT RETURN CAST(CAST(1.2, 'decimal(4, 1)'), 'STRING'), CAST(CAST(1.2, 'decimal(9, 2)'), 'string'), CAST(CAST(1.2, 'decimal(18, 3)'), 'string'), CAST(CAST(1.2, 'decimal(38, 19)'), 'string')
+---- 1
+1.2|1.20|1.200|1.2000000000000000000
+
+-CASE DecimalAddSub
+-STATEMENT RETURN CAST(0.6, 'DECIMAL(18, 1)') + CAST(-0.2, 'DECIMAL(5, 2)')
+---- 1
+0.400
+-STATEMENT RETURN CAST(0.6, 'DECIMAL(18, 1)') - CAST(-0.2, 'DECIMAL(5, 2)')
+---- 1
+0.800
+-STATEMENT RETURN CAST(500.0, 'DECIMAL(4, 1)') + CAST(499.9, 'DECIMAL(4, 1)')
+---- 1
+999.90
+-STATEMENT RETURN CAST(500.0, 'DECIMAL(4, 1)') + CAST(500.0, 'DECIMAL(4, 1)')
+---- error
+Overflow exception: Decimal Addition result is out of range
+
+-CASE DecimalMul
+-STATEMENT RETURN CAST(0.6, 'DECIMAL(18, 1)') * CAST(-0.2, 'DECIMAL(5, 2)')
+---- 1
+-0.120
+-STATEMENT RETURN CAST(500.1, 'DECIMAL(4, 1)') * CAST(1.9, 'DECIMAL(4, 1)')
+---- 1
+950.19
+-STATEMENT RETURN CAST(CAST(500.1, 'DECIMAL(4, 1)') * CAST(2.0, 'DECIMAL(4, 1)'), 'DECIMAL(4, 1)')
+---- error
+Overflow exception: Decimal Cast Failed: input 1000.20 is not in range of DECIMAL(4, 1)
+
+-CASE DecimalMod
+-STATEMENT RETURN CAST(0.6, 'DECIMAL(18, 1)') % CAST(-0.2, 'DECIMAL(5, 2)')
+---- 1
+0.00
+-STATEMENT RETURN CAST(0.6, 'DECIMAL(18, 1)') % CAST(1.2, 'DECIMAL(5, 2)')
+---- 1
+0.60
+
+-CASE DecimalAbsAndCompare
+-STATEMENT RETURN abs(CAST(-2.3, 'DECIMAL(3, 1)'))
+---- 1
+2.3
+-STATEMENT RETURN abs(CAST(-999.985, 'DECIMAL(5, 2)'))
+---- 1
+999.99
+-STATEMENT RETURN CAST(33, 'DECIMAL') > 32.01
+---- 1
+True
+-STATEMENT RETURN CAST(32, 'DECIMAL') > 32
+---- 1
+False
+-STATEMENT RETURN CAST(33, 'DECIMAL') > 32
+---- 1
+True

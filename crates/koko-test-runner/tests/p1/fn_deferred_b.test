@@ -1,0 +1,12 @@
+-DATASET CSV empty
+--
+-CASE DeferredB
+-STATEMENT RETURN cast([], "UINT64[]"), cast([NULL,], "UINT64[]"), cast(NULL, "UINT64[]"), cast([NULL, 432124, 0, NULL], "UINT64[]")
+---- 1
+[]|[,]||[,432124,0,]
+-STATEMENT RETURN [1,,2], [,,]
+---- 1
+[1,,2]|[,,]
+-STATEMENT RETURN cast(cast(1.5, 'decimal(2,1)'), 'int16'), cast(cast(2.4, 'decimal(2,1)'), 'int16'), cast(cast(-2.5, 'decimal(2,1)'), 'int16')
+---- 1
+2|2|-3

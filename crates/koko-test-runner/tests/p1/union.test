@@ -1,0 +1,127 @@
+-DATASET CSV tinysnb
+--
+# D3 gate: UNION / UNION ALL against tinysnb. Statements + expected results are
+# byte-exact from the C++ corpus (nested_types/nested_types.test, agg, and
+# exceptions/binder/binder_error.test).
+
+-CASE Union
+# UNION ALL — concatenate, keep duplicates (8 ages twice).
+-STATEMENT MATCH (p:person) RETURN p.age UNION ALL MATCH (p1:person) RETURN p1.age
+---- 16
+20
+20
+20
+20
+25
+25
+30
+30
+35
+35
+40
+40
+45
+45
+83
+83
+# UNION — deduplicate (7 distinct ages; two people are 20).
+-STATEMENT MATCH (a:person) RETURN a.age UNION MATCH (p:person) RETURN p.age
+---- 7
+20
+25
+30
+35
+40
+45
+83
+# Chained UNION ALL (3 operands).
+-STATEMENT MATCH (p:person) RETURN p.age UNION ALL MATCH (p1:person) RETURN p1.age UNION ALL MATCH (p2:person) RETURN p2.age
+---- 24
+20
+20
+20
+20
+20
+20
+25
+25
+25
+30
+30
+30
+35
+35
+35
+40
+40
+40
+45
+45
+45
+83
+83
+83
+# Multiple columns.
+-STATEMENT MATCH (p:person) RETURN p.age, p.eyeSight UNION ALL MATCH (p1:person) RETURN p1.age, p1.eyeSight
+---- 16
+20|4.700000
+20|4.700000
+20|4.800000
+20|4.800000
+25|4.500000
+25|4.500000
+30|5.100000
+30|5.100000
+35|5.000000
+35|5.000000
+40|4.900000
+40|4.900000
+45|5.000000
+45|5.000000
+83|4.900000
+83|4.900000
+# UNION ALL with a WITH pipeline in each operand (different projections).
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) with b return b.age + 3 UNION ALL MATCH (a:person)-[e:knows]->(b:person) with a RETURN a.age
+---- 28
+20
+20
+20
+20
+20
+23
+23
+23
+28
+30
+30
+30
+33
+33
+33
+35
+35
+35
+38
+38
+38
+43
+45
+45
+45
+48
+48
+48
+
+-CASE UnionErrors
+# Different number of columns.
+-STATEMENT MATCH (p:person) RETURN p.age,p.fName UNION ALL MATCH (p1:person) RETURN p1.age
+---- error
+Binder exception: The number of columns to union/union all must be the same.
+# Mismatched column types.
+-STATEMENT MATCH (p:person) RETURN p.fName UNION ALL MATCH (p1:person) RETURN p1.age
+---- error
+Binder exception: p1.age has data type INT64 but STRING was expected.
+# Mixing UNION and UNION ALL.
+-STATEMENT MATCH (p:person) RETURN p.age UNION ALL MATCH (p1:person) RETURN p1.age UNION MATCH (p1:person) RETURN p1.age
+---- error
+Binder exception: Union and union all can not be used together.

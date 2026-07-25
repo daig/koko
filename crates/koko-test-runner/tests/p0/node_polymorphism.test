@@ -1,0 +1,48 @@
+-DATASET CSV empty
+--
+
+# Unlabeled `()`/`(a)` and multi-label `(a:A:B)`/`(a:A|B)` node patterns bind
+# across multiple node tables (H2). Property access is polymorphic: a property
+# present in some candidate tables is NULL for nodes whose table lacks it; a
+# whole-node value takes its label/properties from the matched node's own table.
+
+-CASE NodePolymorphism
+-STATEMENT CREATE NODE TABLE Person(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, pop INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:Person {name: 'Alice', age: 30})
+---- ok
+-STATEMENT CREATE (:Person {name: 'Bob', age: 40})
+---- ok
+-STATEMENT CREATE (:City {name: 'Paris', pop: 2000})
+---- ok
+-STATEMENT MATCH () RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a) RETURN COUNT(a)
+---- 1
+3
+-STATEMENT MATCH (a:Person:City) RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a:Person|City) RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a:Person|:City) RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a:Person) RETURN COUNT(*)
+---- 1
+2
+-STATEMENT MATCH (a) RETURN a.name ORDER BY a.name
+---- 3
+Alice
+Bob
+Paris
+-STATEMENT MATCH (a) WHERE a.age > 35 RETURN a.name
+---- 1
+Bob
+-STATEMENT MATCH (a:City) RETURN a
+---- 1
+{_ID: 1:0, _LABEL: City, name: Paris, pop: 2000}

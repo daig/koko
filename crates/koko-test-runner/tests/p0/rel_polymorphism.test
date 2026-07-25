@@ -1,0 +1,48 @@
+-DATASET CSV empty
+--
+
+# Unlabeled `-[]->`/`-[r]->` and multi-label `-[:a|:b]->` relationship patterns
+# follow every candidate rel table (H2b). A labeled rel narrows its endpoints to
+# the union of its FROM/TO tables; an over-constrained pattern (a node forced to
+# two disjoint labels) is unsatisfiable and yields zero rows (not an error). A
+# whole-rel value takes its label/properties from the matched rel's own table.
+
+-CASE RelPolymorphism
+-STATEMENT CREATE NODE TABLE Person(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE Knows(FROM Person TO Person, since INT64)
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City, years INT64)
+---- ok
+-STATEMENT CREATE (:Person {name: 'Alice'})
+---- ok
+-STATEMENT CREATE (:Person {name: 'Bob'})
+---- ok
+-STATEMENT CREATE (:City {name: 'Paris'})
+---- ok
+-STATEMENT MATCH (a:Person),(b:Person) WHERE a.name='Alice' AND b.name='Bob' CREATE (a)-[:Knows {since: 2020}]->(b)
+---- ok
+-STATEMENT MATCH (a:Person),(c:City) WHERE a.name='Alice' CREATE (a)-[:LivesIn {years: 5}]->(c)
+---- ok
+-STATEMENT MATCH (a:Person),(c:City) WHERE a.name='Bob' CREATE (a)-[:LivesIn {years: 3}]->(c)
+---- ok
+-STATEMENT MATCH ()-[]->() RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a)-[r]->(b) RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a:Person)-[:Knows|:LivesIn]->(b) RETURN COUNT(*)
+---- 1
+3
+-STATEMENT MATCH (a)-[r]->(b:City) RETURN COUNT(*)
+---- 1
+2
+-STATEMENT MATCH (a:Person)-[:Knows]->(b:City) RETURN COUNT(*)
+---- 1
+0
+-STATEMENT MATCH (a)-[r:LivesIn]->(b) WHERE a.name = 'Bob' RETURN r
+---- 1
+(0:1)-{_LABEL: LivesIn, _ID: 4:1, years: 3}->(1:0)

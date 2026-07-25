@@ -1,0 +1,92 @@
+# Phase 2 — CREATE … AS (CTAS): create a table from a query's result + rows.
+-DATASET CSV empty
+
+--
+
+-CASE CtasFromMatch
+-STATEMENT CREATE NODE TABLE Src(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Src {id: 1, name: 'Ann'})
+---- ok
+-STATEMENT CREATE (:Src {id: 2, name: 'Bob'})
+---- ok
+-STATEMENT CREATE NODE TABLE Dst AS MATCH (s:Src) RETURN s.id AS id, s.name AS name
+---- 1
+Table Dst has been created.
+-STATEMENT MATCH (d:Dst) RETURN d.id, d.name ORDER BY d.id
+---- 2
+1|Ann
+2|Bob
+
+-CASE CtasFromReturn
+-STATEMENT CREATE NODE TABLE T AS RETURN 1 AS id, 'x' AS val
+---- 1
+Table T has been created.
+-STATEMENT MATCH (t:T) RETURN t.id, t.val
+---- 1
+1|x
+
+-CASE CtasIfNotExists
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE IF NOT EXISTS T AS RETURN 5 AS id
+---- 1
+Table T already exists.
+
+-CASE CtasDuplicate
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE T AS RETURN 5 AS id
+---- error
+Binder exception: T already exists in catalog.
+
+-CASE CtasInvalidPkType
+-STATEMENT CREATE NODE TABLE Src(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Src {id: 1})
+---- ok
+-STATEMENT CREATE NODE TABLE Bad AS MATCH (s:Src) RETURN s
+---- error
+Binder exception: Invalid primary key column type NODE. Primary keys must be either STRING or a numeric type.
+
+# Rel CTAS: build a rel table from a query whose first two columns are the FROM/TO
+# endpoint primary keys (matched back to node offsets), the rest its properties.
+-CASE RelCtasFromMatch
+-STATEMENT CREATE NODE TABLE P(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1, name: 'a'})
+---- ok
+-STATEMENT CREATE (:P {id: 2, name: 'b'})
+---- ok
+-STATEMENT CREATE (:P {id: 3, name: 'c'})
+---- ok
+-STATEMENT CREATE REL TABLE Knows(FROM P TO P)
+---- ok
+-STATEMENT MATCH (a:P), (b:P) WHERE a.id = 1 AND b.id = 2 CREATE (a)-[:Knows]->(b)
+---- ok
+-STATEMENT MATCH (a:P), (b:P) WHERE a.id = 1 AND b.id = 3 CREATE (a)-[:Knows]->(b)
+---- ok
+-STATEMENT CREATE REL TABLE IF NOT EXISTS Knows2(FROM P TO P) AS MATCH (a:P)-[e:Knows]->(b:P) RETURN a.id, b.id
+---- ok
+-STATEMENT MATCH (a:P)-[e:Knows2]->(b:P) RETURN a.name, b.name ORDER BY b.name
+---- 2
+a|b
+a|c
+
+-CASE RelCtasWithProperty
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1})
+---- ok
+-STATEMENT CREATE (:P {id: 2})
+---- ok
+-STATEMENT CREATE REL TABLE Likes(FROM P TO P, since INT64)
+---- ok
+-STATEMENT MATCH (a:P), (b:P) WHERE a.id = 1 AND b.id = 2 CREATE (a)-[:Likes {since: 1999}]->(b)
+---- ok
+-STATEMENT CREATE REL TABLE Likes2(FROM P TO P) AS MATCH (a:P)-[e:Likes]->(b:P) RETURN a.id, b.id, e.since AS since
+---- 1
+Table Likes2 has been created.
+-STATEMENT MATCH (a:P)-[e:Likes2]->(b:P) RETURN a.id, b.id, e.since
+---- 1
+1|2|1999

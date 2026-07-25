@@ -1,0 +1,10 @@
+-DATASET CSV empty
+--
+-CASE AssignCoercion
+-STATEMENT CREATE NODE TABLE T(id INT64, small INT32, big INT128, u UINT32, d DOUBLE, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, small: 5, big: 9, u: 7, d: 3})
+---- ok
+-STATEMENT MATCH (t:T) RETURN t.small, t.big, t.u, t.d
+---- 1
+5|9|7|3.000000

@@ -1,0 +1,34 @@
+# Phase 0 — `RETURN *` / `WITH *` expands to the variables currently IN SCOPE, not
+# every variable ever declared. Regression: a `RETURN *` after a `WITH` used to
+# project an out-of-scope earlier-part variable, which the final part's layout had
+# no column for → a planner panic (koko-planner RowLayout::var, "no entry found").
+# Bug, not unimplemented — `RETURN *` is standard Cypher and works single-part.
+-DATASET CSV empty
+
+--
+
+-CASE ReturnStarScope
+-STATEMENT CREATE NODE TABLE A(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO A)
+---- ok
+-STATEMENT CREATE (:A {id: 1, name: 'a'})
+---- ok
+-STATEMENT CREATE (:A {id: 2, name: 'b'})
+---- ok
+-STATEMENT MATCH (a:A) WHERE a.id = 1 CREATE (a)-[:R]->(a)
+---- ok
+# WITH drops `a` and binds `x`: RETURN * must project only `x` (not the dropped `a`).
+-STATEMENT MATCH (a:A) WITH a.id AS x RETURN * ORDER BY x
+---- 2
+1
+2
+# WITH renames `a`→`a2`: RETURN * projects `a2`, not the out-of-scope `a`.
+-STATEMENT MATCH (a:A) WITH a.name AS a2 RETURN * ORDER BY a2
+---- 2
+a
+b
+# carried node + a freshly-matched node, RETURN * (used to panic): count the rows.
+-STATEMENT MATCH (a:A) WITH a MATCH (a)-[:R]->(b) RETURN count(*) AS c
+---- 1
+1

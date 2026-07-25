@@ -1,0 +1,133 @@
+-DATASET CSV tinysnb
+--
+# D2a gate: WITH carrying scalar values / aggregates forward, against tinysnb.
+# Statements + expected results are byte-exact from the C++ corpus (agg/
+# multi_query_part.test, projection/multi_query_part.test, unwind/unwind.test,
+# agg/simple.test). Cases that carry node/rel variables through WITH (D2b) are
+# intentionally excluded.
+
+-CASE WithScalarAggregate
+# agg/multi_query_part.test — scalar aggregates carried, compared after.
+-STATEMENT MATCH (a:person) WHERE a.birthdate = date('1980-10-26') WITH AVG(a.age) AS avgAge, AVG(a.eyeSight) AS avgEyeSight RETURN avgAge > avgEyeSight
+---- 1
+True
+# count carried into a fresh MATCH, correlated by a scalar predicate.
+-STATEMENT MATCH (a:person) WITH COUNT(*) AS s MATCH (c:person) WHERE c.ID > s RETURN c.ID
+---- 2
+10
+9
+-STATEMENT MATCH (a:person) WITH COUNT(*) AS s MATCH (b:person) WHERE b.ID < s RETURN COUNT(*)
+---- 1
+5
+# Grouped aggregate (key = gender) carried into a fresh extend, filtered by scalar.
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) WITH a.gender AS k, SUM(b.age) AS s MATCH (d:person)-[:workAt]->(c:organisation) WHERE c.orgCode > s RETURN d.ID, c.orgCode, s
+---- 6
+3|934|210
+3|934|245
+5|824|210
+5|824|245
+7|824|210
+7|824|245
+# agg/simple.test — chained WITH with aggregates at each step.
+-STATEMENT WITH SUM(1) AS x WITH SUM(x) AS y RETURN SUM(y)
+---- 1
+1
+
+-CASE WithScalarCrossProduct
+# projection/multi_query_part.test — carry two scalars, join a fresh MATCH on them.
+-STATEMENT MATCH (a:person) WITH a.age AS s, a.fName as n MATCH (b:person) WHERE s=b.age RETURN n,b.fName,s
+---- 10
+Alice|Alice|35
+Bob|Bob|30
+Carol|Carol|45
+Dan|Dan|20
+Dan|Elizabeth|20
+Elizabeth|Dan|20
+Elizabeth|Elizabeth|20
+Farooq|Farooq|25
+Greg|Greg|40
+Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|83
+-STATEMENT MATCH (a:person) WITH a.age AS s, a.fName as n MATCH (b:person) WHERE s=b.age and n='Dan' RETURN n,b.fName,s
+---- 2
+Dan|Dan|20
+Dan|Elizabeth|20
+-STATEMENT MATCH (a:person) WITH a.age AS s, a.fName as n MATCH (b:person) WHERE s=b.age and n=b.fName RETURN n,b.fName,s
+---- 8
+Alice|Alice|35
+Bob|Bob|30
+Carol|Carol|45
+Dan|Dan|20
+Elizabeth|Elizabeth|20
+Farooq|Farooq|25
+Greg|Greg|40
+Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|83
+
+-CASE WithUnwindPipelines
+# unwind/unwind.test — WITH-WHERE after UNWIND.
+-STATEMENT UNWIND [1,2,3,4] AS x WITH x AS b WHERE b > 2 RETURN b
+---- 2
+3
+4
+# WITH ORDER BY + SKIP carries the surviving rows.
+-STATEMENT UNWIND [1,2,3,4] as val WITH val ORDER BY val SKIP 2 RETURN val
+---- 2
+3
+4
+# Chained WITH with DISTINCT dedup.
+-STATEMENT WITH [1, 1, 2, 2] AS coll UNWIND coll AS x WITH DISTINCT x return x
+---- 2
+1
+2
+# UNWIND a node-list property, alias it, WITH-WHERE, count.
+-STATEMENT MATCH (a:person) UNWIND a.workedHours as x WITH x AS hour WHERE hour < 0 RETURN COUNT(*)
+---- 1
+0
+# collect a scalar list, then UNWIND it back into rows.
+-STATEMENT MATCH (a:person) WITH collect(a.age) AS ages UNWIND ages AS age RETURN age
+---- 8
+35
+30
+45
+20
+20
+25
+40
+83
+
+-CASE WithNodeCarry
+# D2b — carrying node variables through WITH (re-correlate / project / aggregate).
+# projection/multi_query_part.test — carry a node, project a property next part.
+-STATEMENT MATCH (a:person) WITH a RETURN a.age
+---- 8
+35
+30
+45
+20
+20
+25
+40
+83
+# Carry a node, then re-extend from it in a fresh MATCH.
+-STATEMENT MATCH (a:person) WHERE a.age>20 WITH a MATCH (a)-[e:knows]->(b:person) RETURN b.fName
+---- 9
+Alice
+Alice
+Bob
+Bob
+Carol
+Carol
+Dan
+Dan
+Dan
+# agg/multi_query_part.test — alias a node, then count it.
+-STATEMENT MATCH (p:person) WITH p AS f RETURN COUNT(f)
+---- 1
+8
+# Carry a node + an aggregate (node is the group key), re-extend, filter by scalar.
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) WITH a, COUNT(*) AS s MATCH (a)-[:knows]->(c:person) WHERE c.ID > s RETURN a.ID, a.workedHours, c.ID, s
+---- 5
+0|[10,5]|5|3
+2|[12,8]|5|3
+3|[4,5]|5|3
+7|[2]|8|2
+7|[2]|9|2

@@ -1,0 +1,77 @@
+-DATASET CSV tinysnb
+--
+-CASE DateFns
+-STATEMENT MATCH (p:person) RETURN dayname(p.birthdate)
+---- 8
+Monday
+Monday
+Saturday
+Sunday
+Sunday
+Sunday
+Sunday
+Tuesday
+-STATEMENT MATCH (p:person) RETURN monthname(p.birthdate)
+---- 8
+January
+January
+June
+July
+October
+October
+October
+November
+-STATEMENT MATCH (p:person) RETURN last_day(p.birthdate)
+---- 8
+1900-01-31
+1900-01-31
+1940-06-30
+1950-07-31
+1980-10-31
+1980-10-31
+1980-10-31
+1990-11-30
+-STATEMENT MATCH (p:person) RETURN date_part("decadE", p.birthdate)
+---- 8
+190
+190
+194
+195
+198
+198
+198
+199
+-STATEMENT MATCH (p:person) RETURN date_part("cenTury", p.birthdate)
+---- 8
+19
+19
+20
+20
+20
+20
+20
+20
+-STATEMENT MATCH (p:person) RETURN date_trunc("cenTury", p.birthdate)
+---- 8
+1900-01-01
+1900-01-01
+1900-01-01
+1900-01-01
+1900-01-01
+1900-01-01
+1900-01-01
+1900-01-01
+-STATEMENT MATCH (p:person) RETURN date_trunc("quarTer", p.birthdate)
+---- 8
+1900-01-01
+1900-01-01
+1940-04-01
+1950-07-01
+1980-10-01
+1980-10-01
+1980-10-01
+1990-10-01
+-CASE IntervalCtors
+-STATEMENT MATCH (p:person) WHERE p.age = 35 RETURN to_years(p.age), to_days(p.age), to_hours(p.age), to_seconds(p.age)
+---- 1
+35 years|35 days|35:00:00|00:00:35

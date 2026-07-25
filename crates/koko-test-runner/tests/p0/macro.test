@@ -1,0 +1,85 @@
+-DATASET CSV empty
+--
+
+# Scalar macros (CREATE MACRO / DROP MACRO / show_macros). A macro call is a
+# pre-binding AST rewrite: arguments are substituted for the parameters in a copy
+# of the body, then bound. The registry is part of the transaction snapshot, so a
+# create/drop rolls back with the transaction. Hermetic mirror of the upstream
+# transaction/ddl/{macro,show_macro}.test + function/scalar_macro.test.
+
+-CASE PositionalAndDefaultExpansion
+-STATEMENT CREATE MACRO addd(a, b := 3) AS a + b
+---- ok
+-STATEMENT RETURN addd(2)
+---- 1
+5
+-STATEMENT RETURN addd(4, 7)
+---- 1
+11
+
+-CASE NestedMacroAndCaseBody
+-STATEMENT CREATE MACRO add10(x) AS x + 10
+---- ok
+-STATEMENT CREATE MACRO mul(x, y) AS x * y * y
+---- ok
+-STATEMENT RETURN mul(add10(5), 2)
+---- 1
+60
+-STATEMENT CREATE MACRO casem(x) AS CASE x WHEN 35 THEN x + 1 ELSE x - 5 END
+---- ok
+-STATEMENT RETURN casem(35), casem(10)
+---- 1
+36|5
+
+-CASE PropertyParamExpansion
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 7})
+---- ok
+-STATEMENT CREATE MACRO getid(n) AS n.id
+---- ok
+-STATEMENT MATCH (p:P) RETURN getid(p)
+---- 1
+7
+
+-CASE ShowAndDrop
+-STATEMENT CREATE MACRO m1(a, b) AS (a+b)
+---- ok
+-STATEMENT CALL show_macros() RETURN *
+---- 1
+M1|CREATE MACRO `M1` (a,b) AS a + b;
+-STATEMENT DROP MACRO m1
+---- ok
+-STATEMENT CALL show_macros() RETURN *
+---- 0
+-STATEMENT DROP MACRO m1
+---- error
+Binder exception: Macro m1 does not exist.
+-STATEMENT DROP MACRO IF EXISTS m1
+---- error
+Catalog exception: Marco m1 doesn't exist.
+
+-CASE RollbackDiscardsMacro
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE MACRO tmp(a) AS a + 1
+---- ok
+-STATEMENT RETURN tmp(10)
+---- 1
+11
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT RETURN tmp(10)
+---- error
+Catalog exception: function TMP does not exist.
+
+-CASE CommitPublishesMacro
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE MACRO keep(a) AS a + 1
+---- ok
+-STATEMENT COMMIT
+---- ok
+-STATEMENT RETURN keep(41)
+---- 1
+42

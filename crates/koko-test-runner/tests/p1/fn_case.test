@@ -1,0 +1,32 @@
+-DATASET CSV tinysnb
+--
+-CASE CaseNull
+-STATEMENT RETURN CASE NULL  WHEN NULL THEN "Null value" ELSE "Not null value" END
+---- 1
+Null value
+-STATEMENT return case 25 when 25 then null else 25 end
+---- 1
+
+-STATEMENT return case 25 when 24 then NULL else 25 end
+---- 1
+25
+-STATEMENT RETURN CASE WHEN 4 % 2 = 0 THEN 100 ELSE 50 END
+---- 1
+100
+-CASE CaseTinysnb
+-STATEMENT MATCH (a:person) WHERE a.ID < 6 RETURN CASE a.age WHEN 35 THEN a.age + 1 ELSE 0 END
+---- 4
+36
+0
+0
+0
+-STATEMENT MATCH (a:person) WHERE a.ID < 6 RETURN CASE WHEN a.eyeSight > 4.9 THEN a.eyeSight ELSE 1.0 END + 2.0
+---- 4
+3.000000
+7.000000
+7.000000
+7.100000
+-STATEMENT MATCH (a:person) WHERE CASE a.fName WHEN 'Bob' THEN a.isStudent WHEN 'Carol' THEN NOT a.isStudent END RETURN a.fName
+---- 2
+Bob
+Carol

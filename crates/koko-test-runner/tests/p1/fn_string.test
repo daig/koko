@@ -1,0 +1,72 @@
+-DATASET CSV tinysnb
+--
+-CASE StringFnsHermetic
+-STATEMENT RETURN lower('HeLLo'), upper('HeLLo'), reverse('abc'), size('héllo'), trim('  hi  ')
+---- 1
+hello|HELLO|cba|5|hi
+-STATEMENT RETURN substr('Alice', 2, 12), left('Alice', -4), right('Alice', 2), concat('a', 'b', 'c')
+---- 1
+lice|A|ce|abc
+-STATEMENT RETURN lpad('Bob', 5, '<'), rpad('Bob', 5, '>'), lpad('Hubert', 5, '.'), lpad('x', -1, '.')
+---- 1
+<<Bob|Bob>>|Huber|
+-STATEMENT RETURN contains('abcdef', 'cd'), starts_with('abc', 'ab'), ends_with('abc', 'bc'), prefix('abc', 'z')
+---- 1
+True|True|True|False
+-STATEMENT RETURN initcap('hello world'), split_part('a,b,c', ',', 2), repeat('ab', 3), levenshtein('kitten', 'sitting')
+---- 1
+Hello world|b|ababab|3
+-STATEMENT RETURN string_split('a,b,c', ','), list_to_string('-', [1,2,3])
+---- 1
+[a,b,c]|1-2-3
+
+-CASE StringFnsTinysnb
+-STATEMENT MATCH (p:person) RETURN substr(p.fName, 2, 12)
+---- 8
+lice
+ob
+arol
+an
+lizabeth
+arooq
+reg
+ubert Blaine
+-STATEMENT MATCH (p:person) RETURN left(p.fName, -4)
+---- 8
+A
+
+C
+
+Eliza
+Fa
+
+Hubert Blaine Wolfeschlegelsteinhausenbergerd
+-STATEMENT MATCH (p:person) RETURN right(p.fName, 10)
+---- 8
+Alice
+Bob
+Carol
+Dan
+Elizabeth
+Farooq
+Greg
+ergerdorff
+-STATEMENT MATCH (p:person) RETURN lpad(p.fName, 5, "<")
+---- 8
+Alice
+<<Bob
+Carol
+<<Dan
+Eliza
+Faroo
+<Greg
+Huber
+-STATEMENT MATCH (o:organisation) RETURN size(o.name)
+---- 3
+7
+6
+7
+-STATEMENT MATCH (m:movies) RETURN left(m.name, -7)
+---- 3
+Sóló cón tu
+The 😂😃🧘🏻‍♂️🌍🌦️🍞

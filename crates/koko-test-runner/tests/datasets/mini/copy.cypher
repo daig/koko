@@ -1,0 +1,5 @@
+COPY Person FROM "person.csv"
+COPY City FROM "city.csv"
+COPY Knows FROM "knows.csv"
+COPY LivesIn FROM "lives-in.csv"
+COPY Tagged FROM "tagged.csv"

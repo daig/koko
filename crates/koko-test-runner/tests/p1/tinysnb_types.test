@@ -1,0 +1,47 @@
+-DATASET CSV tinysnb
+--
+-CASE TinysnbScalarAgg
+-STATEMENT MATCH (a:person) RETURN COUNT(*)
+---- 1
+8
+-STATEMENT MATCH (a:person) RETURN AVG(a.age), AVG(a.eyeSight)
+---- 1
+37.250000|4.862500
+-STATEMENT MATCH (a:person) RETURN AVG(a.height) + 5
+---- 1
+6.364625
+-STATEMENT MATCH (a:person) RETURN COUNT(a.age) + 1
+---- 1
+9
+-STATEMENT MATCH (a:person) RETURN SUM(a.age), SUM(a.eyeSight)
+---- 1
+298|38.900000
+-STATEMENT MATCH (a:person) RETURN sum(a.height) + 2.2
+---- 1
+13.117000
+-STATEMENT MATCH (a:person) RETURN MIN(a.age), MAX(a.age), MIN(a.isStudent), MAX(a.isStudent), MIN(a.eyeSight), MAX(a.eyeSight), MIN(a.birthdate), MAX(a.birthdate)
+---- 1
+20|83|False|True|4.500000|5.100000|1900-01-01|1990-11-27
+
+-CASE TinysnbWhereDate
+-STATEMENT MATCH (a:person) WHERE a.birthdate = date('1980-10-26') RETURN SUM(a.age+10), SUM(a.age*2)
+---- 1
+115|170
+-STATEMENT MATCH (a:person) WHERE a.birthdate = date('1980-10-26') RETURN SUM(a.age+10) > SUM(a.age*2)
+---- 1
+False
+-STATEMENT MATCH (a:person) WHERE a.birthdate = date('1980-10-26') RETURN AVG(a.age), AVG(a.eyeSight)
+---- 1
+28.333333|4.700000
+
+-CASE TinysnbTimestampTzOrder
+-STATEMENT MATCH (p:person) RETURN p.registerTime ORDER BY p.registerTime
+---- 8
+1911-08-20 02:32:21
+1972-07-31 13:22:30.678559
+1976-12-23 04:41:42
+1976-12-23 11:21:42
+2008-11-03 15:25:30.000526
+2011-08-20 11:25:30
+2023-02-21 13:25:30
+2031-11-30 12:25:30

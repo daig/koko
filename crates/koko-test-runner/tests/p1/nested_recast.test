@@ -1,0 +1,14 @@
+-DATASET CSV empty
+--
+-CASE UnionBareTypes
+-STATEMENT RETURN cast("324324", "UNION(uint64, int128, BOOLEAN)"), cast("-324324", "UNION(uint64, int128, BOOLEAN)"), cast("false", "UNION(uint64, int128, BOOLEAN)")
+---- 1
+324324|-324324|False
+-CASE MapRecast
+-STATEMENT RETURN cast(cast(" { 213=1, -3123=0 } ","MAP(INT32, STRING)"), "MAP(INT64, INT64)"), cast(cast(" { 213=1, -3123=0 } ","MAP(STRING, STRING)"), "MAP(INT32, UINT8)"), cast(cast(" { 213=1, -3123=0 } ","MAP(STRING, STRING)"), "MAP(DOUBLE, UINT64)"), cast(cast(" { 213=1, -3123=0 } ","MAP(INT128, INT128)"), "MAP(STRING, FLOAT)")
+---- 1
+{213=1, -3123=0}|{213=1, -3123=0}|{213.000000=1, -3123.000000=0}|{213=1.000000, -3123=0.000000}
+-CASE StructRecast
+-STATEMENT RETURN cast(cast(cast("{a: 12, b: 0}", "STRUCT(a STRING, b STRING, c STRING)"), "STRUCT(a INT128, b INT128, c INT128)"), "STRUCT(a INT64, b INT64, c INT64)"), cast(cast("{a: 12, b: 0}", "STRUCT(a STRING, b STRING)"), "STRUCT(a DOUBLE, b DOUBLE)")
+---- 1
+{a: 12, b: 0, c: }|{a: 12.000000, b: 0.000000}

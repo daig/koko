@@ -1,0 +1,47 @@
+-DATASET CSV tinysnb
+--
+-CASE DatePlusInt
+-STATEMENT MATCH (a:person) RETURN a.birthdate + 32
+---- 8
+1900-02-02
+1900-02-02
+1940-07-24
+1950-08-24
+1980-11-27
+1980-11-27
+1980-11-27
+1990-12-29
+-CASE DateMinusDate
+-STATEMENT MATCH (a:person) RETURN a.birthdate - date('1920-03-21')
+---- 8
+-7384
+-7384
+11081
+22134
+22134
+22134
+25818
+7398
+-CASE IntervalDivide
+-STATEMENT MATCH (p:person) RETURN p.lastJobDuration / 3
+---- 8
+00:06:00.008
+1 year 20:20:40
+1 year 20:20:40
+16:08:03.666666
+16:08:03.666666
+3 years 5 months 20 days 04:20:00.000008
+3 years 5 months 20 days 04:20:00.000008
+3 years 5 months 20 days 04:20:00.000008
+-CASE ToTimestampAndIntervalParts
+-STATEMENT RETURN to_timestamp(0), date_part('decade', interval('35 years')), date_part('quarter', interval('5 months'))
+---- 1
+1970-01-01 00:00:00|3|2
+-STATEMENT RETURN to_timestamp(9223372036854775808)
+---- error
+Conversion exception: Could not convert epoch seconds to TIMESTAMP
+
+-CASE HermeticTemporal
+-STATEMENT RETURN date('2020-01-31') + interval('1 month'), date('2020-03-15') - interval('20 days'), interval('2 hours') + interval('90 minutes'), interval('10 days') * 3
+---- 1
+2020-02-29|2020-02-24|03:30:00|30 days

@@ -1,0 +1,25 @@
+-DATASET CSV empty
+--
+-CASE Regexp
+-STATEMENT RETURN regexp_full_match("peter_n@example.com", ".*\\.com")
+---- 1
+True
+-STATEMENT RETURN regexp_full_match("peter_n@examplecom", ".*\\.com")
+---- 1
+False
+-STATEMENT RETURN regexp_matches('anabanana', '(an)*')
+---- 1
+True
+-STATEMENT RETURN regexp_replace('hello', '[lo]', '-')
+---- 1
+he-lo
+-STATEMENT RETURN regexp_replace('hello', '[lo]', '-', 'g')
+---- 1
+he---
+-STATEMENT RETURN regexp_replace('this is a team', 'is', '*??', 'g')
+---- 1
+th*?? *?? a team
+-CASE Replace
+-STATEMENT RETURN replace('hello world', 'world', 'koko'), replace('aaaa', 'aa', 'b'), replace('abc', 'd', 'x'), replace('hello', '', 'x')
+---- 1
+hello koko|bb|abc|hello

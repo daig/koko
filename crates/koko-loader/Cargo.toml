@@ -1,0 +1,21 @@
+[package]
+name = "koko-loader"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+koko-common = { workspace = true }
+koko-catalog = { workspace = true }
+koko-storage = { workspace = true }
+koko-function = { workspace = true }
+csv = { workspace = true }
+bytes = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+parquet = { workspace = true }
+tempfile = { workspace = true }
+thrift = { workspace = true }
+npyz = { workspace = true }

@@ -1,0 +1,15 @@
+# Phase 1-B (part 2d) — nested LIST columns loaded from CSV.
+-DATASET CSV mini
+
+--
+
+-CASE ListColumns
+-STATEMENT MATCH (t:Tagged) RETURN t.name, t.tags, t.scores ORDER BY t.name
+-CHECK_ORDER
+---- 3
+alice|[red,blue,green]|[1,2,3]
+bob|[solo]|[5]
+carol|[]|[]
+-STATEMENT MATCH (t:Tagged) WHERE t.name = 'alice' RETURN t.scores
+---- 1
+[1,2,3]

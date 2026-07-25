@@ -1,0 +1,81 @@
+# Phase 0 — logical optimizer: primary-key point lookup + filter push-down
+# (koko-planner::optimize). `var.pk = const` over a single-table scan becomes an
+# in-memory PK probe (IndexScan); single-variable conjuncts sink below a cross
+# product / through an extend. The optimizer is result-preserving, so every answer
+# here must equal a plain scan + filter (set KOKO_NO_OPTIMIZE=1 to verify the A/B).
+-DATASET CSV empty
+
+--
+
+-CASE PrimaryKeyPointLookupInt
+-STATEMENT CREATE NODE TABLE N(id INT64, val STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT UNWIND range(1, 20) AS i CREATE (:N {id: i, val: 'v' + cast(i, 'STRING')})
+---- ok
+# exact point lookup
+-STATEMENT MATCH (n:N) WHERE n.id = 7 RETURN n.val
+---- 1
+v7
+# reversed operand order (const = var.pk)
+-STATEMENT MATCH (n:N) WHERE 12 = n.id RETURN n.val
+---- 1
+v12
+# absent key -> empty result (not an error)
+-STATEMENT MATCH (n:N) WHERE n.id = 999 RETURN n.val
+---- 0
+# pk equality + a residual non-pk conjunct (residual lands as a Filter above the probe)
+-STATEMENT MATCH (n:N) WHERE n.id = 3 AND n.val = 'v3' RETURN n.id
+---- 1
+3
+-STATEMENT MATCH (n:N) WHERE n.id = 3 AND n.val = 'nope' RETURN n.id
+---- 0
+# a DOUBLE constant against an INT pk is NOT index-compatible, so it stays a
+# filter — and must still compare numerically (2.0 == 2).
+-STATEMENT MATCH (n:N) WHERE n.id = 2.0 RETURN n.val
+---- 1
+v2
+# a range predicate is not a point lookup; stays a filter (still correct, scan order)
+-STATEMENT MATCH (n:N) WHERE n.id >= 18 RETURN n.id
+---- 3
+18
+19
+20
+
+-CASE PrimaryKeyPointLookupString
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'Alice', age: 35})
+---- ok
+-STATEMENT CREATE (:P {name: 'Bob', age: 20})
+---- ok
+-STATEMENT MATCH (p:P) WHERE p.name = 'Bob' RETURN p.age
+---- 1
+20
+-STATEMENT MATCH (p:P) WHERE p.name = 'Nobody' RETURN p.age
+---- 0
+
+-CASE DisconnectedCrossProductPushdown
+# The create-rel gate shape in miniature: two independent single-table scans, a PK
+# equality on each. Without push-down this is an O(n^2) cross product; with it, two
+# O(1) probes. The answer is the single matching pair either way.
+-STATEMENT CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City)
+---- ok
+-STATEMENT UNWIND range(1, 40) AS i CREATE (:Person {id: i})
+---- ok
+-STATEMENT UNWIND range(1, 40) AS i CREATE (:City {id: i})
+---- ok
+-STATEMENT MATCH (p:Person), (c:City) WHERE p.id = 7 AND c.id = 31 CREATE (p)-[:LivesIn]->(c)
+---- ok
+-STATEMENT MATCH (p:Person)-[:LivesIn]->(c:City) RETURN p.id, c.id
+---- 1
+7|31
+# filter push-down through an extend: the PK filter on the from-node reaches its scan
+-STATEMENT MATCH (p:Person)-[:LivesIn]->(c:City) WHERE p.id = 7 RETURN c.id
+---- 1
+31
+-STATEMENT MATCH (p:Person)-[:LivesIn]->(c:City) WHERE p.id = 8 RETURN c.id
+---- 0

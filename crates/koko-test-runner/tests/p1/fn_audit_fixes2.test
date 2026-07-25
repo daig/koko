@@ -1,0 +1,35 @@
+-DATASET CSV tinysnb
+--
+-CASE ListSignatures
+-STATEMENT RETURN list_to_string('--', [255, -51, 3132]), list_to_string('-', [1, NULL, 1])
+---- 1
+255---51--3132|1-1
+-STATEMENT RETURN list_prepend([1,2], 0), list_append([1,2], 3)
+---- 1
+[0,1,2]|[1,2,3]
+-CASE ListExtractErrors
+-STATEMENT RETURN list_extract([5,2,8], -4)
+---- error
+Runtime exception: list_extract(list, index): index=-4 is out of range.
+-STATEMENT RETURN list_extract([5,2,8], 0)
+---- error
+Runtime exception: List extract takes 1-based position.
+-CASE ArrayAliases
+-STATEMENT RETURN array_contains([1,2,3], 2), array_concat([1,2],[3,4]), array_reverse([1,2,3]), array_distinct([1,1,2])
+---- 1
+True|[1,2,3,4]|[3,2,1]|[1,2]
+-CASE CoalesceType
+-STATEMENT RETURN coalesce(1, NULL, 1.5)
+---- 1
+1.000000
+-STATEMENT RETURN to_uint128(to_int64(255))
+---- 1
+255
+-CASE Uint64MulOverflow
+-STATEMENT RETURN cast(1000000000000, "UINT64") * cast(100000000, "UINT64")
+---- error
+Overflow exception: Value 100000000 * 1000000000000 is not within UINT64 range.
+-CASE NestedCastWhitespace
+-STATEMENT RETURN cast(" { c= {a =  3423 },  b =  {  g = 3421 }  } ", "MAP(STRING, MAP(STRING, INT16))")
+---- 1
+{c={a=3423}, b={g=3421}}

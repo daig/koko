@@ -1,0 +1,20 @@
+-DATASET CSV empty
+--
+-CASE Math
+-STATEMENT RETURN floor(2.7), ceil(2.1), round(2.5), round(3.14159, 2), sqrt(16.0), sign(-5), abs(-7)
+---- 1
+2.000000|3.000000|3.000000|3.140000|4.000000|-1|7
+-STATEMENT RETURN pi(), pow(2.0, 10.0), ln(exp(1.0))
+---- 1
+3.141593|1024.000000|1.000000
+-CASE Util
+-STATEMENT RETURN coalesce(null, null, 42), ifnull(null, 7), nullif(5, 5), greatest(1, 9, 4), least(3, 1, 2)
+---- 1
+42|7||9|1
+-STATEMENT RETURN typeof(5), typeof(2.5), typeof('hi')
+---- 1
+INT64|DOUBLE|STRING
+-CASE CastAlias
+-STATEMENT RETURN to_int16(300), to_double(5), to_string(42)
+---- 1
+300|5.000000|42

@@ -1,0 +1,77 @@
+# Phase 0 — decorrelated subquery / OPTIONAL joins (P3 step 10b L1,
+# koko-planner::lib decorrelation + koko-processor JoinKind). A correlated lifted
+# EXISTS/COUNT subquery or OPTIONAL MATCH whose correlation reduces to node-id
+# equality is unnested into a build-once HashJoin (Mark for EXISTS/COUNT, Left for
+# OPTIONAL) — the relation the sub-pattern enumerates is hashed once and the outer
+# probes it, instead of rebuilding the sub-pipeline per outer row. Result-preserving:
+# every answer equals the per-row nested loop (the whole tck/optional_match/subquery
+# corpus is byte-identical to the pre-decorrelation engine).
+-DATASET CSV empty
+
+--
+
+-CASE DecorrelatedJoins
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P)
+---- ok
+-STATEMENT CREATE (:P {id: 1})
+---- ok
+-STATEMENT CREATE (:P {id: 2})
+---- ok
+-STATEMENT CREATE (:P {id: 3})
+---- ok
+-STATEMENT CREATE (:P {id: 4})
+---- ok
+# edges: 1->2, 1->3, 2->3, 2->4, 3->4
+-STATEMENT MATCH (a:P {id:1}),(b:P {id:2}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:1}),(b:P {id:3}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:2}),(b:P {id:3}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:2}),(b:P {id:4}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:3}),(b:P {id:4}) CREATE (a)-[:K]->(b)
+---- ok
+
+# --- OPTIONAL MATCH → Left join ---
+# out-degrees: 1→{2,3}=2, 2→{3,4}=2, 3→{4}=1, 4→{}=0. count(*) keeps the unmatched
+# a=4 as one NULL-extended row → 2+2+1+1 = 6.
+-STATEMENT MATCH (a:P) OPTIONAL MATCH (a)-[:K]->(b) RETURN count(*)
+---- 1
+6
+# count(b) ignores the NULL row (a=4) → 5.
+-STATEMENT MATCH (a:P) OPTIONAL MATCH (a)-[:K]->(b) RETURN count(b)
+---- 1
+5
+# the NULL-extension is observable: a=4 yields a single (4, NULL) row.
+-STATEMENT MATCH (a:P {id:4}) OPTIONAL MATCH (a)-[:K]->(b) RETURN a.id, b.id
+---- 1
+4|
+
+# --- EXISTS → Mark join (+ filter = semi/anti) ---
+# nodes with ≥1 out-edge: 1,2,3 (not 4) → 3.
+-STATEMENT MATCH (a:P) WHERE EXISTS { MATCH (a)-[:K]->(x) } RETURN count(*)
+---- 1
+3
+# NOT EXISTS = anti: only a=4 → 1.
+-STATEMENT MATCH (a:P) WHERE NOT EXISTS { MATCH (a)-[:K]->(x) } RETURN a.id
+---- 1
+4
+
+# --- multi-node correlation (a AND c bound) — the q8/q9 shape ---
+# 2-paths a->b->c: (1,2,3),(1,2,4),(2,3,4),(1,3,4). Keep those with NO a->c edge:
+# (1,2,3) drop[1->3], (1,2,4) keep, (2,3,4) drop[2->4], (1,3,4) keep → 2.
+-STATEMENT MATCH (a:P)-[:K]->(b:P)-[:K]->(c:P) WHERE NOT EXISTS { MATCH (a)-[:K]->(c) } RETURN count(*)
+---- 1
+2
+
+# --- COUNT {} → Mark(count) ---
+# per-node out-degree as a correlated count.
+-STATEMENT MATCH (a:P) RETURN a.id, COUNT { MATCH (a)-[:K]->(x) } AS c ORDER BY a.id
+---- 4
+1|2
+2|2
+3|1
+4|0

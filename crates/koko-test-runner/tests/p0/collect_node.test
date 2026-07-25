@@ -1,0 +1,67 @@
+-DATASET CSV mini
+--
+
+# Node and relationship values placed inside a container (collect / list literal /
+# map / struct) must carry the full value (id + label + properties), not a bare
+# internal id. Bare `RETURN n` already materialized; these are the container cases.
+# This is the lone genuine "node/rel value in a container" gap from the TCK triage.
+
+-CASE CollectNode
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN collect(p)
+---- 1
+[{_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True}]
+
+-CASE CollectRel
+-STATEMENT MATCH (a:Person)-[e:Knows]->(b:Person) WHERE a.name = 'Alice' RETURN collect(e)
+---- 1
+[(0:0)-{_LABEL: Knows, _ID: 2:0, since: 2019}->(0:1)]
+
+-CASE ListLiteralNode
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN [p]
+---- 1
+[{_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True}]
+
+-CASE StructFieldNode
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN {x: p}
+---- 1
+{x: {_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True}}
+
+-CASE MapValueNode
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN map(['k'], [p])
+---- 1
+{k={_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True}}
+
+-CASE NestedListNode
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN [collect(p)]
+---- 1
+[[{_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True}]]
+
+-CASE CollectDistinctNodes
+-STATEMENT MATCH (p:Person) RETURN collect(DISTINCT p) AS ps
+---- 1
+[{_ID: 0:0, _LABEL: Person, name: Alice, age: 30, height: 1.700000, active: True},{_ID: 0:1, _LABEL: Person, name: Bob, age: 25, height: 1.800000, active: False},{_ID: 0:2, _LABEL: Person, name: Carol, age: 40, height: 1.600000, active: True}]
+
+# Cross-WITH-boundary: a collected node carried forward unwinds to a full node, so
+# property access works (it would be NULL if the list held bare ids).
+-CASE UnwindCollectedAccessProperty
+-STATEMENT MATCH (p:Person) WITH collect(p) AS ps UNWIND ps AS x RETURN x.name ORDER BY x.name
+---- 3
+Alice
+Bob
+Carol
+
+# An unmatched OPTIONAL endpoint reads as NULL; collect skips nulls, and a group
+# that gathers zero non-null values yields NULL (matching C++/Kùzu's list-aggregate
+# null state), not an empty list -- while a matched one carries the full node.
+-CASE OptionalCollectSkipsUnmatched
+-STATEMENT MATCH (p:Person) OPTIONAL MATCH (p)-[:Knows]->(m) WITH p, collect(m) AS ms RETURN p.name, ms ORDER BY p.name
+---- 3
+Alice|[{_ID: 0:1, _LABEL: Person, name: Bob, age: 25, height: 1.800000, active: False}]
+Bob|[{_ID: 0:2, _LABEL: Person, name: Carol, age: 40, height: 1.600000, active: True}]
+Carol|
+
+# Regression: id() yields an InternalId (not a NODE), so it must NOT be inflated.
+-CASE IdInListNotInflated
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN [id(p)]
+---- 1
+[0:0]

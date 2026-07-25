@@ -1,0 +1,12 @@
+-DATASET CSV tinysnb
+--
+-CASE Collect
+-STATEMENT MATCH (a:person) WHERE a.ID < 6 RETURN collect(a.age)
+---- 1
+[35,30,45,20]
+-STATEMENT MATCH (a:person) WHERE a.age = 20 RETURN collect(a.fName)
+---- 1
+[Dan,Elizabeth]
+-STATEMENT MATCH (a:person) WHERE a.ID > 100 RETURN collect(a.fName)
+---- 1
+[]

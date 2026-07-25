@@ -1,0 +1,5 @@
+CREATE NODE TABLE Person(name STRING, age INT64, height DOUBLE, active BOOLEAN, PRIMARY KEY(name))
+CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+CREATE REL TABLE Knows(FROM Person TO Person, since INT64)
+CREATE REL TABLE LivesIn(FROM Person TO City)
+CREATE NODE TABLE Tagged(name STRING, tags STRING[], scores INT64[], PRIMARY KEY(name))

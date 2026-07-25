@@ -1,0 +1,69 @@
+-DATASET CSV empty
+--
+-CASE IntCastOverflow
+-STATEMENT RETURN CAST(128 AS INT8)
+---- error
+Overflow exception: Value 128 is not within INT8 range
+-STATEMENT RETURN CAST(32768 AS INT16)
+---- error
+Overflow exception: Value 32768 is not within INT16 range
+-STATEMENT RETURN CAST(9223372036854775808 AS INT64)
+---- error
+Overflow exception: Value 9223372036854775808 is not within INT64 range
+-STATEMENT RETURN CAST(170141183460469231731687303715884105728 AS INT128)
+---- error
+Overflow exception: Value 170141183460469231731687303715884105728 is not within INT128 range.
+
+-CASE StringIntCastFailure
+-STATEMENT RETURN cast("-1", "uint128")
+---- error
+Conversion exception: Cast failed. Could not convert "-1" to UINT128.
+-STATEMENT RETURN cast("1000000000000000000000000000000000000000", "uint128")
+---- error
+Conversion exception: Cast failed. Could not convert "1000000000000000000000000000000000000000" to UINT128.
+
+-CASE FloatToInt
+-STATEMENT RETURN cast(cast(3.2, "float"), "int8")
+---- 1
+3
+-STATEMENT RETURN cast(cast(11, "float"), "int8")
+---- 1
+11
+-STATEMENT RETURN cast(cast(-15, "float"), "int128")
+---- 1
+-15
+
+-CASE UuidCastFailure
+-STATEMENT RETURN UUID("11111111111111111")
+---- error
+Conversion exception: Invalid UUID: 11111111111111111
+-STATEMENT RETURN UUID("0")
+---- error
+Conversion exception: Invalid UUID: 0
+
+-CASE BlobCastFailure
+-STATEMENT RETURN cast('\\xgg', "blob")
+---- error
+Conversion exception: Invalid hex escape code encountered in string -> blob conversion: \xgg
+-STATEMENT RETURN cast('\\xa', "blob")
+---- error
+Conversion exception: Invalid hex escape code encountered in string -> blob conversion: unterminated escape code at end of string
+-STATEMENT RETURN cast('😀', "blob")
+---- error
+Conversion exception: Invalid byte encountered in STRING -> BLOB conversion. All non-ascii characters must be escaped with hex codes (e.g. \xAA)
+
+-CASE NestedNull
+-STATEMENT RETURN cast("[null, null, [1, 3]  ]", "INT64[][]")
+---- 1
+[,,[1,3]]
+-STATEMENT RETURN cast("[[null, null], [5, null], [1, 3]  ]", "INT64[][]")
+---- 1
+[[,],[5,],[1,3]]
+-STATEMENT RETURN cast("{=43}", "MAP(INT8, INT16)")
+---- error
+Conversion exception: Map does not allow null as key.
+
+-CASE DateTimestampCompare
+-STATEMENT RETURN cast("1972-07-31 00:00:00.00012", "TIMESTAMP_MS") >= date('1972-07-31')
+---- 1
+True

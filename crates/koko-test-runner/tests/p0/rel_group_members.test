@@ -1,0 +1,59 @@
+-DATASET CSV empty
+--
+
+# A rel table GROUP is stored as one physical table per FROM-TO pair (matching
+# C++/Kùzu): each pair's relationships carry a distinct internal-id table component,
+# a directed edge is filed under the exact pair (never a reverse-declared one), and
+# extend probes each pair store. Locks the per-pair-store rel-group model.
+
+-CASE PerPairIdsAndReverseRouting
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE C(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM P TO P, FROM P TO C, FROM C TO P)
+---- ok
+-STATEMENT CREATE (:P {name:'a'}), (:P {name:'b'}), (:C {name:'x'})
+---- ok
+-STATEMENT MATCH (a:P),(b:P) WHERE a.name='a' AND b.name='b' CREATE (a)-[:R]->(b)
+---- ok
+-STATEMENT MATCH (a:P),(c:C) WHERE a.name='a' CREATE (a)-[:R]->(c)
+---- ok
+# A C->P edge must file under the (C,P) pair, not the reverse (P,C) pair.
+-STATEMENT MATCH (c:C),(a:P) WHERE a.name='b' CREATE (c)-[:R]->(a)
+---- ok
+# Distinct per-pair table ids: P->P is 2:0, P->C is 3:0, C->P is 4:0.
+-STATEMENT MATCH (a)-[e:R]->(b) RETURN a.name, ID(e), b.name ORDER BY a.name, b.name
+---- 3
+a|2:0|b
+a|3:0|x
+x|4:0|b
+# Per-pair extend: the C->P pair connects x to a P node (reverse-routing fix).
+-STATEMENT MATCH (c:C)-[:R]->(p:P) RETURN c.name, p.name
+---- 1
+x|b
+# The P->C pair connects a to the city.
+-STATEMENT MATCH (p:P)-[:R]->(c:C) RETURN p.name, c.name
+---- 1
+a|x
+
+# Dropping the whole group removes every per-pair store; re-creating it succeeds
+# (no orphaned stores) and the new group starts empty.
+-CASE DropMultiPairGroup
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE C(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM P TO P, FROM P TO C, FROM C TO P)
+---- ok
+-STATEMENT CREATE (:P {name:'a'}), (:C {name:'x'})
+---- ok
+-STATEMENT MATCH (a:P),(c:C) CREATE (a)-[:R]->(c)
+---- ok
+-STATEMENT DROP TABLE R
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM P TO P, FROM P TO C)
+---- ok
+-STATEMENT MATCH (a:P)-[:R]->(b) RETURN count(*)
+---- 1
+0

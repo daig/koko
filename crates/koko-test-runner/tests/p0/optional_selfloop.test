@@ -1,0 +1,39 @@
+-DATASET CSV empty
+--
+
+# An OPTIONAL self-loop over a polymorphic (unlabeled) outer node must not narrow
+# the outer scan: `MATCH (a) ... OPTIONAL MATCH (a)-[r]->(a)` keeps every left row
+# (r is NULL when there is no self-loop). The binder used to pin an enclosing-scope
+# endpoint to the optional rel's FROM/TO pairs, shrinking the outer match — over a
+# multi-pair rel group this returned 1 row instead of 3.
+# Regression for openCypher TCK match7.Scenario25.
+
+-CASE OptionalSelfLoopPolymorphic
+-STATEMENT CREATE NODE TABLE `Single`(ID SERIAL, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE NODE TABLE A(ID SERIAL, num INT64, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE NODE TABLE B(ID SERIAL, num INT64, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE NODE TABLE C(ID SERIAL, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE REL TABLE REL(FROM `Single` TO A, FROM `Single` TO B, FROM A TO C)
+---- ok
+-STATEMENT CREATE REL TABLE LOOP(FROM B TO B)
+---- ok
+-STATEMENT CREATE (s:`Single`), (a:A {num: 42}), (b:B {num: 46}), (c:C) CREATE (s)-[:REL]->(a), (s)-[:REL]->(b), (a)-[:REL]->(c), (b)-[:LOOP]->(b)
+---- ok
+# Cardinality: the three non-B nodes (Single, A, C) each survive with r = NULL.
+-STATEMENT MATCH (a) WHERE NOT LABEL(a) = 'B' OPTIONAL MATCH (a)-[r]->(a) RETURN COUNT(*)
+---- 1
+3
+# r never matches a self-loop, so COUNT(r) (non-null count) is 0.
+-STATEMENT MATCH (a) WHERE NOT LABEL(a) = 'B' OPTIONAL MATCH (a)-[r]->(a) RETURN COUNT(r)
+---- 1
+0
+# The surviving nodes are exactly Single, A, C.
+-STATEMENT MATCH (a) WHERE NOT LABEL(a) = 'B' OPTIONAL MATCH (a)-[r]->(a) RETURN LABEL(a) ORDER BY LABEL(a)
+---- 3
+A
+C
+Single

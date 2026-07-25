@@ -1,0 +1,61 @@
+-DATASET CSV empty
+--
+-CASE StringNumericCastErrors
+-STATEMENT return cast("fsdasrwer", "DOUBLE")
+---- error
+Conversion exception: Cast failed. fsdasrwer is not in DOUBLE range.
+-STATEMENT return cast("fsdasrwer", "FLOAT")
+---- error
+Conversion exception: Cast failed. fsdasrwer is not in FLOAT range.
+-STATEMENT RETURN cast("fasdf", "boolean")
+---- error
+Conversion exception: Value fasdf is not a valid boolean
+-STATEMENT RETURN cast("fal", "boolean")
+---- error
+Conversion exception: Value fal is not a valid boolean
+
+-CASE BoolCastForms
+-STATEMENT RETURN cast("t", "boolean"), cast("1", "boolean"), cast("f", "boolean"), cast("0", "boolean"), cast("TRUE", "boolean"), cast("False", "boolean")
+---- 1
+True|True|False|False|True|False
+
+-CASE NegativeToUint128
+-STATEMENT RETURN cast(cast(-2147483648, "int128"), "uint128")
+---- error
+Overflow exception: Cannot cast negative INT128 value -2147483648 to UINT128
+-STATEMENT RETURN CAST(-1 AS UINT128)
+---- error
+Overflow exception: Cannot cast negative value to UINT128.
+
+-CASE StringToUintConvert
+-STATEMENT RETURN cast("256", "uint8")
+---- error
+Conversion exception: Cast failed. Could not convert "256" to UINT8.
+-STATEMENT RETURN cast("-1", "uint8")
+---- error
+Conversion exception: Cast failed. Could not convert "-1" to UINT8.
+
+-CASE UuidStrict
+-STATEMENT RETURN UUID("A0EEBC99 9C0B 4EF8 BB6D 6BB9BD380A11")
+---- error
+Conversion exception: Invalid UUID: A0EEBC99 9C0B 4EF8 BB6D 6BB9BD380A11
+-STATEMENT RETURN UUID("10203040506070800102030405060708g")
+---- error
+Conversion exception: Invalid UUID: 10203040506070800102030405060708g
+-STATEMENT RETURN UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+-STATEMENT RETURN UUID("{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11}")
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+-CASE DecimalAddSubParams
+-STATEMENT RETURN CAST(1.5, 'DECIMAL(18, 3)') + CAST(2.5, 'DECIMAL(18, 3)')
+---- 1
+4.0000
+-STATEMENT RETURN CAST(1.5, 'DECIMAL(5, 2)') + CAST(2.5, 'DECIMAL(5, 2)')
+---- 1
+4.000
+-STATEMENT RETURN CAST(5.5, 'DECIMAL(18, 3)') - CAST(2.5, 'DECIMAL(18, 3)')
+---- 1
+3.0000

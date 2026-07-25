@@ -1,0 +1,13 @@
+[package]
+name = "koko-planner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+koko-common = { workspace = true }
+koko-binder = { workspace = true }
+koko-catalog = { workspace = true }
+koko-function = { workspace = true }

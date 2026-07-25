@@ -1,0 +1,20 @@
+-DATASET CSV empty
+--
+-CASE AllProps
+-STATEMENT CREATE NODE TABLE Person(ID INT64, name STRING, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE REL TABLE Knows(FROM Person TO Person)
+---- ok
+-STATEMENT CREATE (:Person {ID: 1, name: 'Alice'})
+---- ok
+-STATEMENT CREATE (:Person {ID: 2, name: 'Bob'})
+---- ok
+-STATEMENT MATCH (a:Person),(b:Person) WHERE a.ID=1 AND b.ID=2 CREATE (a)-[:Knows]->(b)
+---- ok
+-STATEMENT MATCH (a:Person)-[e:Knows]->(b:Person) RETURN label(e), label(b), b.*
+---- 1
+Knows|Person|2|Bob
+-STATEMENT MATCH (p:Person) RETURN p.* ORDER BY p.ID
+---- 2
+1|Alice
+2|Bob

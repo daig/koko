@@ -1,0 +1,40 @@
+# Phase 1-B (part 2c) — FLOAT, UUID, BLOB scalar types.
+-DATASET CSV empty
+
+--
+
+-CASE Uuid
+-STATEMENT RETURN uuid('A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11')
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+-STATEMENT RETURN uuid('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11') = uuid('A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11')
+---- 1
+True
+-STATEMENT RETURN CAST('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' AS UUID)
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+-CASE Float
+-STATEMENT RETURN CAST('1.5' AS FLOAT)
+---- 1
+1.500000
+-STATEMENT RETURN CAST(2 AS FLOAT) + CAST(3 AS FLOAT)
+---- 1
+5.000000
+
+-CASE Blob
+-STATEMENT RETURN CAST('\\xAA\\xABinteresting' AS BLOB)
+---- 1
+\xAA\xABinteresting
+-STATEMENT RETURN CAST('pure ascii' AS BLOB)
+---- 1
+pure ascii
+
+-CASE TypedColumns
+-STATEMENT CREATE NODE TABLE T(id INT64, score FLOAT, key UUID, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, score: CAST(1.5 AS FLOAT), key: uuid('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')})
+---- ok
+-STATEMENT MATCH (t:T) RETURN t.score, t.key
+---- 1
+1.500000|a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11

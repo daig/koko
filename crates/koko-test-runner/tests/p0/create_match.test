@@ -1,0 +1,68 @@
+# Phase 0 — CREATE node insertion + MATCH ... RETURN, including NULL handling.
+-DATASET CSV empty
+
+--
+
+-CASE CreateAndMatch
+-STATEMENT CREATE NODE TABLE Person(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:Person {name: 'Alice', age: 35})
+---- ok
+-STATEMENT CREATE (:Person {name: 'Bob', age: 20})
+---- ok
+-STATEMENT MATCH (p:Person) RETURN p.name, p.age
+---- 2
+Alice|35
+Bob|20
+-STATEMENT MATCH (p:Person) WHERE p.name = 'Alice' RETURN p.age
+---- 1
+35
+
+-CASE NullProperty
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'NoAge'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.name, p.age
+---- 1
+NoAge|
+-STATEMENT MATCH (p:P) WHERE p.age IS NULL RETURN p.name
+---- 1
+NoAge
+
+-CASE DuplicatePrimaryKey
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'X'})
+---- ok
+-STATEMENT CREATE (:P {name: 'X'})
+---- error
+Runtime exception: Found duplicated primary key value X, which violates the uniqueness constraint of the primary key column.
+
+-CASE ReturnWholeNode
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'Alice', age: 35})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p
+---- 1
+{_ID: 0:0, _LABEL: P, name: Alice, age: 35}
+
+-CASE ReturnStar
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'Solo'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN *
+---- 1
+{_ID: 0:0, _LABEL: P, name: Solo}
+
+-CASE CreateMultipleInOneClause
+-STATEMENT CREATE NODE TABLE P(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'a'}), (:P {name: 'b'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.name
+---- 2
+a
+b

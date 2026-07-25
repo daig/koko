@@ -1,0 +1,29 @@
+-DATASET CSV empty
+--
+
+# A SERIAL column auto-increments on insert when no value is given (physically
+# INT64, starting at 0). Each table's counter is independent. (H5)
+
+-CASE SerialAutoIncrement
+-STATEMENT CREATE NODE TABLE A(ID SERIAL, name STRING, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE NODE TABLE B(ID SERIAL, name STRING, PRIMARY KEY(ID))
+---- ok
+-STATEMENT CREATE (:A {name: 'a0'})
+---- ok
+-STATEMENT CREATE (:A {name: 'a1'})
+---- ok
+-STATEMENT CREATE (:B {name: 'b0'})
+---- ok
+-STATEMENT MATCH (a:A) RETURN a.ID, a.name ORDER BY a.ID
+---- 2
+0|a0
+1|a1
+-STATEMENT MATCH (b:B) RETURN b.ID, b.name ORDER BY b.ID
+---- 1
+0|b0
+-STATEMENT MATCH (n) RETURN n ORDER BY n.name
+---- 3
+{_ID: 0:0, _LABEL: A, ID: 0, name: a0}
+{_ID: 0:1, _LABEL: A, ID: 1, name: a1}
+{_ID: 1:0, _LABEL: B, ID: 0, name: b0}

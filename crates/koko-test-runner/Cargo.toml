@@ -1,0 +1,16 @@
+[package]
+name = "koko-test-runner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+koko = { workspace = true }
+koko-common = { workspace = true }
+regex = { workspace = true }
+
+[[bin]]
+name = "koko-test"
+path = "src/main.rs"

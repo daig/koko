@@ -1,0 +1,83 @@
+-DATASET CSV empty
+--
+# Hermetic D3 gate: UNION / UNION ALL. Runs under `cargo test` (no dataset).
+# tinysnb corpus-exact cases live in tests/p1/union.test.
+
+-CASE UnionPositive
+-STATEMENT CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:N {id:1, name:'a'})
+---- ok
+-STATEMENT CREATE (:N {id:2, name:'b'})
+---- ok
+-STATEMENT CREATE (:N {id:3, name:'a'})
+---- ok
+# UNION ALL concatenates and keeps duplicates.
+-STATEMENT MATCH (n:N) RETURN n.name UNION ALL MATCH (m:N) RETURN m.name
+---- 6
+a
+a
+a
+a
+b
+b
+# UNION deduplicates over all columns.
+-STATEMENT MATCH (n:N) RETURN n.name UNION MATCH (m:N) RETURN m.name
+---- 2
+a
+b
+# Chained UNION ALL (3 operands, left-associative), mixing a MATCH and an UNWIND.
+-STATEMENT MATCH (n:N) RETURN n.id UNION ALL MATCH (m:N) RETURN m.id UNION ALL UNWIND [99] AS x RETURN x
+---- 7
+1
+1
+2
+2
+3
+3
+99
+# UNION over literal operands deduplicates.
+-STATEMENT RETURN 1 AS x UNION RETURN 2 AS x UNION RETURN 1 AS x
+---- 2
+1
+2
+# Multi-column UNION ALL.
+-STATEMENT MATCH (n:N) RETURN n.id, n.name UNION ALL MATCH (m:N) WHERE m.name='a' RETURN m.id, m.name
+---- 5
+1|a
+1|a
+2|b
+3|a
+3|a
+# Aggregates in each operand.
+-STATEMENT MATCH (n:N) RETURN count(*) AS c UNION ALL MATCH (n:N) WHERE n.name='a' RETURN count(*) AS c
+---- 2
+2
+3
+# A NULL column (type ANY) is compatible with any operand's type.
+-STATEMENT RETURN 1 AS x UNION ALL RETURN null AS x
+---- 2
+1
+
+# UNION composing with WITH pipelines in the operands.
+-STATEMENT UNWIND [1,2,3] AS x WITH x WHERE x > 1 RETURN x AS v UNION MATCH (n:N) RETURN n.id AS v
+---- 3
+1
+2
+3
+
+-CASE UnionValidations
+-STATEMENT CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+# Different number of columns.
+-STATEMENT MATCH (n:N) RETURN n.id, n.name UNION ALL MATCH (m:N) RETURN m.id
+---- error
+Binder exception: The number of columns to union/union all must be the same.
+# Mismatched column types (positional; the offending operand + expected type).
+-STATEMENT MATCH (n:N) RETURN n.name UNION ALL MATCH (m:N) RETURN m.id
+---- error
+Binder exception: m.id has data type INT64 but STRING was expected.
+# Mixing UNION and UNION ALL in one query is forbidden.
+-STATEMENT MATCH (n:N) RETURN n.id UNION ALL MATCH (m:N) RETURN m.id UNION MATCH (p:N) RETURN p.id
+---- error
+Binder exception: Union and union all can not be used together.
