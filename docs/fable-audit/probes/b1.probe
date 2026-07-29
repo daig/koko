@@ -1,0 +1,2 @@
+MATCH (o:organisation) WHERE o.ID = 6 RETURN o.state.location AS loc;
+MATCH (o:organisation) WHERE o.ID = 6 RETURN size(o.state.location[2]) AS sz;

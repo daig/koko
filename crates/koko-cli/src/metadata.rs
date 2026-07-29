@@ -3,10 +3,10 @@
 use crate::bootstrap::{AutoToggle, Format, NullDisplay, RowLimit, Settings, WidthLimit};
 use crate::parameter::{ParameterOrigin, ParameterStore};
 use crate::worker::{WorkerError, tooling_result};
-use koko::{
-    CatalogSnapshot, FunctionKind, GraphKind, IntKind, LogicalType, MemoryUsage, QueryResult,
-    SessionSnapshot, TransactionMode, Value,
-};
+use koko::config::MemoryUsage;
+use koko::tooling::{CatalogSnapshot, FunctionKind, GraphKind, SessionSnapshot, TransactionMode};
+use koko::value::IntKind;
+use koko::{LogicalType, QueryResult, Value};
 
 pub fn status_result(
     session: &SessionSnapshot,
@@ -18,11 +18,13 @@ pub fn status_result(
     let graph_kind = match session.graph().kind() {
         GraphKind::Typed => "typed",
         GraphKind::Any => "ANY",
+        _ => "unknown",
     };
     let transaction = match session.transaction() {
         TransactionMode::None => "none",
         TransactionMode::ReadOnly => "read-only",
         TransactionMode::ReadWrite => "read-write",
+        _ => "unknown",
     };
     let timeout = session.timeout().map_or_else(
         || "none".to_string(),
@@ -104,6 +106,7 @@ pub fn graphs_result(catalog: &CatalogSnapshot) -> Result<QueryResult, WorkerErr
                         match graph.kind() {
                             GraphKind::Typed => "typed",
                             GraphKind::Any => "ANY",
+                            _ => "unknown",
                         }
                         .to_string(),
                     ),
@@ -277,6 +280,7 @@ fn function_kind(kind: FunctionKind) -> &'static str {
         FunctionKind::Table => "table",
         FunctionKind::Macro => "macro",
         FunctionKind::ConnectionLocal => "connection-local",
+        _ => "function",
     }
 }
 

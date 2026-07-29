@@ -1,0 +1,58 @@
+// float rendering
+RETURN 1e300
+RETURN 1e-300
+RETURN 123456789.123456789
+RETURN 1.0/3.0
+RETURN 0.1
+RETURN 100.0
+RETURN -0.0
+RETURN 0.0
+RETURN 1000000.0
+RETURN 0.0000001
+// FLOAT vs DOUBLE rendering
+RETURN CAST(0.1 AS FLOAT)
+RETURN CAST(1.0/3.0 AS FLOAT)
+RETURN CAST(3.14159265 AS FLOAT)
+RETURN CAST(1e30 AS FLOAT)
+RETURN CAST(0.1 AS DOUBLE)
+// integer rendering
+RETURN CAST(255 AS UINT8)
+RETURN CAST(-128 AS INT8)
+RETURN CAST(18446744073709551615 AS UINT64)
+// DATE / TIMESTAMP rendering
+RETURN date('2020-01-05')
+RETURN date('0001-01-01')
+RETURN timestamp('2020-01-01 12:00:00.123456')
+RETURN timestamp('2020-01-01 12:00:00.1')
+RETURN timestamp('2020-01-01 00:00:00')
+RETURN CAST('2020-01-01 12:00:00' AS TIMESTAMP_TZ)
+RETURN CAST('2020-01-01 12:00:00' AS TIMESTAMP_MS)
+RETURN CAST('2020-01-01 12:00:00' AS TIMESTAMP_NS)
+RETURN CAST('2020-01-01 12:00:00' AS TIMESTAMP_SEC)
+// INTERVAL rendering incl negative + mixed + micros
+RETURN interval('1 year 2 months 3 days 04:05:06')
+RETURN interval('1 day') - interval('2 days')
+RETURN interval('1 month') - interval('2 months')
+RETURN interval('90 minutes')
+RETURN interval('1 year 3 months')
+RETURN interval('36 hours')
+RETURN interval('1.5 seconds')
+RETURN interval('100 microseconds')
+RETURN timestamp('2020-01-02 05:30:00') - timestamp('2020-01-01 00:00:00')
+// BLOB rendering
+RETURN CAST('hello' AS BLOB)
+RETURN CAST('\x00\x01\xff' AS BLOB)
+RETURN CAST('a\x00b' AS BLOB)
+// UUID case
+RETURN CAST('550E8400-E29B-41D4-A716-446655440000' AS UUID)
+// nested containers + null inside
+RETURN [1, null, 3]
+RETURN {a: 1, b: null}
+RETURN {a: 1, b: 2}
+RETURN [['x','y'],['z']]
+RETURN {a: ['x','y']}
+RETURN [{x: 1}, {x: 2}]
+RETURN {a: null}
+RETURN ['a,b', 'c']
+RETURN [null]
+RETURN [[null], []]

@@ -1,0 +1,8 @@
+RETURN round(0.5)
+RETURN round(2.5, 0)
+RETURN round(0.5, 0)
+RETURN round(1.5, 0)
+RETURN to_int32(3.9)
+RETURN to_int8(2.5)
+RETURN to_int64(-2.5)
+RETURN 2 ^ 3

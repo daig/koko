@@ -1,0 +1,7 @@
+FAIL  compression.ZSTDDecompress — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/reader/parquet/compression/zstd.parque…`: expected rows, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  compression.GZIPDecompress — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/reader/parquet/compression/gzip.parque…`: expected rows, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  compression.BROTLIDecompress — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/reader/parquet/compression/brotli.parq…`: expected rows, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  timestamp.impalaTimestamp — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/reader/parquet/timestamp/impala_timest…`: expected rows, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  timestamp.timestampMSNS — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/reader/parquet/timestamp/timestamp_ms_…`: expected rows, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+
+0 passed, 0 skipped, 5 failed

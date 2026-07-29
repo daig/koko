@@ -1,0 +1,9 @@
+// disambiguate blank Rust results (wrap in list; add typeof)
+RETURN [left('hello', 2.0)]
+RETURN [repeat('ab', 2.0)]
+RETURN [lpad('x', 4.0, 'y')]
+RETURN typeof(factorial('5'))
+RETURN [substr('hello', 1.0, 3.0)]
+RETURN [substr('hello', 2, 3)]
+RETURN [left('hello', 2)]
+RETURN [right('hello', 2)]

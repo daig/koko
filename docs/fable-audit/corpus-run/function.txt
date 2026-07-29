@@ -1,0 +1,102 @@
+FAIL  arithmetic.FunctionArithmetic — statement #1 `RETURN - - 1, ---2.3, --5!`: expected rows, got error: Parser exception: unexpected character '!' in query
+PASS  array.ArrayValue
+PASS  array_embeddings.8DimL2Naive
+PASS  array_embeddings.8DimCosNaive
+PASS  array_embeddings.8DimDPNaive
+FAIL  blob.FunctionBlob — statement #5 `RETURN OCTET_LENGTH(BLOB('\\xAA\\xB3 AD NC \\xD2'))`: expected rows, got error: Catalog exception: function OCTET_LENGTH does not exist.
+PASS  boolean.FunctionBoolean
+FAIL  call.CallSetGetConfig — statement #14 `CREATE NODE TABLE personAlt3(id INT64, prop STRING DEFAULT 'Alice')`: expected error `Parser exception: Can not find primary key.`, got `Parser exception: node table personAlt3 must declare a PRIMARY KEY`
+FAIL  call.CallNodeTableWith300ColumnsInfo — statement #1 `CREATE NODE TABLE person1(${COLS} PRIMARY KEY(col1))`: expected success, got error: Parser exception: expected an identifier, found Dollar
+FAIL  call.CallFuncWithYield — statement #1 `CALL SHOW_OFFICIAL_EXTENSIONS() yield name, description WITH name, description W…`: expected rows, got error: Not implemented exception: CALL SHOW_OFFICIAL_EXTENSIONS(...) table functions are not supported in this phase
+FAIL  call.CallFuncWithYieldError — statement #1 `CALL TABLE_INFO('person') yield `property id` as id RETURN *`: expected error `Binder exception: Output variables must all appear in the yield clause.`, got `Parser exception: expected Eof but found Ident("yield")`
+SKIP  call.CallCatalogVersion (-SKIP_IN_MEM)
+FAIL  call.CacheArrayColumn — statement #2 `CALL _CACHE_ARRAY_COLUMN_LOCALLY('testArray', 'i')`: expected error `Binder exception: Column i does not exist in table testArray.`, got `Not implemented exception: CALL _CACHE_ARRAY_COLUMN_LOCALLY(...) table functions are not supported in this phase`
+FAIL  call.ShowFunctionsWithAlias — statement #1 `CALL SHOW_FUNCTIONS() WHERE name = 'TOLOWER' RETURN *`: expected rows, got error: Not implemented exception: CALL SHOW_FUNCTIONS(...) table functions are not supported in this phase
+parse error in /Users/dai/code/koko/test/test_files/function/call/fsm_info.test: invalid result count `error(regex)`
+FAIL  stats_info.StatsInfo — statement #2 `CALL stats_info('person') RETURN cardinality, gender_distinct_count`: expected rows, got error: Not implemented exception: CALL stats_info(...) table functions are not supported in this phase
+FAIL  stats_info.StatsInfoWithTransaction — statement #1 `CALL stats_info('person') RETURN cardinality, gender_distinct_count`: expected rows, got error: Not implemented exception: CALL stats_info(...) table functions are not supported in this phase
+FAIL  stats_info.AddNodeProperty — statement #5 `CALL stats_info('Comment') RETURN cardinality, propx_distinct_count, propy_disti…`: expected rows, got error: Not implemented exception: CALL stats_info(...) table functions are not supported in this phase
+SKIP  storage_info.DictionaryCompression (-SKIP_IN_MEM)
+FAIL  storage_info.CallStorageInfo — statement #2 `CALL storage_info('person') RETURN COUNT(*)`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  storage_info.ConstantNullInfo — statement #1 `CALL storage_info('person') WHERE column_name='person_null' AND compression<>'CO…`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  storage_info.DisableFloatListDataCompression — statement #1 `CALL storage_info('meets') WHERE column_name='fwd_location_data' AND compression…`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+PASS  case.FunctionCase
+FAIL  cast.FunctionCast — statement #15 `MATCH (p:person) WHERE p.ID=0 RETURN to_int16(p.height), to_int32(p.height), to_…`: row mismatch: expected `2|2|2|2|1.731000`, got `1|1|1|1|1.731000`
+FAIL  cast.CastDataTypeToString — statement #64 `MATCH (o:organisation) RETURN string(o.state)`: row mismatch: expected `{revenue: 152, location: ["vanco,uver north area"], stock: {price: [15,78,671], volume: 432}}`, got `{revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}`
+FAIL  cast.DataTypeCasting — statement #155 `RETURN to_uint128(1.49), to_uint128(1.50), to_uint128(908661448.3902037585), cas…`: row mismatch: expected `1|2|908661448|3141592653590`, got `1|1|908661448|3141592653589`
+FAIL  cast.NestTypeImplicitCast — statement #5 `RETURN map([NULL, NULL], [1, 2])`: expected error `Runtime exception: Null value key is not allowed in map.`, but statement succeeded
+PASS  cast.DECIMALCAST
+PASS  cast.DecimalToString
+FAIL  comparison.FunctionComparison — statement #39 `RETURN [3,4] > [3,NULL]`: row mismatch: expected `False`, got ``
+PASS  date.FunctionDate
+SKIP  all_weighted_shortest.AllWeightedShortestPath (dataset `EMPTY` is not available)
+FAIL  basic.BasicAlgorithm — statement #1 `CALL PROJECT_GRAPH('PK', ['person'], ['knows'])`: expected success, got error: Not implemented exception: CALL PROJECT_GRAPH(...) table functions are not supported in this phase
+FAIL  rec_joins_large.GDSLarge — statement #1 `CALL PROJECT_GRAPH('PK1', ['person1'], ['knows11'])`: expected success, got error: Not implemented exception: CALL PROJECT_GRAPH(...) table functions are not supported in this phase
+FAIL  rec_joins_small.GDSSmall — statement #3 `MATCH p = (a:person1)-[e:knows11*3..3]-(b:person1) WHERE a.ID = 0 HINT (a JOIN e…`: row mismatch: expected `0|1|[0,1,0,1]|[2:0,2:0,2:0]|[0:0,0:0,0:0]|[0:1,0:1,0:1]`, got `0|1|[0,1,0,1]|[2:0,2:0,2:0]|[,,]|[,,]`
+FAIL  weighted_shortest.WeightedShortestPath — statement #1 `MATCH p = (a)-[e* WSHORTEST(cost1) ]->(b) WHERE a.ID = 'A' RETURN b.ID, cost(e)`: expected rows, got error: Parser exception: expected RBracket but found Ident("WSHORTEST")
+FAIL  weighted_shortest.NegativeWeight — statement #2 `MATCH (a)-[e* WSHORTEST(cost1) ]->(b) RETURN a.ID, b.ID, cost(e)`: expected error `Runtime exception: Found negative weight -1. This is not a supported weight for WEIGHTED_SP_DESTINATIONS`, got `Parser exception: expected RBracket but found Ident("WSHORTEST")`
+FAIL  hash.HashFuncTests — statement #1 `RETURN hash(true)`: expected rows, got error: Catalog exception: function HASH does not exist.
+FAIL  md5.MD5Tests — statement #1 `RETURN md5(NULL)`: expected rows, got error: Catalog exception: function MD5 does not exist.
+FAIL  sha256.SHA256Tests — statement #1 `RETURN sha256(NULL)`: expected rows, got error: Catalog exception: function SHA256 does not exist.
+FAIL  internal_id.InternalIDCreation — statement #1 `RETURN internal_id(2,3)`: expected rows, got error: Catalog exception: function INTERNAL_ID does not exist.
+FAIL  interval.FunctionInterval — statement #5 `MATCH (a:person) RETURN interval('2 years 3 days 34 h 28 minutes 300 millisecond…`: expected rows, got error: Conversion exception: Cast failed. 2 years 3 days 34 h 28 minutes 300 milliseconds 20 us is not a valid INTERVAL.
+FAIL  label.FunctionLabel — statement #2 `MATCH (a) RETURN DISTINCT labels(a)`: row mismatch: expected `movies`, got `[movies]`
+FAIL  list_filter.ListFilter — statement #7 `MATCH (a:person) RETURN LIST_FILTER(a.courseScoresPerTerm, x->size(x))`: expected error `Binder exception: LIST_FILTER requires the result type of lambda expression be BOOL.`, but statement succeeded
+FAIL  list_reduce.ListReduce — statement #7 `MATCH (a:person) WHERE a.id <= 7 WITH CASE WHEN a.age <= 30 THEN [] ELSE a.worke…`: expected error `Runtime exception: Cannot execute list_reduce on an empty list.`, got `Runtime exception: Reduce on an empty list is not supported.`
+FAIL  list_transform.ListTransform — statement #8 `RETURN list_extract([5,28,92], x->x+ 10)`: expected error `Binder exception: LIST_EXTRACT does not support lambda input.`, got `Binder exception: a lambda is only valid as an argument to a list function`
+FAIL  list.FunctionList — statement #14 `RETURN ['a', , []]`: expected error `Binder exception: Expression a has data type STRING but expected INT64[]. Implicit cast is not supported.`, but statement succeeded
+FAIL  list.ListHasAllTest — statement #1 `RETURN list_has_all([4, 5, 6], [4, 6])`: expected rows, got error: Catalog exception: function LIST_HAS_ALL does not exist.
+FAIL  list_of_string_utf8.ListOfStringFunctionUTF8 — statement #8 `RETURN array_append(["成績評価","の甘","業が", "这是中文"], "的语…`: expected rows, got error: Catalog exception: function ARRAY_APPEND does not exist.
+PASS  list_slice_extra.list
+PASS  list_slice_extra.string
+PASS  macro_transaction.MacroFuncTestCommit
+PASS  macro_transaction.MacroFuncTestCommitRecovery
+PASS  macro_transaction.MacroFuncTestRollback
+PASS  macro_transaction.MacroFuncTestRollbackRecovery
+PASS  macro_transaction.MacroFuncTestRollbackCommit
+PASS  map.FunctionMap
+FAIL  null.NullTest — statement #1 `MATCH (a)-[:knows]->(b:person) WHERE a.ID = 2 RETURN a.ID, a.name, a.name IS NUL…`: expected rows, got error: Binder exception: Cannot find property name for a.
+PASS  offset.FunctionOffset
+FAIL  path.FunctionPath — statement #1 `MATCH p = (a:person)-[:knows]->(b:person)-[:knows]->(c:person) WHERE a.ID = 0 AN…`: expected rows, got error: Catalog exception: function IS_ACYCLIC does not exist.
+FAIL  predicate.Any — statement #1 `MATCH (a:person) RETURN a.fName, any(name in list_transform(a.workedHours, x-> x…`: expected rows, got error: Parser exception: expected RParen but found Ident("in")
+FAIL  predicate.ListPredicateWithoutWhereError — statement #1 `RETURN NONE(x in [1,2,3])`: expected error `Parser exception: Invalid input <RETURN NONE(x in [1,2,3])>: expected rule oC_RegularQuery (line: 1, offset: 24)
+"RETURN NONE(x in [1,2,3])"
+                         ^`, got `Parser exception: expected RParen but found Ident("in")`
+FAIL  predicate.ListPredicateInWhere — statement #1 `MATCH (a:person) WHERE none(name in a.usedNames WHERE name = 'Aida') RETURN a.fN…`: expected rows, got error: Parser exception: expected RParen but found Ident("in")
+FAIL  range.Range — statement #3 `CREATE ({AGE: 1, NAME: "Alice", NUMBER: 1})-[]->({AGE: 2, NAME: "Alice", NUMBER:…`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+FAIL  rowid.FunctionRowID — statement #1 `MATCH (a:person) RETURN id(a), a.rowid`: expected rows, got error: Binder exception: Cannot find property rowid for a.
+PASS  scalar_macro.ScalarMacro
+PASS  serial.SerialAdd
+FAIL  start_end_node.FunctionStartNode — statement #1 `MATCH (:person)-[e:studyAt]->(:organisation) RETURN id(e), START_NODE(e)`: expected rows, got error: Catalog exception: function START_NODE does not exist.
+FAIL  start_end_node.FunctionEndNode — statement #1 `MATCH (:person)-[e:studyAt]->(:organisation) RETURN id(e), END_NODE(e)`: expected rows, got error: Catalog exception: function END_NODE does not exist.
+FAIL  concat_ws.ConcatWSTest — statement #1 `RETURN CONCAT_WS(',', '1', '3', '5', '7')`: expected rows, got error: Catalog exception: function CONCAT_WS does not exist.
+FAIL  concat_ws.ConcatWSNullTest — statement #1 `RETURN CONCAT_WS(NULL, 'test1', 'test2')`: expected rows, got error: Catalog exception: function CONCAT_WS does not exist.
+FAIL  concat_ws.ConcatWSNonStringError — statement #1 `RETURN CONCAT_WS(5, 'test1', 'test2')`: expected error `Binder exception: concat_ws expects all string parameters. Got: INT64.`, got `Catalog exception: function CONCAT_WS does not exist.`
+FAIL  list_append.ListAppendGeneralTests — statement #11 `MATCH (a:person) RETURN array_append(a.usedNames, a.fName)`: expected rows, got error: Catalog exception: function ARRAY_APPEND does not exist.
+PASS  list_append.ListAppendNullAndEmptyChecks
+FAIL  list_prepend.ListPrependGeneralTests — statement #11 `MATCH (a:person) RETURN array_prepend(a.usedNames, a.fName)`: expected rows, got error: Catalog exception: function ARRAY_PREPEND does not exist.
+PASS  list_prepend.ListPrependNullAndEmptyChecks
+FAIL  string.FunctionString — statement #21 `MATCH (a:person) RETURN a.fName, a.fName CONTAINS "a" ORDER BY a.fName`: expected rows, got error: Parser exception: expected Eof but found Ident("CONTAINS")
+parse error in /Users/dai/code/koko/test/test_files/function/string_empty.test: statement block has 4 statement(s) but 3 result block(s): `create (:person {id: 9}); create (:person {id: 11}); create (:person {id: 12}); create (:person {id: 13});`
+FAIL  list_append.ListAppendGeneralTests — statement #11 `MATCH (a:person) RETURN array_append(a.usedNames, a.fName)`: expected rows, got error: Catalog exception: function ARRAY_APPEND does not exist.
+PASS  list_append.ListAppendNullAndEmptyChecks
+FAIL  list_prepend.ListPrependGeneralTests — statement #11 `MATCH (a:person) RETURN array_prepend(a.usedNames, a.fName)`: expected rows, got error: Catalog exception: function ARRAY_PREPEND does not exist.
+PASS  list_prepend.ListPrependNullAndEmptyChecks
+PASS  string_utf8.StringFunctionUTF8
+PASS  struct.FunctionStruct
+FAIL  timestamp.FunctionTimestamp — statement #21 `MATCH (a:person) RETURN a.registerTime + interval('2 years 3 days 34 h 28 minute…`: expected rows, got error: Conversion exception: Cast failed. 2 years 3 days 34 h 28 minutes 300 milliseconds 20 us is not a valid INTERVAL.
+PASS  union.FunctionUnion
+PASS  coalesce.ConstantTests
+PASS  coalesce.TableTest
+PASS  coalesce.PredicateTest
+PASS  coalesce_tinysnb.TinySnbTests
+PASS  constant_or_null.ConstantTests
+PASS  constant_or_null.PredicateTests
+FAIL  count_if.ConstantTests — statement #1 `RETURN count_if(true)`: expected rows, got error: Catalog exception: function COUNT_IF does not exist.
+FAIL  error.ErrorTest — statement #1 `RETURN error('access_mode')`: expected error `Runtime exception: access_mode`, got `Catalog exception: function ERROR does not exist.`
+PASS  nullif.NullIfTest
+PASS  typeof.ConstantTest
+PASS  uuid.UUIDfunctions
+FAIL  uuid.LargeRandomUUID — statement #2 `COPY test FROM (UNWIND range(1, 200000) AS id RETURN id)`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+
+36 passed, 3 skipped, 59 failed

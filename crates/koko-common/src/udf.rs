@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 /// Whether SQL/Cypher NULL arguments bypass a scalar callback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ScalarUdfNullPolicy {
+pub enum RegisteredScalarFunctionNullPolicy {
     /// Return NULL without invoking the callback when any argument is NULL.
     #[default]
     Propagate,
@@ -16,20 +16,21 @@ pub enum ScalarUdfNullPolicy {
 }
 
 /// Type-erased safe Rust callback accepted by a scalar UDF.
-pub type ScalarUdfCallback = dyn Fn(&[Value]) -> Result<Value> + Send + Sync + 'static;
+pub type RegisteredScalarFunctionCallback =
+    dyn Fn(&[Value]) -> Result<Value> + Send + Sync + 'static;
 
 /// One immutable scalar-UDF overload. Bound and compiled expressions retain an
 /// `Arc` to this value, so registry changes cannot retarget an in-flight query.
 #[derive(Clone)]
-pub struct ScalarUdf {
+pub struct RegisteredScalarFunction {
     pub name: String,
     pub parameter_types: Vec<LogicalType>,
     pub result_type: LogicalType,
-    pub null_policy: ScalarUdfNullPolicy,
-    callback: Arc<ScalarUdfCallback>,
+    pub null_policy: RegisteredScalarFunctionNullPolicy,
+    callback: Arc<RegisteredScalarFunctionCallback>,
 }
 
-impl PartialEq for ScalarUdf {
+impl PartialEq for RegisteredScalarFunction {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && self.parameter_types == other.parameter_types
@@ -39,10 +40,10 @@ impl PartialEq for ScalarUdf {
     }
 }
 
-impl fmt::Debug for ScalarUdf {
+impl fmt::Debug for RegisteredScalarFunction {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("ScalarUdf")
+            .debug_struct("RegisteredScalarFunction")
             .field("name", &self.name)
             .field("parameter_types", &self.parameter_types)
             .field("result_type", &self.result_type)
@@ -51,12 +52,12 @@ impl fmt::Debug for ScalarUdf {
     }
 }
 
-impl ScalarUdf {
+impl RegisteredScalarFunction {
     pub fn new<F>(
         name: String,
         parameter_types: Vec<LogicalType>,
         result_type: LogicalType,
-        null_policy: ScalarUdfNullPolicy,
+        null_policy: RegisteredScalarFunctionNullPolicy,
         callback: F,
     ) -> Self
     where
@@ -74,7 +75,7 @@ impl ScalarUdf {
     /// Invoke the callback across the panic boundary and enforce its declared
     /// output contract. NULL is valid for every declared result type.
     pub fn invoke(&self, arguments: &[Value]) -> Result<Value> {
-        if self.null_policy == ScalarUdfNullPolicy::Propagate
+        if self.null_policy == RegisteredScalarFunctionNullPolicy::Propagate
             && arguments.iter().any(Value::is_null)
         {
             return Ok(Value::Null);

@@ -1,0 +1,2 @@
+LOAD FROM "/tmp/nohdr_test.csv" RETURN *;
+LOAD FROM "/tmp/hdr_test.csv" RETURN *;

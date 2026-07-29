@@ -2,6 +2,8 @@
 //!
 //! These types deliberately belong to the `koko` facade. Callers do not need
 //! a dependency on the parser or any private engine layer.
+use crate::result::Column;
+use crate::{QueryResult, Result, Value};
 
 /// A half-open UTF-8 byte span in source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +35,7 @@ impl SourceSpan {
 }
 
 /// Coarse lexical classes for editor styling.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Keyword,
@@ -63,6 +66,7 @@ impl TokenSpan {
 }
 
 /// Whole-buffer or per-statement syntax state.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntaxStatus {
     Empty,
@@ -72,6 +76,7 @@ pub enum SyntaxStatus {
 }
 
 /// Syntactic statement family. Binding remains authoritative for semantics.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatementClass {
     Query,
@@ -86,6 +91,7 @@ pub enum StatementClass {
 }
 
 /// Expected result family available without binding.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputClass {
     Rows,
@@ -139,6 +145,7 @@ impl SyntaxDiagnostic {
 }
 
 /// Completion family at the cursor.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorContextKind {
     Keyword,
@@ -205,6 +212,11 @@ impl SyntaxAnalysis {
     pub fn cursor_context(&self) -> Option<&CursorContext> {
         self.cursor.as_ref()
     }
+}
+
+/// Build a validated materialized tabular result for first-party tooling.
+pub fn tabular_result(columns: Vec<Column>, rows: Vec<Vec<Value>>) -> Result<QueryResult> {
+    QueryResult::from_rows(columns, rows)
 }
 
 /// Running library version used by first-party clients.
@@ -318,6 +330,7 @@ impl GraphIdentity {
 }
 
 /// Schema mode of a graph.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphKind {
     Typed,
@@ -325,6 +338,7 @@ pub enum GraphKind {
 }
 
 /// Authoritative explicit transaction state.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionMode {
     None,
@@ -563,6 +577,7 @@ impl MacroDescriptor {
 }
 
 /// Function catalog family.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionKind {
     Scalar,
@@ -732,31 +747,34 @@ pub(crate) fn property_descriptor(
     primary_key: bool,
 ) -> PropertyDescriptor {
     PropertyDescriptor {
-        name: column.name.clone(),
-        logical_type: column.ty.clone(),
-        type_text: column.type_text.clone(),
+        name: column.name().to_string(),
+        logical_type: column.logical_type().clone(),
+        type_text: column.type_text().to_string(),
         primary_key,
-        default_text: column.default_text.clone(),
+        default_text: column.default_text().to_string(),
     }
 }
 
 pub(crate) fn function_descriptors(
     macros: &[MacroDescriptor],
-    scalar_udfs: &std::collections::HashMap<String, std::sync::Arc<koko_common::ScalarUdf>>,
+    scalar_udfs: &std::collections::HashMap<
+        String,
+        std::sync::Arc<koko_common::RegisteredScalarFunction>,
+    >,
 ) -> Vec<FunctionDescriptor> {
     let mut functions: Vec<_> = koko_function::catalog_data::FUNCTION_CATALOG
         .iter()
-        .map(|(name, kind, signature)| FunctionDescriptor {
-            name: (*name).to_string(),
-            kind: if kind.contains("AGGREGATE") {
-                FunctionKind::Aggregate
-            } else if kind.contains("TABLE") {
-                FunctionKind::Table
-            } else {
-                FunctionKind::Scalar
+        .map(|entry| FunctionDescriptor {
+            name: entry.name.to_string(),
+            kind: match entry.kind {
+                koko_function::FunctionCatalogKind::Aggregate => FunctionKind::Aggregate,
+                koko_function::FunctionCatalogKind::Table
+                | koko_function::FunctionCatalogKind::StandaloneTable => FunctionKind::Table,
+                _ => FunctionKind::Scalar,
             },
-            signature: (*signature).to_string(),
-            return_type: signature
+            signature: entry.signature.to_string(),
+            return_type: entry
+                .signature
                 .rsplit_once(" -> ")
                 .map_or("", |(_, result)| result)
                 .to_string(),

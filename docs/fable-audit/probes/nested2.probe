@@ -1,0 +1,3 @@
+#ORDER# MATCH (o:organisation) RETURN o.ID, o.state.location[1], size(o.state.location[1]) ORDER BY o.ID
+#ORDER# MATCH (o:organisation) WHERE o.ID=4 RETURN o.state.location[1] = 'vanco,uver north area'
+#ORDER# MATCH (o:organisation) WHERE o.ID=1 RETURN o.state.location[1] = 'toronto'

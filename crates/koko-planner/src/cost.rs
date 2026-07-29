@@ -9,11 +9,11 @@
 //! With no statistics (the [`StatsMap`] empty) every estimate falls back to a
 //! constant, so the chosen plan is identical to the pre-step-8 greedy planner.
 
-use crate::PlanOp;
-use koko_binder::{BoundExpr, BoundQuery, VarId};
 use koko_common::TableId;
 use koko_common::stats::TableStats;
 use koko_function::ScalarOp;
+use koko_ir::bound::{BoundExpr, BoundQuery, VarId};
+use koko_ir::plan::PlanOp;
 use std::collections::HashMap;
 
 /// A snapshot of per-table statistics, keyed by table id (node + rel tables). Built

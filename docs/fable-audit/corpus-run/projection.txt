@@ -1,0 +1,12 @@
+PASS  dupe_return.ReturnDupeColumnNames
+PASS  dupe_return.ReturnDupeAliases
+parse error in /Users/dai/code/koko/test/test_files/projection/escape.test: invalid result count `hash`
+FAIL  multi_label.ProjectionMultiLabel — statement #3 `MATCH (a:movies:organisation) RETURN *`: row mismatch: expected `{_ID: 1:1, _LABEL: organisation, ID: 4, name: CsWork, orgCode: 934, mark: 4.100000, score: -100, history: 2 years 4 days 10 hours, licenseValidInterval: 26 years 52 days 48:00:00, rating: 0.780000, state: {revenue: 152, location: ["vanco,uver north area"], stock: {price: [15,78,671], volume: 432}}, info: abcd}`, got `{_ID: 1:1, _LABEL: organisation, ID: 4, name: CsWork, orgCode: 934, mark: 4.100000, score: -100, history: 2 years 4 days 10 hours, licenseValidInterval: 26 years 52 days 48:00:00, rating: 0.780000, state: {revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}, info: abcd}`
+PASS  multi_query_part.ProjectionMultiQuery
+FAIL  single_label.ProjectionSingleLabel — statement #11 `MATCH (a:organisation) RETURN *`: row mismatch: expected `{_ID: 1:1, _LABEL: organisation, ID: 4, name: CsWork, orgCode: 934, mark: 4.100000, score: -100, history: 2 years 4 days 10 hours, licenseValidInterval: 26 years 52 days 48:00:00, rating: 0.780000, state: {revenue: 152, location: ["vanco,uver north area"], stock: {price: [15,78,671], volume: 432}}, info: abcd}`, got `{_ID: 1:1, _LABEL: organisation, ID: 4, name: CsWork, orgCode: 934, mark: 4.100000, score: -100, history: 2 years 4 days 10 hours, licenseValidInterval: 26 years 52 days 48:00:00, rating: 0.780000, state: {revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}, info: abcd}`
+FAIL  single_label.LargeListOfStruct — statement #1 `RETURN list_append([${STRUCT_VAL}{a: 99}], {a: 200})`: expected rows, got error: Parser exception: expected an identifier, found LBrace
+PASS  single_label.NestedPropertyManyToManyRel
+FAIL  skip_limit.LoadWithExpressionSkip — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson.csv' RETURN * SKIP 4.1`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+FAIL  skip_limit.ProjectionSkipLimit — statement #6 `MATCH (a:person) RETURN a.fName ORDER BY a.fName LIMIT 1 + 1`: expected rows, got error: Not implemented exception: LIMIT requires a constant integer in this phase
+
+4 passed, 0 skipped, 6 failed

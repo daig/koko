@@ -1,0 +1,39 @@
+# Statistics drive join-order anchor selection and hash-join build-side choice.
+# A selective primary-key predicate becomes the anchor, extends run outward, and
+# the smaller hash-join input becomes the build side. Results must equal the naive
+# plan; `KOKO_NO_OPTIMIZE=1` provides a diagnostic A/B mode.
+-DATASET CSV empty
+
+--
+
+-CASE CostBasedJoinOrder
+-STATEMENT CREATE NODE TABLE P(id INT64, name STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM P TO P)
+---- ok
+-STATEMENT UNWIND range(0, 199) AS i CREATE (:P {id: i, name: 'n' + cast(i % 10, 'STRING')})
+---- ok
+# a chain i -> i+1 (199 edges), created via the step-7 value-equi-join hash rewrite.
+-STATEMENT MATCH (a:P), (b:P) WHERE b.id = a.id + 1 CREATE (a)-[:E]->(b)
+---- ok
+# deep selective predicate: the scan anchors on `b` (b.id = 100 -> IndexScan) and the
+# extend runs backward to `a`, instead of scanning all 200 `a`s.
+-STATEMENT MATCH (a:P)-[:E]->(b:P) WHERE b.id = 100 RETURN a.id
+---- 1
+99
+# the selective node in the middle of a 2-hop chain anchors there and extends both ways.
+-STATEMENT MATCH (a:P)-[:E]->(b:P)-[:E]->(c:P) WHERE c.id = 100 RETURN a.id, b.id
+---- 1
+98|99
+# value equi-join with one side pinned: `a` is one row (IndexScan), so the hash join
+# builds the small `a` and probes the 200-row `b`. name 'n5' = ids 5,15,...,195 (20).
+-STATEMENT MATCH (a:P), (b:P) WHERE a.id = 5 AND a.name = b.name RETURN count(*)
+---- 1
+20
+# the same swapped-build join, projected with a residual filter — the output columns
+# must still reconstruct correctly regardless of which side was hashed.
+-STATEMENT MATCH (a:P), (b:P) WHERE a.id = 5 AND a.name = b.name AND b.id < 30 RETURN b.id
+---- 3
+5
+15
+25

@@ -1,0 +1,7 @@
+RETURN interval('2 years 3 days 34 h 28 minutes 300 milliseconds 20 us')
+RETURN interval('1 year 2 months 3 days')
+RETURN interval('3 quarter')
+RETURN interval('1.5 microsecond')
+RETURN interval('34 h')
+RETURN interval('300 milliseconds')
+RETURN interval('20 us')

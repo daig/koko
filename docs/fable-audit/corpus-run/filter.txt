@@ -1,0 +1,16 @@
+PASS  cast.ZoneMapCastedColumn
+PASS  four_five_hop.FourHopFilter
+PASS  four_five_hop.FiveHopFilter
+PASS  multi_label.FilterMultiLabel
+PASS  multi_label.ZonemapWithUpdates
+PASS  multi_query_part.FilterMultiQuery
+PASS  node.PersonNodesEyeSightFilteredTest1WithALPExceptions
+PASS  node.ZoneMapNotEqualSkip
+FAIL  node.ZoneMapUpdateThenQueryWithoutCheckpoint — statement #23 `MATCH (a:organisation) WHERE a.ID=4 SET a.state={revenue: CAST(1, "INT16"), loca…`: expected success, got error: Binder exception: Expression STRUCT_PACK(CAST(1, INT16),LIST_CREATION(aaa),STRUCT_PACK(LIST_CREATION(1),1)) has data type STRUCT(revenue INT16, location STRING[], stock STRUCT(price INT64[], volumn INT64)) but expected STRUCT(revenue INT16, location STRING[], stock STRUCT(price INT64[], volume INT64)). Implicit cast is not supported.
+PASS  node.FilterNode
+PASS  one_hop.FilterOneHop
+PASS  one_hop.ZonemapWithUpdatesNoCheckpoint
+PASS  serial.SerialComparison
+PASS  two_hop.FilterTwoHop
+
+13 passed, 0 skipped, 1 failed

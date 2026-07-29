@@ -1,0 +1,8 @@
+parse error in /Users/dai/code/koko/test/test_files/shortest_path/all_shortest_path.test: invalid result count `hash`
+PASS  all_shortest_path_tinysnb.AllShortestPath
+PASS  bfs_sssp.BfsCSV
+PASS  bfs_sssp_large.BfsLarge
+SKIP  bfs_sssp_parquet.BfsParquet (dataset `CSV_TO_PARQUET(shortest-path-tests)` is not available)
+PASS  shortest_path_tinysnb.ShortestPath
+
+4 passed, 1 skipped, 1 failed

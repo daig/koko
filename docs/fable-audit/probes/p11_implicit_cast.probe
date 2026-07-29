@@ -1,0 +1,38 @@
+// function-arg implicit cast to STRING (C++ accepts, Rust may reject)
+RETURN length(123)
+RETURN concat('x', 1)
+RETURN concat(1, 2)
+RETURN upper(123)
+RETURN lower(CAST('550e8400-e29b-41d4-a716-446655440000' AS UUID))
+RETURN concat(date('2020-01-01'), 'x')
+RETURN size(123)
+// list common-type ordering (STRING always-cast?)
+RETURN typeof([1, '2'])
+RETURN typeof(['2', 1])
+RETURN typeof([1, 'a'])
+RETURN typeof(['a', 1])
+RETURN [1, '2']
+RETURN ['2', 1]
+// list common-type: incompatible -> C++ errors, Rust picks first?
+RETURN typeof([1, date('2020-01-01')])
+RETURN typeof([date('2020-01-01'), 1])
+RETURN [1, date('2020-01-01')]
+// DATE vs TIMESTAMP common type
+RETURN typeof([date('2020-01-01'), timestamp('2020-01-01 00:00:00')])
+RETURN date('2020-01-01') = timestamp('2020-01-01 00:00:00')
+RETURN date('2020-01-01') < timestamp('2020-01-02 00:00:00')
+// DECIMAL common-type
+RETURN typeof([CAST(1 AS DECIMAL(4,2)), 1])
+RETURN typeof([CAST(1 AS DECIMAL(4,2)), CAST(1 AS DECIMAL(6,3))])
+RETURN [CAST(1 AS DECIMAL(4,2)), 1]
+// mixed-sign integer common type
+RETURN typeof([CAST(1 AS UINT8), CAST(1 AS INT8)])
+RETURN typeof([CAST(1 AS UINT32), CAST(1 AS INT16)])
+// mixed-sign comparison
+RETURN CAST(-1 AS INT8) < CAST(1 AS UINT64)
+RETURN CAST(255 AS UINT8) = CAST(-1 AS INT8)
+// coalesce common type
+RETURN typeof(coalesce(1, 2.0))
+RETURN coalesce(null, 1, 2)
+// CASE common type
+RETURN typeof(CASE WHEN true THEN 1 ELSE 2.0 END)

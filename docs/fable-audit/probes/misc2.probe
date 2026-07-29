@@ -1,0 +1,39 @@
+// ===== != operator (alt inequality) =====
+RETURN 5 != 3 AS x
+RETURN 1 != 1 AS x
+RETURN 'a' != 'b' AS x
+RETURN 5 <> 3 AS x
+RETURN NULL != 1 AS x
+// ===== precedence: comparison vs arithmetic vs boolean =====
+RETURN 10 % 3 = 1 AS x
+RETURN 2 + 3 = 5 AS x
+RETURN NOT true = false AS x
+RETURN NOT 1 = 1 AS x
+RETURN 1 = 1 AND 2 = 2 AS x
+RETURN 1 < 2 AND 3 > 2 AS x
+RETURN 2 * 3 > 5 AS x
+RETURN 1 + 1 = 2 = true AS x
+// ===== mod / div keywords (probably unsupported) =====
+RETURN 10 mod 3 AS x
+RETURN 10 div 3 AS x
+// ===== pattern comprehension =====
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN size([(a)-[:knows]->(b) | b.fName]) AS x
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN size([(a)-[:knows]->(b) WHERE b.age > 30 | b.fName]) AS x
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN [(a)-[:knows]->(b) | b.age][0] AS x
+MATCH (a:person) WHERE a.fName = 'Zzz' RETURN size([(a)-[:knows]->(b) | b.fName]) AS x
+// ===== EXISTS subquery =====
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN EXISTS { MATCH (a)-[:knows]->() } AS x
+MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->() } RETURN count(*) AS c
+MATCH (a:person) WHERE a.fName = 'Alice' AND EXISTS { MATCH (a)-[:knows]->(b) WHERE b.age > 100 } RETURN count(*) AS c
+// ===== COUNT subquery =====
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN COUNT { MATCH (a)-[:knows]->() } AS x
+// ===== boolean literal case-sensitivity =====
+RETURN TRUE AS x
+RETURN True AS x
+RETURN false AS x
+RETURN FALSE AND true AS x
+RETURN null AS x
+RETURN NULL AS x
+// ===== unary NOT with IS NULL precedence =====
+RETURN NOT NULL IS NULL AS x
+RETURN NOT 1 IS NULL AS x

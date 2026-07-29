@@ -2,7 +2,9 @@
 
 use crate::bootstrap::{Format, NullDisplay, RowLimit, Settings, WidthLimit};
 use crate::{human, machine, output, value_codec};
-use koko::{QueryResult, QueryResultKind, StatementFailure};
+use koko::QueryResult;
+use koko::diagnostics::{Failure, FailureKind};
+use koko::result::ResultKind;
 use std::io::Write;
 
 #[derive(Debug, Clone, Copy)]
@@ -230,13 +232,13 @@ impl<W: Write, D: Write> Presenter<W, D> {
             if let Some(status) = result.status_message() {
                 writeln!(self.diagnostics, "{status}")?;
             }
-            if result.result_kind() == QueryResultKind::Rows {
-                write!(self.diagnostics, "{} rows returned", result.num_rows())?;
-                if displayed_rows.is_some_and(|displayed| displayed != result.num_rows()) {
+            if result.kind() == ResultKind::Rows {
+                write!(self.diagnostics, "{} rows returned", result.len())?;
+                if displayed_rows.is_some_and(|displayed| displayed != result.len()) {
                     write!(
                         self.diagnostics,
                         "; {} displayed",
-                        displayed_rows.unwrap_or(result.num_rows())
+                        displayed_rows.unwrap_or(result.len())
                     )?;
                 }
                 self.diagnostics.write_all(b"\n")?;
@@ -247,8 +249,8 @@ impl<W: Write, D: Write> Presenter<W, D> {
             writeln!(
                 self.diagnostics,
                 "Timing: {:.3} ms compiling, {:.3} ms executing",
-                result.summary().compiling_time_ms(),
-                result.summary().execution_time_ms()
+                result.summary().compilation_time().as_secs_f64() * 1_000.0,
+                result.summary().execution_time().as_secs_f64() * 1_000.0
             )?;
         }
         Ok(())
@@ -257,10 +259,10 @@ impl<W: Write, D: Write> Presenter<W, D> {
     pub fn present_failure(
         &mut self,
         statement: &StatementContext<'_>,
-        failure: &StatementFailure,
+        failure: &Failure,
     ) -> Result<(), PresentationError> {
         self.failed = true;
-        let display = if failure.kind() == koko::FailureKind::InternalPanic {
+        let display = if failure.kind() == FailureKind::InternalPanic {
             "Internal error: query execution panicked.".to_string()
         } else {
             failure.error().to_string()
@@ -293,7 +295,7 @@ impl<W: Write, D: Write> Presenter<W, D> {
     }
 
     fn write_warnings(&mut self, result: &QueryResult) -> Result<(), PresentationError> {
-        for warning in result.statement_diagnostics().warnings() {
+        for warning in result.diagnostics().warnings() {
             writeln!(self.diagnostics, "Warning: {}", warning.message())?;
         }
         Ok(())

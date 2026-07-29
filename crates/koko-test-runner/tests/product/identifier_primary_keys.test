@@ -1,0 +1,22 @@
+-DATASET CSV empty
+--
+
+# Quoted identifiers, inline primary keys, and UUID primary keys compose in one
+# schema. This in-case comment block also exercises fixture comment parsing.
+
+-CASE QuotedIdentifiersAndPrimaryKeys
+-STATEMENT CREATE NODE TABLE `My Table`(id INT64 PRIMARY KEY, `full name` STRING)
+---- ok
+-STATEMENT CREATE (:`My Table` {id: 1, `full name`: 'Ada Lovelace'})
+---- ok
+# a comment line in the middle of a case must not break the next statement
+-STATEMENT MATCH (n:`My Table`) RETURN n.`full name`, n.id
+---- 1
+Ada Lovelace|1
+-STATEMENT CREATE NODE TABLE U(uid UUID PRIMARY KEY, name STRING)
+---- ok
+-STATEMENT CREATE (:U {uid: UUID('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), name: 'x'})
+---- ok
+-STATEMENT MATCH (u:U) WHERE u.uid = UUID('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11') RETURN u.name
+---- 1
+x

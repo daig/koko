@@ -1,0 +1,6 @@
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" RETURN count(*)
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" (skip=1) RETURN count(*)
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" (skip=2) RETURN count(*)
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" (header=true) RETURN count(*)
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" (header=false) RETURN count(*)
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/tinysnb/vPerson.csv" (header=false, skip=2) RETURN count(*)

@@ -1,0 +1,65 @@
+# DATE, TIMESTAMP, and INTERVAL construction, casts, comparison, storage, and order.
+-DATASET CSV empty
+
+--
+
+-CASE Constructors
+-STATEMENT RETURN date('2020-01-15')
+---- 1
+2020-01-15
+-STATEMENT RETURN timestamp('2011-08-20 11:25:30')
+---- 1
+2011-08-20 11:25:30
+-STATEMENT RETURN timestamp('1986-10-21 21:08:31.521')
+---- 1
+1986-10-21 21:08:31.521
+-STATEMENT RETURN interval('3 years 2 days 13:02:00')
+---- 1
+3 years 2 days 13:02:00
+-STATEMENT RETURN CAST('2023-11-14' AS DATE)
+---- 1
+2023-11-14
+
+-CASE Comparison
+-STATEMENT RETURN date('2020-01-15') < date('2020-02-01')
+---- 1
+True
+-STATEMENT RETURN date('2020-01-15') = date('2020-01-15')
+---- 1
+True
+-STATEMENT RETURN timestamp('2020-01-01 00:00:00') = CAST(date('2020-01-01') AS TIMESTAMP)
+---- 1
+True
+
+-CASE TemporalColumns
+-STATEMENT CREATE NODE TABLE Event(name STRING, day DATE, at TIMESTAMP, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:Event {name: 'launch', day: date('2021-06-01'), at: timestamp('2021-06-01 09:30:00')})
+---- ok
+-STATEMENT CREATE (:Event {name: 'undated'})
+---- ok
+-STATEMENT MATCH (e:Event) WHERE e.day IS NOT NULL RETURN e.name, e.day, e.at
+---- 1
+launch|2021-06-01|2021-06-01 09:30:00
+-STATEMENT MATCH (e:Event) WHERE e.day > date('2021-01-01') RETURN e.name
+---- 1
+launch
+
+-CASE OrderByDate
+-STATEMENT CREATE NODE TABLE D(id INT64, day DATE, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:D {id: 1, day: date('2020-03-03')})
+---- ok
+-STATEMENT CREATE (:D {id: 2, day: date('2019-01-01')})
+---- ok
+-STATEMENT CREATE (:D {id: 3, day: date('2021-12-31')})
+---- ok
+-STATEMENT MATCH (d:D) RETURN d.id ORDER BY d.day
+-CHECK_ORDER
+---- 3
+2
+1
+3
+-STATEMENT MATCH (d:D) RETURN min(d.day), max(d.day)
+---- 1
+2019-01-01|2021-12-31

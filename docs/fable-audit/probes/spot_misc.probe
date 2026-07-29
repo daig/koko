@@ -1,0 +1,17 @@
+RETURN date_part('week', date('2024-01-15'))
+RETURN date_part('weekofyear', date('2024-06-15'))
+RETURN date_part('doy', date('2024-03-01'))
+RETURN date_part('epoch', date('2024-01-01'))
+RETURN date_part('isodow', date('2024-07-01'))
+RETURN [1,2,3][0]
+RETURN [1,2,3][4]
+RETURN [1,2,3][-1]
+RETURN list_extract([1,2,3], 0)
+RETURN list_extract([1,2,3], -1)
+RETURN [1,2,3,4,5][2:4]
+RETURN size([])
+RETURN list_sum([])
+RETURN map(['a','a'],[1,2])
+RETURN cardinality(map([],[]))
+RETURN element_at(map(['a'],[1]), 'b')
+RETURN struct_extract({a:1,b:2}, 'c')

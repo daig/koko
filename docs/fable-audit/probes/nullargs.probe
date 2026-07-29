@@ -1,0 +1,26 @@
+// bare untyped NULL as argument - crash surface
+RETURN list_sum(NULL) AS a
+RETURN list_product(NULL) AS a
+RETURN list_avg(NULL) AS a
+RETURN list_min(NULL) AS a
+RETURN list_max(NULL) AS a
+RETURN list_reverse(NULL) AS a
+RETURN list_sort(NULL) AS a
+RETURN list_reverse_sort(NULL) AS a
+RETURN list_distinct(NULL) AS a
+RETURN list_unique(NULL) AS a
+RETURN list_any_value(NULL) AS a
+RETURN size(NULL) AS a
+RETURN list_extract(NULL, 1) AS a
+RETURN list_element(NULL, 1) AS a
+RETURN list_concat(NULL, NULL) AS a
+RETURN list_append(NULL, 1) AS a
+RETURN list_prepend(1, NULL) AS a
+RETURN list_contains(NULL, 1) AS a
+RETURN list_position(NULL, 1) AS a
+RETURN cardinality(NULL) AS a
+RETURN struct_extract(NULL, 'a') AS a
+RETURN range(NULL, 5) AS a
+RETURN list_transform(NULL, x -> x+1) AS a
+RETURN list_filter(NULL, x -> x>1) AS a
+RETURN list_reduce(NULL, (a,b) -> a+b) AS a

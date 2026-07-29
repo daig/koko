@@ -1,0 +1,48 @@
+# CSV loading over a bundled dataset: node and relationship COPY, primary-key
+# endpoint resolution, propertyless relationships, filters, aggregates, and reads.
+-DATASET CSV mini
+
+--
+
+-CASE ReadLoadedNodes
+-STATEMENT MATCH (p:Person) RETURN p.name, p.age
+---- 3
+Alice|30
+Bob|25
+Carol|40
+-STATEMENT MATCH (p:Person) RETURN p.name, p.height
+---- 3
+Alice|1.700000
+Bob|1.800000
+Carol|1.600000
+
+-CASE BooleanColumnFilter
+-STATEMENT MATCH (p:Person) WHERE p.active RETURN p.name
+---- 2
+Alice
+Carol
+
+-CASE LoadedRelationships
+-STATEMENT MATCH (a:Person)-[k:Knows]->(b:Person) RETURN a.name, b.name, k.since
+---- 2
+Alice|Bob|2019
+Bob|Carol|2020
+-STATEMENT MATCH (p:Person)-[:LivesIn]->(c:City) RETURN p.name, c.name
+---- 2
+Alice|Waterloo
+Bob|Toronto
+
+-CASE AggregateOverLoadedData
+-STATEMENT MATCH (p:Person) RETURN count(*), min(p.age), max(p.age)
+---- 1
+3|25|40
+-STATEMENT MATCH (p:Person) RETURN avg(p.age)
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 1
+31.666666666666668
+
+-CASE TwoHopOverLoadedData
+-STATEMENT MATCH (a:Person)-[:Knows]->(b:Person)-[:Knows]->(c:Person) RETURN a.name, c.name
+---- 1
+Alice|Carol

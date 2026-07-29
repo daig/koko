@@ -11,10 +11,13 @@ use crate::parameter::{ParameterError, ParameterStore};
 use crate::presentation::StatementContext;
 use crate::registry::CommandId;
 use crate::worker::{ExecutionEvent, SessionWorker, WorkerError, tooling_result};
-use koko::{
-    FailureKind, InterruptReason, LogicalType, OutputClass, QueryResult, QueryResultKind,
-    StatementClass, SyntaxStatus, TransactionMode, Value, analyze_cypher,
+use koko::diagnostics::{FailureKind, InterruptReason};
+use koko::result::ResultKind;
+use koko::tooling::{
+    CatalogSnapshot, OutputClass, SessionSnapshot, StatementClass, SyntaxStatus, TransactionMode,
+    analyze_cypher,
 };
+use koko::{LogicalType, QueryResult, Value};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Cursor, IsTerminal};
 use std::path::{Path, PathBuf};
@@ -147,11 +150,11 @@ impl<'a> SourceRunner<'a> {
         &self.state.parameters
     }
 
-    pub fn session_snapshot(&self) -> Result<koko::SessionSnapshot, RunnerError> {
+    pub fn session_snapshot(&self) -> Result<SessionSnapshot, RunnerError> {
         Ok(self.state.worker.session_snapshot()?)
     }
 
-    pub fn catalog_snapshot(&self) -> Result<koko::CatalogSnapshot, RunnerError> {
+    pub fn catalog_snapshot(&self) -> Result<CatalogSnapshot, RunnerError> {
         Ok(self.state.worker.catalog_snapshot()?)
     }
 
@@ -372,7 +375,7 @@ impl<'a> SourceRunner<'a> {
         clear_result?;
         let outcome = execution.outcome;
         if let Some(result) = outcome.result() {
-            let (result_number, total_results) = if result.result_kind() == QueryResultKind::Rows {
+            let (result_number, total_results) = if result.kind() == ResultKind::Rows {
                 self.submission_row += 1;
                 (
                     self.submission_total_rows
@@ -468,7 +471,7 @@ impl<'a> SourceRunner<'a> {
                     self.state.worker.catalog_snapshot()?
                 };
                 let result = metadata::describe_result(&catalog, &target)?;
-                if result.num_rows() == 0 {
+                if result.is_empty() {
                     self.output
                         .diagnostic(&format!("No visible schema object matches `{target}`."))?;
                     self.summary.failed = true;
@@ -810,6 +813,10 @@ fn failure_detail(
         )),
         Some(InterruptReason::Deadline) => Some(format!(
             "Query deadline expired after {:.1} s.",
+            elapsed.as_secs_f64()
+        )),
+        Some(_) => Some(format!(
+            "Query interrupted after {:.1} s.",
             elapsed.as_secs_f64()
         )),
         None if kind == FailureKind::Memory => {

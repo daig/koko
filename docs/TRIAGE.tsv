@@ -1,0 +1,27 @@
+# Frozen final-IM5 corpus residual manifest: case_id<TAB>category<TAB>ref<TAB>note
+# Snapshot recorded after the 2026-07-21 IM5 reconciliation; not a current bug tracker or release gate. The p4/p5 values are historical bucket names, not active phase ownership.
+# ROADMAP.md now owns current product scope and intentional decisions; this file preserves only the frozen close snapshot.
+# Notes preserve the blocker observed at that close. Re-run the optional external compatibility audit before drawing conclusions about current behavior.
+demo_db/demo_db.DemoDBTest	divergence	subquery-in-recursive-lambda	EXISTS in recursive per-step filter rejected (ledgered probe)
+dml_node/create_int_max_width.CreateInt128MaxWidth	p4	storage_info	storage_info exists but emits no per-column compression row for value
+dml_node/create_int_max_width.CreateInt16MaxWidth	p4	storage_info	storage_info exists but emits no per-column compression row for value
+dml_node/create_int_max_width.CreateInt32MaxWidth	p4	storage_info	storage_info exists but emits no per-column compression row for value
+dml_node/create_int_max_width.CreateInt64MaxWidth	p4	storage_info	storage_info exists but emits no per-column compression row for value
+dml_node/create_int_max_width.CreateInt8MaxWidth	p4	storage_info	storage_info exists but emits no per-column compression row for value
+dml_node/stats.CreateDoubleStats	p4	storage_info	storage_info exists but emits no per-column min/max row for value
+dml_node/stats.CreateIntegerStats	p4	storage_info	storage_info exists but emits no per-column min/max row for value
+dml_node/stats.DeleteIntegerStats	p4	storage_info	storage_info exists but emits no updated per-column max row for value
+dml_rel/many_to_many_stats.CreateDoubleStats	p4	storage_info	storage_info exists but emits no fwd_value physical-statistics row
+dml_rel/many_to_many_stats.CreateIntegerStats	p4	storage_info	storage_info exists but emits no fwd_value physical-statistics row
+dml_rel/many_to_many_stats.DeleteIntegerStats	p4	storage_info	storage_info exists but emits no updated fwd_value physical-statistics row
+dml_rel/stats.CreateDoubleStats	p4	storage_info	storage_info exists but emits no fwd_value physical-statistics row
+dml_rel/stats.CreateIntegerStats	p4	storage_info	storage_info exists but emits no fwd_value physical-statistics row
+dml_rel/stats.DeleteIntegerStats	p4	storage_info	storage_info exists but emits no updated fwd_value physical-statistics row
+extension/extension.InstallUnofficialExtensions	p5	extensions	INSTALL extension unsupported
+function/basic.BasicAlgorithm	p5	PROJECT_GRAPH	PROJECT_GRAPH (named graphs, p5)
+function/rec_joins_large.GDSLarge	p5	PROJECT_GRAPH	PROJECT_GRAPH (named graphs, p5)
+function/rec_joins_small.GDSSmall	p5	PROJECT_GRAPH	PROJECT_GRAPH (GDS extension; shell also errors — named graphs, p5)
+function/storage_info.CallStorageInfo	p4	storage_info	storage_info exists but returns 0 physical rows instead of 58
+tck/match2.Scenario6	divergence	internal-id-numbering	dest node internal-id differs (0:1 vs 0:2)
+tck/match6.Scenario19	divergence	internal-id-numbering	rel _ID ordering differs (1:1/1:0)
+tck/match6.Scenario20	divergence	internal-id-numbering	rel _ID ordering differs (1:1/1:0)

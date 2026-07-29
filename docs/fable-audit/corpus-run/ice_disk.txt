@@ -1,0 +1,7 @@
+FAIL  ice_disk_complex_queries.IceDiskComplexQueries — dataset load failed: Parser exception: expected Eof but found Ident("WITH")
+parse error in /Users/dai/code/koko/test/test_files/ice_disk/ice_disk_invalid_storage.test: invalid result count `error(regex)`
+FAIL  ice_disk_large_node_scan.IceDiskLargeNodeScan — dataset load failed: Parser exception: expected Eof but found Ident("WITH")
+FAIL  ice_disk_mix_tables.RelIceDiskNodeRegular — statement #2 `CREATE REL TABLE rel(FROM person TO person) WITH (storage = '${KOKO_ROOT_DIRECTO…`: expected error `Binder exception: Cannot mix icebug-disk tables with non-icebug-disk tables in CREATE REL TABLE.`, but statement succeeded
+FAIL  ice_disk_mix_tables.NodeIceDiskRelRegular — statement #1 `CREATE NODE TABLE upperversion(id INT64 PRIMARY KEY) WITH (storage = '${KOKO_ROO…`: expected success, got error: Parser exception: expected Eof but found Ident("WITH")
+
+0 passed, 0 skipped, 5 failed

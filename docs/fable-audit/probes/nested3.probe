@@ -1,0 +1,3 @@
+#ORDER# MATCH (o:organisation) WHERE o.ID=1 RETURN o.state.location[2] AS e, size(o.state.location[2]) AS len, size(o.state.location) AS nelem
+#ORDER# MATCH (o:organisation) WHERE o.ID=1 RETURN o.state.location[2] = 'montr,eal' AS strip_eq
+#ORDER# MATCH (o:organisation) WHERE o.ID=4 RETURN o.state.location[1] AS e, size(o.state.location[1]) AS len, size(o.state.location) AS nelem

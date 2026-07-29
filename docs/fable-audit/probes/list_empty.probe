@@ -1,0 +1,27 @@
+// empty containers & range
+RETURN list_sum([]) AS a
+RETURN list_product([]) AS a
+RETURN list_sort([]) AS a
+RETURN list_distinct([]) AS a
+RETURN list_unique([]) AS a
+RETURN list_reverse([]) AS a
+RETURN list_reverse_sort([]) AS a
+RETURN list_any_value([]) AS a
+RETURN list_position([], 1) AS a
+RETURN list_contains([], 1) AS a
+RETURN list_to_string([], ',') AS a
+RETURN size([]) AS a
+RETURN typeof([]) AS a
+RETURN list_append([], 1) AS a
+RETURN list_concat([], []) AS a
+RETURN range(1,5) AS a
+RETURN range(5,1) AS a
+RETURN range(5,1,-1) AS a
+RETURN range(1,10,3) AS a
+RETURN range(10,1,-2) AS a
+RETURN range(1,1) AS a
+RETURN range(1,5,0) AS a
+RETURN range(1,5,-1) AS a
+RETURN range(-5,-1) AS a
+RETURN range(0,0) AS a
+RETURN size(range(1,100)) AS a

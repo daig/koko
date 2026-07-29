@@ -4,6 +4,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const CANCELLABLE_QUERY: &[u8] =
+    b"UNWIND range(0, 100000) AS x UNWIND range(0, 100000) AS y RETURN sum(x + y)\r";
+
 struct PtySession {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     master: Box<dyn MasterPty + Send>,
@@ -34,7 +37,7 @@ fn history_path(root: &std::path::Path) -> std::path::PathBuf {
 
 impl PtySession {
     fn start(arguments: &[&str], environment: &[(&str, &str)]) -> Self {
-        let mut command = CommandBuilder::new(assert_cmd::cargo::cargo_bin!("koko"));
+        let mut command = CommandBuilder::new(assert_cmd::cargo::cargo_bin("koko"));
         command.args(arguments);
         Self::start_command(command, environment)
     }
@@ -43,7 +46,7 @@ impl PtySession {
     fn start_shell(script: &str, environment: &[(&str, &str)]) -> Self {
         let mut command = CommandBuilder::new("/bin/sh");
         command.args(["-c", script]);
-        command.env("KOKO_BIN", assert_cmd::cargo::cargo_bin!("koko"));
+        command.env("KOKO_BIN", assert_cmd::cargo::cargo_bin("koko"));
         Self::start_command(command, environment)
     }
 
@@ -338,8 +341,9 @@ fn real_pty_history_admission_persistence_and_confirmed_clear() {
 fn real_pty_documented_editing_keys_resize_paste_and_search_preserve_input() {
     let root = tempfile::tempdir().unwrap();
     let home = root.path().to_string_lossy();
+    // Reverse search needs session history; the temporary HOME keeps persistence isolated.
     let session = PtySession::start(
-        &["--no-config", "--no-history", "--quiet"],
+        &["--no-config", "--quiet"],
         &[("HOME", home.as_ref()), ("XDG_STATE_HOME", home.as_ref())],
     );
     session.wait_for("koko[main]>");
@@ -361,33 +365,45 @@ fn real_pty_documented_editing_keys_resize_paste_and_search_preserve_input() {
     edit.extend_from_slice(b"ab\x14\x08\x08"); // Ctrl-T followed by cleanup.
     edit.push(0x0c); // Ctrl-L.
     edit.push(b'\r');
+    let first_query_mark = session.mark();
     session.send(&edit);
-    session.wait_for("rows returned");
+    session.wait_for_after(first_query_mark, "rows returned");
 
+    let cleared_query_mark = session.mark();
     session.send(&[0x10, 0x0e]); // Ctrl-P, Ctrl-N.
     session.send(b"\x1b[A\x1b[B"); // Up, Down.
     session.send(b"junk\x07RETURN 92 AS cleared\r"); // Ctrl-G clears the edit.
-    session.wait_for("cleared");
+    session.wait_for_after(cleared_query_mark, "rows returned");
     session.send(b"junk");
     session.wait_for("junk");
     let interrupt_mark = session.mark();
     session.send(&[0x03]); // Ctrl-C silently clears a nonempty edit.
     session.wait_for_after(interrupt_mark, "koko[main]>");
+    let interrupted_query_mark = session.mark();
     session.send(b"RETURN 93 AS interrupted\r");
-    session.wait_for("interrupted");
+    session.wait_for_after(interrupted_query_mark, "rows returned");
 
     session.resize(12, 24);
+    let unicode_query_mark = session.mark();
     session.send("RETURN '東京👩‍💻x'".as_bytes());
     session.send(b"\x1b[D\x7f\x1b[F AS unicode\r");
-    session.wait_for("unicode");
+    session.wait_for_after(unicode_query_mark, "rows returned");
 
+    let search_query_mark = session.mark();
     session.send(b"\x12");
-    session.wait_for("bck-i-search");
-    session.send(b"91\r\r"); // Accept the search result, then submit it.
-    session.wait_for("rows returned");
+    session.wait_for_after(search_query_mark, "bck-i-search");
+    session.send(b"91");
+    session.wait_for_after(search_query_mark, "91");
+    let accepted_search_mark = session.mark();
+    session.send(b"\r");
+    session.wait_for_after(accepted_search_mark, "koko[main]>");
+    let submitted_search_mark = session.mark();
+    session.send(b"\r");
+    session.wait_for_after(submitted_search_mark, "rows returned");
 
+    let pasted_query_mark = session.mark();
     session.send(b"\x1b[200~RETURN\t94 AS pasted\x1b[201~\r");
-    session.wait_for("pasted");
+    session.wait_for_after(pasted_query_mark, "rows returned");
     session.send(b":quit\r");
     let output = session.finish(0);
     assert!(output.contains("東京👩‍💻"));
@@ -467,7 +483,7 @@ fn real_pty_progress_cancellation_late_signal_and_next_query_are_isolated() {
     );
     session.wait_for("koko[main]>");
     let cancellation_mark = session.mark();
-    session.send(b"UNWIND range(0, 100000000) AS value RETURN sum(value)\r");
+    session.send(CANCELLABLE_QUERY);
     session.wait_for_after(cancellation_mark, "Running…");
     session.send(&[0x03]);
     session.wait_for_after(cancellation_mark, "Cancelling…");
@@ -557,7 +573,7 @@ fn real_pty_terminal_modes_restore_after_query_error_cancellation_and_output_fai
 
     let session = PtySession::start_shell(script, &environment);
     session.wait_for("koko[main]>");
-    session.send(b"UNWIND range(0, 100000000) AS value RETURN sum(value)\r");
+    session.send(CANCELLABLE_QUERY);
     session.wait_for("Running…");
     session.send(&[0x03]);
     session.wait_for("Query cancelled after");

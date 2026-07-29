@@ -1,0 +1,43 @@
+// ===== struct field access (dot) =====
+RETURN {a:1,b:2}.a AS x
+RETURN {a:1,b:2}.b AS x
+RETURN {a:'x',b:'y'}.b AS x
+RETURN {a:1}.b AS x
+RETURN {a:1}.A AS x
+RETURN {Name:5}.Name AS x
+RETURN {Name:5}.name AS x
+RETURN {NAME:5}.name AS x
+RETURN {a:NULL}.a AS x
+RETURN typeof({a:1}.a) AS x
+RETURN typeof({a:1}.b) AS x
+// ===== nested struct access =====
+RETURN {a:{b:1}}.a AS x
+RETURN {a:{b:1}}.a.b AS x
+RETURN {a:{b:{c:42}}}.a.b.c AS x
+RETURN {a:{b:1},c:2}.a.b AS x
+RETURN {outer:{inner:'deep'}}.outer.inner AS x
+// ===== struct bracket access =====
+RETURN {a:1,b:2}['a'] AS x
+RETURN {a:1,b:2}['b'] AS x
+RETURN {a:1}['c'] AS x
+// ===== struct in list =====
+RETURN [{a:1},{a:2}][1].a AS x
+RETURN [{a:1},{a:2}][2].a AS x
+// ===== map access =====
+RETURN map(['a','b'],[1,2])['a'] AS x
+RETURN map(['a','b'],[1,2])['b'] AS x
+RETURN map(['a','b'],[1,2])['z'] AS x
+RETURN map([1,2],[10,20])[1] AS x
+RETURN map([1,2],[10,20])[3] AS x
+RETURN element_at(map(['a'],[1]),'a') AS x
+RETURN map_extract(map(['a'],[1]),'a') AS x
+RETURN cardinality(map(['a','b'],[1,2])) AS x
+// ===== struct funcs =====
+RETURN struct_extract({a:1,b:2}, 'a') AS x
+RETURN properties({a:1,b:2}) AS x
+RETURN keys(map(['a','b'],[1,2])) AS x
+RETURN values(map(['a','b'],[1,2])) AS x
+// ===== chained mixed access =====
+RETURN {arr:[1,2,3]}.arr[2] AS x
+RETURN {arr:[{x:9}]}.arr[1].x AS x
+RETURN [{m:map(['k'],[7])}][1].m['k'] AS x

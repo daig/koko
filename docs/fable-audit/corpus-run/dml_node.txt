@@ -1,0 +1,147 @@
+PASS  case_insensitive.CaseInsentivePropertyUpdate
+FAIL  create_empty.CreateEmptyLabel — statement #1 `CREATE (a)`: expected error `Binder exception: Create node a with empty node labels is not supported.`, got `Binder exception: a node pattern must specify exactly one label in this phase`
+PASS  create_empty.CreateSimple
+PASS  create_empty.CreateStruct
+PASS  create_empty.CreateStructWithWriteTransaction
+PASS  create_empty.CreateList
+PASS  create_empty.CreateDeleteNodeOnEmptyTable
+PASS  create_empty.CreateMap
+PASS  create_empty.CreateSerial
+PASS  create_empty.CreateAndCopySerial
+PASS  create_empty.CreateWithLargeStringPK
+PASS  create_empty.CreateUInt8PK
+PASS  create_empty.CreateUInt16PK
+PASS  create_empty.CreateUInt32PK
+PASS  create_empty.CreateUInt64PK
+PASS  create_empty.CreateInt8PK
+PASS  create_empty.CreateInt16PK
+PASS  create_empty.CreateInt32PK
+PASS  create_empty.CreateInt64PK
+PASS  create_empty.CreateInt128PK
+PASS  create_empty.CreateUInt128PK
+PASS  create_empty.CreateTimestampPK
+FAIL  create_empty.CreateDoublePK — statement #2 `CREATE (t:test {id:0.1})`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+FAIL  create_empty.CreateManyDoubleAfterCheckpoint — statement #2 `UNWIND RANGE(1,10000) AS i CREATE (t:test {id:0.5 * i})`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+FAIL  create_empty.CreateFloatPK — statement #2 `CREATE (t:test {id:0.1})`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+FAIL  create_empty.CreateBlobPK — statement #2 `CREATE (t:test {id:blob("foo")})`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+PASS  create_empty.CreateDatePK
+PASS  create_empty.CreateUUIDPK
+PASS  create_empty.CreateBatch
+PASS  create_empty.CreateDuplicatedNodesWithinSameTransaction
+PASS  create_empty.MultipleCreations
+PASS  create_empty.CreateWithNull
+FAIL  create_int_max_width.CreateInt8MaxWidth — statement #5 `CALL storage_info("test") WHERE column_name = "value" return compression`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  create_int_max_width.CreateInt16MaxWidth — statement #5 `CALL storage_info("test") WHERE column_name = "value" return compression`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  create_int_max_width.CreateInt32MaxWidth — statement #5 `CALL storage_info("test") WHERE column_name = "value" return compression`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  create_int_max_width.CreateInt64MaxWidth — statement #5 `CALL storage_info("test") WHERE column_name = "value" return compression`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  create_int_max_width.CreateInt128MaxWidth — statement #5 `CALL storage_info("test") WHERE column_name = "value" return compression`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+SKIP  create_random_int.TSSeedRandomIntInsertions (uses -LOOP)
+SKIP  create_random_int.FixedSeedRandomIntInsertions (uses -LOOP)
+PASS  create_read_tinysnb.CreateNodeRead1
+PASS  create_read_tinysnb.OptionalMatchAfterInsert
+PASS  create_read_tinysnb.CreateNodeRead2
+PASS  create_tinysnb.InsertNodeWithBoolIntDoubleTest
+PASS  create_tinysnb.InsertNodeWithDateIntervalTest
+PASS  create_tinysnb.InsertNodeWithStringAndNestedTest
+PASS  create_tinysnb.InsertNodeWithUUIDTest
+PASS  create_tinysnb.InsertNodeWithMixedLabelTest
+PASS  create_tinysnb.InsertNodeAfterMatchListTest
+PASS  create_tinysnb.InsertSingleNToNRelTest
+PASS  create_tinysnb.InsertSingleNTo1RelTest
+PASS  create_tinysnb.InsertRepeatedNToNRelTest
+PASS  create_tinysnb.InsertMixedRelTest
+PASS  create_tinysnb.InsertMultipleRelsTest
+PASS  create_tinysnb.InsertNodeAndRelTest
+PASS  create_tinysnb.InsertNodeAndRelTest2
+PASS  create_tinysnb.InsertNodeWithListTest
+parse error in /Users/dai/code/koko/test/test_files/dml_node/delete/delete_empty.test: statement `match (s:stats) with sum(s.num_pages) as original_num_pages call fsm_info() return sum(num_pages) < original_num_pages` is missing a `----` result block
+PASS  delete_tinysnb.DeleteNodeAfterInsertTest
+PASS  delete_tinysnb.MixedDeleteInsertTest
+PASS  delete_tinysnb.MixedDeleteInsertTestAutoCheckpoint
+PASS  delete_tinysnb.DeleteNodeMultiLabel1
+PASS  delete_tinysnb.RedundantNodeDeletions
+PASS  delete_tinysnb.OptionalDelete
+PASS  delete_tinysnb.MultiLabelDetachDeleteNode
+PASS  delete_tinysnb.OptionalDetachDeleteNode
+PASS  delete_tinysnb.DeleteNodeWithSemiMaskBug
+PASS  merge_tinysnb.MultipleMerge
+PASS  merge_tinysnb.Merge1
+PASS  merge_tinysnb.Merge2
+PASS  merge_tinysnb.Merge3
+PASS  merge_tinysnb.Merge4
+PASS  merge_tinysnb.MergeDuplicatedKey
+PASS  merge_tinysnb.MergeNodeWithOnMatch
+PASS  merge_tinysnb.MergeRelWithOnMatch
+PASS  merge_tinysnb.MergeNodeWithOnMatchAndOnCreate
+PASS  set_empty.SetStructValueToNonNull
+PASS  set_empty.SetStructValueWithWriteTransaction
+PASS  set_empty.SetStructValueToNull
+PASS  set_empty.SetWithSerialPK
+FAIL  set_empty.SetLongString — statement #4 `match (p:person0) SET p.p=${STRING_EXCEEDS_PAGE}`: expected success, got error: Parser exception: expected an identifier, found LBrace
+PASS  set_empty.MultipleSet
+PASS  set_empty.MixedCreateAndSet
+SKIP  set_empty.RandUpdateInt (uses -LOOP)
+PASS  set_read.SetReadTest1
+PASS  set_read.SetReadTest2
+PASS  set_read.SetReadTest3
+PASS  set_read.SetByDictReadTest
+PASS  set_tinysnb.SetStructValueToNullAlwaysCheckpoint
+PASS  set_tinysnb.UpdatingSerialPrimaryKey
+PASS  set_tinysnb.SetNodeInt64PropTest
+PASS  set_tinysnb.SetNodeInt64MultipleTestManualCheckpoint
+PASS  set_tinysnb.SetNodeInt32PropTest
+PASS  set_tinysnb.SetNodeDoublePropTest
+PASS  set_tinysnb.SetNodeFloatPropTest
+PASS  set_tinysnb.SetNodeBoolPropTest
+PASS  set_tinysnb.SetNodeDatePropTest
+PASS  set_tinysnb.SetNodeTimestampPropTest
+PASS  set_tinysnb.SetNodeEmptyStringPropTest
+PASS  set_tinysnb.SetByDictNodeEmptyStringPropTest
+PASS  set_tinysnb.SetNodeShortStringPropTest
+PASS  set_tinysnb.SetNodeLongStringPropTest
+PASS  set_tinysnb.SetLongListTest
+PASS  set_tinysnb.SetByDictLongListTest
+PASS  set_tinysnb.SetVeryLongStringTest
+PASS  set_tinysnb.SetByDictVeryLongStringTest
+PASS  set_tinysnb.SetLongStringOver256KB
+PASS  set_tinysnb.SetByDictLongStringOver256KB
+PASS  set_tinysnb.SetNodeIntervalPropTest
+PASS  set_tinysnb.SetNodePropNullTest
+PASS  set_tinysnb.SetByDictNodePropNullTest
+PASS  set_tinysnb.SetBothUnflatTest
+PASS  set_tinysnb.SetByDictBothUnflatTest
+PASS  set_tinysnb.SetFlatUnFlatTest
+PASS  set_tinysnb.SetByDictFlatUnFlatTest
+PASS  set_tinysnb.SetUnFlatFlatTest
+PASS  set_tinysnb.SetByDictUnFlatFlatTest
+PASS  set_tinysnb.SetTwoHopTest
+PASS  set_tinysnb.SetByDictTwoHopTest
+PASS  set_tinysnb.SetTwoHopNullTest
+PASS  set_tinysnb.SetByDictTwoHopNullTest
+PASS  set_tinysnb.SetIndexNestedLoopJoinTest
+PASS  set_tinysnb.SetByDictIndexNestedLoopJoinTest
+PASS  set_tinysnb.SetRelInt16PropTest
+PASS  set_tinysnb.SetNodeListOfIntPropTest
+PASS  set_tinysnb.SetNodeListOfShortStringPropTest
+PASS  set_tinysnb.SetNodeListOfLongStringPropTest
+PASS  set_tinysnb.SetNodeListofListPropTest
+PASS  set_tinysnb.SetMultiLabelNodePropTest
+PASS  set_tinysnb.SetByDictMultiLabelNodePropTest
+FAIL  set_tinysnb.SetMultiLabelWithPruning — statement #1 `MATCH (a:person)-[:knows]->(b) WHERE a.ID=0 SET b.orgCode = 123, b.fName = "XX" …`: expected rows, got error: Binder exception: Cannot find property orgCode for b.
+FAIL  set_tinysnb.SetByDictMultiLabelWithPruning — statement #1 `MATCH (a:person)-[:knows]->(b) WHERE a.ID=0 SET b= {orgCode: 123, fName: "XX"} R…`: expected rows, got error: Binder exception: Cannot find property orgCode for b.
+PASS  set_tinysnb.SetNonNullValueWithWriteTransaction
+PASS  set_tinysnb.SetNullValueWithWriteTransaction
+PASS  set_tinysnb.SetByDictNullValueWithWriteTransaction
+PASS  set_tinysnb.MultipleSetListValue
+PASS  set_tinysnb.MultipleSetByDictListValue
+FAIL  set_tinysnb.OptionalSet — statement #3 `OPTIONAL MATCH (a) WHERE a.ID > 100 SET a.name, a.fName`: expected rows, got error: Parser exception: expected Eq but found Comma
+FAIL  set_tinysnb.OptionalSetByDict — statement #3 `OPTIONAL MATCH (a) WHERE a.ID > 100 SET a = {name, fName}`: expected rows, got error: Parser exception: expected Colon but found Comma
+PASS  set_tinysnb.SetNulls
+PASS  set_tinysnb.SetByDictNulls
+FAIL  stats.CreateIntegerStats — statement #3 `CALL storage_info('test') WHERE column_name = "value" RETURN min, max`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  stats.CreateDoubleStats — statement #3 `CALL storage_info('test') WHERE column_name = "value" RETURN min, max`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  stats.DeleteIntegerStats — statement #4 `CALL storage_info('test') WHERE column_name = "value" RETURN max`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+SKIP  stats.UpdateIntegerStats (-SKIP_IN_MEM)
+SKIP  stats.UpdateDoubleStats (-SKIP_IN_MEM)
+
+121 passed, 5 skipped, 19 failed

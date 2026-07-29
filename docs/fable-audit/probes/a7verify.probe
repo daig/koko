@@ -1,0 +1,9 @@
+RETURN 'a' + 1 AS x;
+RETURN [1,NULL] = [1,NULL] AS x;
+RETURN {a: NULL} = {a: NULL} AS x;
+RETURN -9223372036854775807 - 2 AS x;
+RETURN left('hello', 2.0) AS x;
+RETURN substr('hello', 1.0, 3.0) AS x;
+RETURN factorial('5') AS x;
+RETURN upper('straße') AS x;
+RETURN abs(-9223372036854775808) AS x;

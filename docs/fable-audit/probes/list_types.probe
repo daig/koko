@@ -1,0 +1,23 @@
+// result type & rendering
+RETURN list_sum([1,2,3]) AS a
+RETURN list_sum([1.5,2.5]) AS a
+RETURN list_sum([1,2,null,3]) AS a
+RETURN list_sum([1.5,2,3]) AS a
+RETURN list_product([1,2,3,4]) AS a
+RETURN list_product([1.5,2.0]) AS a
+RETURN list_product([2,3,null]) AS a
+RETURN list_to_string([1,2,3], ',') AS a
+RETURN list_to_string([1,null,3], ',') AS a
+RETURN list_to_string(['a','b'], '-') AS a
+RETURN list_to_string([1.5,2.5], ';') AS a
+RETURN typeof(list_sum([1,2,3])) AS a
+RETURN typeof(list_sum([1.5,2.5])) AS a
+RETURN typeof(list_product([1,2,3])) AS a
+RETURN typeof([1,2,3]) AS a
+RETURN typeof([1.5]) AS a
+RETURN typeof(['a']) AS a
+RETURN typeof([1,2,3][1]) AS a
+RETURN list_avg([1,2,3,4]) AS a
+RETURN list_avg([1,2,3]) AS a
+RETURN list_min([3,1,2]) AS a
+RETURN list_max([3,1,2]) AS a

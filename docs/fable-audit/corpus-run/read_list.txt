@@ -1,0 +1,7 @@
+PASS  large_adj_list.LargeAdjListTest
+SKIP  large_adj_list_parquet.LargeAdjListTestParquet (dataset `CSV_TO_PARQUET(read-list-tests/large-list)` is not available)
+PASS  large_list_sub_query.LargeListSubQueryTest
+PASS  small_large_property_list_reading.PropLists4BytesPerEdgeTest
+PASS  var_length_large_adj_list_extend.LargeListTest
+
+4 passed, 1 skipped, 0 failed

@@ -1,0 +1,109 @@
+# Queries above `PARALLEL_MIN_ROWS` partition a driving scan into morsels and
+# execute aggregate/projection pipelines across the worker pool. Ordered merging
+# reproduces serial row/group order, while integer aggregate accumulators remain
+# exact across partitions. Float SUM/AVG, DISTINCT aggregates, and below-threshold
+# inputs stay serial. Results must also pass with `KOKO_THREADS=1`.
+-DATASET CSV empty
+
+--
+
+-CASE ParallelScanAggregateProject
+-STATEMENT CREATE NODE TABLE N(id INT64, grp INT64, PRIMARY KEY(id))
+---- ok
+# 30000 nodes: id 0..29999, grp = id % 5.
+-STATEMENT UNWIND range(0, 29999) AS i CREATE (:N {id: i, grp: i % 5})
+---- ok
+# Global aggregates over the whole parallel scan.
+-STATEMENT MATCH (n:N) RETURN count(*)
+---- 1
+30000
+# sum 0..29999 = 29999*30000/2 (exact i128 accumulation across morsels).
+-STATEMENT MATCH (n:N) RETURN sum(n.id)
+---- 1
+449985000
+# avg over an INTEGER argument stays exact (i128 sum / count), so it parallelizes.
+-STATEMENT MATCH (n:N) RETURN avg(n.id)
+---- 1
+14999.500000
+-STATEMENT MATCH (n:N) RETURN min(n.id), max(n.id)
+---- 1
+0|29999
+# Grouped aggregate: 5 groups of 6000 (the partitioned hash aggregate + merge).
+-STATEMENT MATCH (n:N) RETURN n.grp, count(*)
+---- 5
+0|6000
+1|6000
+2|6000
+3|6000
+4|6000
+# sum over a grouping key derived per row.
+-STATEMENT MATCH (n:N) RETURN sum(n.grp)
+---- 1
+60000
+# count(DISTINCT) is correct (it runs serially — DISTINCT is not parallelized).
+-STATEMENT MATCH (n:N) RETURN count(DISTINCT n.grp)
+---- 1
+5
+# Filter + projection over the parallel scan (few survivors, scattered by morsel).
+-STATEMENT MATCH (n:N) WHERE n.id < 4 RETURN n.id
+---- 4
+0
+1
+2
+3
+# Parallel collect + global ORDER BY + LIMIT (top-k after the parallel scan).
+-CASE ParallelOrderByLimit
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT UNWIND range(0, 29999) AS i CREATE (:N {id: i})
+---- ok
+-STATEMENT MATCH (n:N) RETURN n.id ORDER BY n.id LIMIT 3
+-CHECK_ORDER
+---- 3
+0
+1
+2
+-STATEMENT MATCH (n:N) RETURN n.id ORDER BY n.id DESC LIMIT 3
+-CHECK_ORDER
+---- 3
+29999
+29998
+29997
+# DISTINCT projection (SELECT DISTINCT): the parallel scan feeds a serial dedup that
+# keeps first occurrences in scan order — here the 5 residues of id % 5.
+-STATEMENT MATCH (n:N) RETURN DISTINCT n.id % 5 AS r
+---- 5
+0
+1
+2
+3
+4
+
+# Extend on the parallel spine: the driving scan (a, 20000 nodes) is morselized and
+# the extend to b runs inside each morsel pipeline. Covers a factorized extend (b
+# unread -> the fan-out collapses into count(*)/sum(a.id)) and a non-factorized one
+# (b is read in sum(b.id) and the projection). Each node has one self-edge.
+-CASE ParallelExtend
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM N TO N)
+---- ok
+-STATEMENT UNWIND range(0, 19999) AS i CREATE (:N {id: i})
+---- ok
+-STATEMENT MATCH (a:N) CREATE (a)-[:R]->(a)
+---- ok
+-STATEMENT MATCH (a:N)-[:R]->(b:N) RETURN count(*)
+---- 1
+20000
+-STATEMENT MATCH (a:N)-[:R]->(b:N) RETURN sum(a.id)
+---- 1
+199990000
+-STATEMENT MATCH (a:N)-[:R]->(b:N) RETURN sum(b.id)
+---- 1
+199990000
+-STATEMENT MATCH (a:N)-[:R]->(b:N) WHERE a.id < 3 RETURN a.id, b.id
+-CHECK_ORDER
+---- 3
+0|0
+1|1
+2|2

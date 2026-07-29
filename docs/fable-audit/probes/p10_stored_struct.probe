@@ -1,0 +1,3 @@
+#ORDER# MATCH (a:person)-[e:knows]->(b:person) RETURN e.comments ORDER BY e.comments LIMIT 3
+#ORDER# MATCH (a:person)-[e:knows]->(b:person) WHERE e.summary IS NOT NULL RETURN e.summary LIMIT 2
+#ORDER# MATCH (a:organisation) RETURN a.state LIMIT 3

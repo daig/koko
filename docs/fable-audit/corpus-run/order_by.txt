@@ -1,0 +1,7 @@
+PASS  multi_label.OrderByMultiLabel
+parse error in /Users/dai/code/koko/test/test_files/order_by/order_by.test: invalid result count `hash`
+SKIP  order_by_parquet.OrderByLargeDatasetTestParquet (dataset `CSV_TO_PARQUET(order-by-tests)` is not available)
+PASS  serial.OrderBySerial
+PASS  single_label.OrderBySingleLabel
+
+3 passed, 1 skipped, 1 failed

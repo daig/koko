@@ -1,0 +1,4 @@
+
+thread 'main' (37337746) panicked at crates/koko-expr/src/lib.rs:177:56:
+index out of bounds: the len is 0 but the index is 7
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

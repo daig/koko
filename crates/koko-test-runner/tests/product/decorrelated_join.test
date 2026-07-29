@@ -1,0 +1,69 @@
+# Correlated lifted EXISTS/COUNT subqueries and OPTIONAL MATCH can become
+# build-once hash joins when correlation reduces to node identity. Mark joins
+# preserve EXISTS/COUNT activation; left joins preserve OPTIONAL NULL extension.
+# Every result must equal per-outer-row nested evaluation.
+-DATASET CSV empty
+
+--
+
+-CASE DecorrelatedJoins
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P)
+---- ok
+-STATEMENT UNWIND range(1, 4) AS i CREATE (:P {id: i})
+---- ok
+# Create the sparse five-edge core while scans are still tiny, then grow the outer
+# table past DECORRELATE_MIN_PROBE_ROWS (1024). The optimized queries below must use
+# build-once joins, while KOKO_NO_OPTIMIZE=1 keeps the cheap adjacency-seeded fallback.
+# edges: 1->2, 1->3, 2->3, 2->4, 3->4
+-STATEMENT MATCH (a:P {id:1}),(b:P {id:2}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:1}),(b:P {id:3}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:2}),(b:P {id:3}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:2}),(b:P {id:4}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:3}),(b:P {id:4}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT UNWIND range(5, 1100) AS i CREATE (:P {id: i})
+---- ok
+
+# --- OPTIONAL MATCH -> Left join ---
+# Five matching edge rows plus 1097 NULL-extended nodes = 1102 rows.
+-STATEMENT MATCH (a:P) OPTIONAL MATCH (a)-[:K]->(b) RETURN count(*)
+---- 1
+1102
+# count(b) ignores every NULL-extended row.
+-STATEMENT MATCH (a:P) OPTIONAL MATCH (a)-[:K]->(b) RETURN count(b)
+---- 1
+5
+# A selective outer lookup remains below the decorrelation threshold and exercises
+# the seeded fallback. Its NULL extension must be identical.
+-STATEMENT MATCH (a:P {id:4}) OPTIONAL MATCH (a)-[:K]->(b) RETURN a.id, b.id
+---- 1
+4|
+
+# --- EXISTS -> Mark join (+ filter = semi/anti) ---
+# Only nodes 1, 2, and 3 have an outgoing edge.
+-STATEMENT MATCH (a:P) WHERE EXISTS { MATCH (a)-[:K]->(x) } RETURN count(*)
+---- 1
+3
+-STATEMENT MATCH (a:P) WHERE NOT EXISTS { MATCH (a)-[:K]->(x) } RETURN count(*)
+---- 1
+1097
+
+# --- multi-node correlation (a AND c bound) - the q8/q9 shape ---
+# 2-paths a->b->c: (1,2,3),(1,2,4),(2,3,4),(1,3,4). Keep those with NO a->c edge:
+# (1,2,3) drop[1->3], (1,2,4) keep, (2,3,4) drop[2->4], (1,3,4) keep -> 2.
+-STATEMENT MATCH (a:P)-[:K]->(b:P)-[:K]->(c:P) WHERE NOT EXISTS { MATCH (a)-[:K]->(c) } RETURN count(*)
+---- 1
+2
+
+# --- COUNT {} -> Mark(count) ---
+# A COUNT mark join still scans all 1100 outer rows; filter to the three nonzero
+# counts so the activation contract stays compact.
+-STATEMENT MATCH (a:P) WHERE COUNT { MATCH (a)-[:K]->(x) } > 0 RETURN count(*)
+---- 1
+3

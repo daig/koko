@@ -1,0 +1,5 @@
+PASS  correlated.CorrelatedOptionalMatch
+PASS  multi_label.OptionalMatchMultiLabel
+FAIL  optional_match.OptionalMatch — statement #2 `OPTIONAL MATCH (a:person) WHERE a.fName = 'a' MATCH (b:person) WHERE b.fName = '…`: expected rows, got error: Not implemented exception: a required MATCH after OPTIONAL MATCH is not supported in this phase
+
+2 passed, 0 skipped, 1 failed

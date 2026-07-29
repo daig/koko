@@ -1,0 +1,256 @@
+# Sequence creation, dropping, bounds, cycling, nextval, and currval.
+-DATASET CSV empty
+
+--
+
+-CASE CreateDropAndSeparateNamespace
+-STATEMENT CREATE NODE TABLE test(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE SEQUENCE test
+---- 1
+Sequence test has been created.
+-STATEMENT CREATE SEQUENCE test
+---- error
+Binder exception: test already exists in catalog.
+-STATEMENT CREATE SEQUENCE IF NOT EXISTS test start 5
+---- 1
+Sequence test already exists.
+-STATEMENT RETURN nextval('test')
+---- 1
+1
+-STATEMENT DROP TABLE test
+---- 1
+Table test has been dropped.
+-STATEMENT DROP SEQUENCE test
+---- 1
+Sequence test has been dropped.
+
+-CASE BasicIncDec
+-STATEMENT CREATE SEQUENCE inc
+---- 1
+Sequence inc has been created.
+-STATEMENT CREATE SEQUENCE dec INCREMENT -1
+---- 1
+Sequence dec has been created.
+-STATEMENT RETURN nextval('inc')
+---- 1
+1
+-STATEMENT RETURN nextval('dec')
+---- 1
+-1
+-STATEMENT RETURN currval('inc')
+---- 1
+1
+-STATEMENT RETURN nextval('inc')
+---- 1
+2
+-STATEMENT RETURN currval('inc')
+---- 1
+2
+
+-CASE StartIncrement
+-STATEMENT CREATE SEQUENCE s START WITH 20 INCREMENT BY 5
+---- ok
+-STATEMENT RETURN nextval('s')
+---- 1
+20
+-STATEMENT RETURN nextval('s')
+---- 1
+25
+
+-CASE BoundsNoCycle
+-STATEMENT CREATE SEQUENCE edgeMax START 10 INCREMENT 1 MAXVALUE 10
+---- ok
+-STATEMENT RETURN nextval('edgeMax')
+---- 1
+10
+-STATEMENT RETURN nextval('edgeMax')
+---- error
+Catalog exception: nextval: reached maximum value of sequence "edgeMax" 10
+-STATEMENT CREATE SEQUENCE edgeMin START -10 INCREMENT -1 MINVALUE -10
+---- ok
+-STATEMENT RETURN nextval('edgeMin')
+---- 1
+-10
+-STATEMENT RETURN nextval('edgeMin')
+---- error
+Catalog exception: nextval: reached minimum value of sequence "edgeMin" -10
+
+-CASE Cycle
+-STATEMENT CREATE SEQUENCE c START 10 INCREMENT 1 MAXVALUE 10 CYCLE
+---- ok
+-STATEMENT RETURN nextval('c')
+---- 1
+10
+-STATEMENT RETURN nextval('c')
+---- 1
+1
+
+-CASE CreateErrors
+-STATEMENT CREATE SEQUENCE err START 9223372036854775808
+---- error
+Binder exception: Out of bounds: SEQUENCE accepts integers within INT64.
+-STATEMENT CREATE SEQUENCE err MINVALUE 10 MAXVALUE -10
+---- error
+Binder exception: SEQUENCE MAXVALUE should be greater than or equal to MINVALUE.
+-STATEMENT CREATE SEQUENCE err START -1
+---- error
+Binder exception: SEQUENCE START value should be between MINVALUE and MAXVALUE.
+-STATEMENT CREATE SEQUENCE err START WITH 1 INCREMENT -1
+---- error
+Binder exception: SEQUENCE START value should be between MINVALUE and MAXVALUE.
+
+-CASE CurrvalUndefinedAndDropErrors
+-STATEMENT CREATE SEQUENCE s
+---- ok
+-STATEMENT RETURN currval('s')
+---- error
+Catalog exception: currval: sequence "s" is not yet defined. To define the sequence, call nextval first.
+-STATEMENT DROP SEQUENCE ghost
+---- error
+Binder exception: Sequence ghost does not exist.
+-STATEMENT DROP SEQUENCE IF EXISTS ghost
+---- 1
+Sequence ghost does not exist.
+
+# SERIAL owns an implicit sequence and nextval default; the focused cases below
+# exercise publication, recovery, explicit values, introspection, and drop behavior.
+
+# A SERIAL column registers a queryable sequence `<table>_<col>_serial`; the first
+# nextval (one insert) returns 0, so currval-after-commit is 0.
+-CASE SerialImplicitCommit
+-STATEMENT CREATE NODE TABLE test(id SERIAL, primary key(id));
+---- ok
+-STATEMENT BEGIN TRANSACTION;
+---- ok
+-STATEMENT CREATE (:test {});
+---- ok
+-STATEMENT Commit;
+---- ok
+-STATEMENT RETURN currval('test_id_serial');
+---- 1
+0
+
+-CASE SerialImplicitCommitRecovery
+-STATEMENT CALL auto_checkpoint=false;
+---- ok
+-STATEMENT CREATE NODE TABLE test(id SERIAL, primary key(id));
+---- ok
+-STATEMENT BEGIN TRANSACTION;
+---- ok
+-STATEMENT CREATE (:test {});
+---- ok
+-STATEMENT Commit;
+---- ok
+-RELOADDB
+-STATEMENT RETURN currval('test_id_serial');
+---- 1
+0
+
+# A rolled-back insert only advanced the snapshot's sequence; ROLLBACK drops it, so
+# the committed sequence has usage==0 → currval errors "not yet defined".
+-CASE SerialImplicitRollback
+-STATEMENT CREATE NODE TABLE test(id SERIAL, primary key(id));
+---- ok
+-STATEMENT BEGIN TRANSACTION;
+---- ok
+-STATEMENT CREATE (:test {});
+---- ok
+-STATEMENT Rollback;
+---- ok
+-STATEMENT RETURN currval('test_id_serial');
+---- error
+Catalog exception: currval: sequence "test_id_serial" is not yet defined. To define the sequence, call nextval first.
+
+-CASE SerialImplicitRollbackRecovery
+-STATEMENT CALL auto_checkpoint=false;
+---- ok
+-STATEMENT CREATE NODE TABLE test(id SERIAL, primary key(id));
+---- ok
+-STATEMENT BEGIN TRANSACTION;
+---- ok
+-STATEMENT CREATE (:test {});
+---- ok
+-STATEMENT Rollback;
+---- ok
+-RELOADDB
+-STATEMENT RETURN currval('test_id_serial');
+---- error
+Catalog exception: currval: sequence "test_id_serial" is not yet defined. To define the sequence, call nextval first.
+
+# Two omitted inserts auto-increment ids 0,1; currval==1; nextval advances to 2.
+-CASE SerialAutoIncrementAndCurrval
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:t {});
+---- ok
+-STATEMENT CREATE (:t {});
+---- ok
+-STATEMENT MATCH (n:t) RETURN n.id ORDER BY n.id;
+---- 2
+0
+1
+-STATEMENT RETURN currval('t_id_serial');
+---- 1
+1
+-STATEMENT RETURN nextval('t_id_serial');
+---- 1
+2
+
+# The implicit serial sequence is visible in SHOW_SEQUENCES (user-table visibility).
+# (`RETURN *` since CALL named-column projection is a separate, tracked gap.) Its
+# start is 0 — the SERIAL distinction from a plain sequence's start of 1.
+-CASE SerialShowsInSequences
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+-STATEMENT CALL SHOW_SEQUENCES() RETURN * ORDER BY name;
+---- 1
+t_id_serial|main(graph)|0|1|0|9223372036854775807|False
+
+# An explicit value does NOT advance the sequence (a default fills only OMITTED
+# columns), so the next omitted insert still yields the start value 0.
+-CASE SerialExplicitValueDoesNotAdvance
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:t {id: 5});
+---- ok
+-STATEMENT CREATE (:t {});
+---- ok
+-STATEMENT MATCH (n:t) RETURN n.id ORDER BY n.id;
+---- 2
+0
+5
+-STATEMENT RETURN currval('t_id_serial');
+---- 1
+0
+
+# DROP TABLE drops the implicit sequence, so currval errors and re-CREATE is free.
+-CASE SerialDroppedOnDropTable
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+-STATEMENT DROP TABLE t;
+---- ok
+-STATEMENT RETURN currval('t_id_serial');
+---- error
+Catalog exception: t_id_serial does not exist in catalog.
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+
+# A pre-existing sequence with the serial name blocks the table (validate-then-mutate:
+# the last CREATE proves no half-created `t` was left behind).
+-CASE SerialNameCollisionSeqFirst
+-STATEMENT CREATE SEQUENCE t_id_serial;
+---- ok
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- error
+Catalog exception: t_id_serial already exists in catalog.
+-STATEMENT CREATE NODE TABLE t(val INT64, PRIMARY KEY(val));
+---- ok
+
+# And the reverse: the implicit sequence blocks a same-named CREATE SEQUENCE.
+-CASE SerialNameCollisionTableFirst
+-STATEMENT CREATE NODE TABLE t(id SERIAL, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE SEQUENCE t_id_serial;
+---- error
+Binder exception: t_id_serial already exists in catalog.

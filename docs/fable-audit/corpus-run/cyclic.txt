@@ -1,0 +1,5 @@
+PASS  multi_label.CyclicMultiLabel
+PASS  multi_label.MultiLabelTriangleTestIntersect
+PASS  single_label.CyclicSingleLabel
+
+3 passed, 0 skipped, 0 failed

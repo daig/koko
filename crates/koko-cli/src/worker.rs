@@ -2,10 +2,11 @@
 
 use crate::parameter::ParameterStore;
 use crate::signal::{self, InterruptCursor};
-use koko::{
-    CatalogSnapshot, Database, InterruptHandle, MemoryUsage, QueryResult, SessionSnapshot,
-    StatementOutcome,
-};
+use koko::config::MemoryUsage;
+use koko::execution::Outcome;
+use koko::result::Column;
+use koko::tooling::{CatalogSnapshot, SessionSnapshot};
+use koko::{Database, InterruptHandle, QueryResult};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::thread::{self, JoinHandle};
@@ -17,7 +18,7 @@ enum Request {
     Execute {
         cypher: String,
         parameters: ParameterStore,
-        reply: SyncSender<Result<StatementOutcome, WorkerError>>,
+        reply: SyncSender<Result<Outcome, WorkerError>>,
     },
     Session {
         reply: SyncSender<koko::Result<SessionSnapshot>>,
@@ -43,7 +44,7 @@ pub enum ExecutionEvent {
 
 #[derive(Debug)]
 pub struct ExecutionReport {
-    pub outcome: StatementOutcome,
+    pub outcome: Outcome,
     pub elapsed: Duration,
     pub cancellation_requested: bool,
 }
@@ -93,7 +94,7 @@ impl SessionWorker {
         &self,
         cypher: String,
         parameters: ParameterStore,
-    ) -> Result<StatementOutcome, WorkerError> {
+    ) -> Result<Outcome, WorkerError> {
         Ok(self
             .execute_observed(cypher, parameters, |_| Ok(()))?
             .outcome)
@@ -194,7 +195,7 @@ impl Drop for SessionWorker {
 }
 
 fn worker_main(receiver: Receiver<Request>, ready: SyncSender<InterruptHandle>) {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
     if ready.send(connection.interrupt_handle()).is_err() {
         return;
@@ -208,7 +209,7 @@ fn worker_main(receiver: Receiver<Request>, ready: SyncSender<InterruptHandle>) 
             } => {
                 let result = guarded_execution(|| {
                     let query_parameters = parameters.query_parameters();
-                    connection.execute_with_metadata(&cypher, &query_parameters)
+                    connection.execute_detailed_with(&cypher, query_parameters)
                 });
                 let panicked = result.is_err();
                 let _ = reply.send(result);
@@ -242,11 +243,12 @@ pub fn tooling_result(
     types: Vec<koko::LogicalType>,
     rows: Vec<Vec<koko::Value>>,
 ) -> Result<QueryResult, WorkerError> {
-    Ok(QueryResult::from_tooling_rows(
-        names.iter().map(|name| (*name).to_string()).collect(),
-        types,
-        rows,
-    )?)
+    let columns = names
+        .iter()
+        .zip(types)
+        .map(|(name, logical_type)| Column::new(*name, logical_type))
+        .collect();
+    Ok(koko::tooling::tabular_result(columns, rows)?)
 }
 
 #[cfg(test)]

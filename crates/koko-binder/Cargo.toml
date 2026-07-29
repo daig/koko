@@ -11,3 +11,4 @@ koko-common = { workspace = true }
 koko-catalog = { workspace = true }
 koko-parser = { workspace = true }
 koko-function = { workspace = true }
+koko-ir = { workspace = true }

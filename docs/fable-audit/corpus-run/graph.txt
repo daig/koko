@@ -1,0 +1,11 @@
+FAIL  any.CreateAnyGraphAndQuery — statement #1 `CREATE GRAPH mygraph ANY`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  any.AnyGraphMultiNodeLabels — statement #1 `CREATE GRAPH mygraph ANY`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  any.MainGraphCreateMultiNodeLabelsFails — statement #3 `CREATE (a:Person:Employee {id: 1})`: expected error `Binder exception: Create node a with multiple node labels is not supported.`, got `Binder exception: a node pattern must specify exactly one label in this phase`
+FAIL  any_graph.CreateAnyGraph — statement #1 `CREATE GRAPH mygraph ANY`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  graph.CreateGraphAndUseGraph — statement #1 `CREATE GRAPH graph1_cgu`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  graph.VerifyCatalogIsolation — statement #1 `CREATE GRAPH graph1_vci`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  graph.ShowTablesWithIsolation — statement #2 `CREATE GRAPH foo1`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  graph.ErrorCases — statement #1 `CREATE GRAPH graph1_ec`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+FAIL  graph.DropGraph — statement #1 `CREATE GRAPH graph1_dg`: expected success, got error: Parser exception: expected LParen but found Ident("GRAPH")
+
+0 passed, 0 skipped, 9 failed

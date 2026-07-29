@@ -1,0 +1,60 @@
+PASS  issue.5954
+FAIL  issue.4080 — statement #6 `WITH 2 as parent_id OPTIONAL MATCH (v1:V)-[:links_to*1..]->(:V) WHERE EXISTS {MA…`: row mismatch: expected `1`, got ``
+FAIL  issue.listContainsCast — statement #3 `MATCH (a:A) WHERE a.id IN [0] RETURN a.id`: expected rows, got error: Parser exception: expected Eof but found Ident("IN")
+PASS  issue.3870
+PASS  issue.3691
+FAIL  issue.3653 — statement #4 `MATCH (v1:V)-[e:E]->(v2:V) WHERE e.p in ["foo","bar"] RETURN e.p`: expected rows, got error: Parser exception: expected Eof but found Ident("in")
+PASS  issue.3652
+PASS  issue.2158
+PASS  issue.2167
+PASS  issue.KindOfFruit
+PASS  issue.2184
+PASS  issue.2293
+SKIP  issue.2376 (-SKIP)
+PASS  issue.2294
+PASS  issue.2303
+PASS  issue.2558
+PASS  issue.2578
+PASS  issue.2587
+FAIL  issue.2588 — statement #9 `MATCH (t:T) WHERE "aa" STARTS WITH "a" RETURN t.*`: expected rows, got error: Parser exception: expected Eof but found Ident("STARTS")
+FAIL  issue.2589 — statement #4 `WITH "node_after" as selected MATCH (t1:T{id: "t1"})-[:E]->(t2:T{id: "t2"}) WITH…`: expected rows, got error: Not implemented exception: carrying a node or relationship expression through WITH is not supported in this phase
+PASS  issue.2643
+PASS  issue.2675
+FAIL  issue.2701 — statement #3 `CREATE ({id: 1})-[:R]->({id:2})`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  issue.2942
+PASS  issue.3042
+PASS  issue.2890
+FAIL  issue.3488 — statement #14 `MATCH (n1) WHERE NOT (n1)-[]->() RETURN n1`: expected rows, got error: Parser exception: unexpected token Gt in expression
+PASS  issue.RecursiveJoinManualTransaction
+PASS  issue.4918
+FAIL  issue.5676 — statement #4 `create rel table knows1 (from person to person) as match (p:person) delete p ret…`: expected error `Copy exception: Unable to find primary key value 1.`, got `Runtime exception: Cannot create relationship: no person node with primary key 1.`
+PASS  issue.5716
+PASS  issue.5893
+PASS  issue.5840
+PASS  issue.unwind_merge_with_projection_dedup
+PASS  issue.unwind_merge_with_projection_preserves_match_expansion
+PASS  issue.unwind_merge_rel_after_rel_match_dedup
+PASS  issue.5817
+PASS  issue.6023
+PASS  issue.issue_170
+PASS  issue2.3129
+PASS  issue2.3055
+FAIL  issue2.3416 — statement #1 `Export Database '${KOKO_EXPORT_DB_DIRECTORY}_3416/empty-db'`: expected rows, got error: Parser exception: expected a MATCH, CREATE, or RETURN clause but found Ident("Export")
+SKIP  issue3.3246 (dataset `EMPTY` is not available)
+SKIP  issue3.BUG (dataset `EMPTY` is not available)
+PASS  issue4.3262
+PASS  issue4.3083
+PASS  issue5.3188
+PASS  issue5.3274
+PASS  issue6.issue3543
+PASS  issue6.issue3576
+FAIL  issue7.FlatSelect — statement #6 `MATCH (p1:person) WITH COUNT { MATCH (p1)<-[:friend]-(p2:person) } as indegree, …`: expected rows, got error: Parser exception: expected Eof but found Ident("IN")
+PASS  issue7.issue3607
+PASS  issue7.issue3692
+FAIL  issue7.issue4716 — statement #58 `MATCH (n0)-[r6]-(n1)<-[r7]-(n2)<-[r8]-(n3) WHERE true WITH n2 ORDER BY (n2.k33) …`: expected rows, got error: Parser exception: expected RParen but found Ident("STARTS")
+PASS  issue7.issue4715
+PASS  issue7.Issue4189
+PASS  issue7.issue4783
+PASS  issue8.NodesWith300Props
+
+44 passed, 3 skipped, 11 failed

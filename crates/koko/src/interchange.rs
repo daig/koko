@@ -5,18 +5,17 @@
 //! table and relationship-group member. There is no second native database
 //! representation hidden behind this module.
 
-use super::QueryResult;
 use crate::macros::MacroRegistry;
-use crate::{
-    ColumnSchema, DataChunk, Error, InternalId, LogicalType, MemoryTracker, Result, Value,
+use crate::result::Column as ResultColumn;
+use crate::{Error, LogicalType, QueryResult, Result, Value};
+use koko_catalog::{Catalog, Column, NodeTable, RelTable, serial_sequence_name};
+use koko_common::{
+    DataChunk, InternalId, MemoryTracker, QueryControl, VECTOR_CAPACITY,
+    file_resolver::{FileFormat, FileResolverConfig, resolve_files},
 };
-use koko_binder::{BoundExportDatabase, BoundOutputOptions, BoundParquetCompression};
-use koko_catalog::{Catalog, Column, ColumnDefault, NodeTable, RelTable, serial_sequence_name};
-use koko_common::VECTOR_CAPACITY;
-use koko_common::file_resolver::{FileFormat, FileResolverConfig, resolve_files};
+use koko_ir::bound::{BoundExportDatabase, BoundOutputOptions, BoundParquetCompression};
 use koko_parser::ast::{GraphKind, LoadOptVal, Statement};
 use koko_parser::parse_statement;
-use koko_processor::QueryControl;
 use koko_storage::StorageReadHandle;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -219,7 +218,7 @@ pub(super) fn write_query_result(
     options: &BoundOutputOptions,
     result: &QueryResult,
     memory: &MemoryTracker,
-    control: koko_processor::QueryControl<'_>,
+    control: QueryControl<'_>,
 ) -> Result<u64> {
     let temp = temp_path(path);
     let write_result = match options {
@@ -274,7 +273,7 @@ fn write_csv(
     options: &koko_common::csv_dialect::CsvOptions,
     result: &QueryResult,
     memory: &MemoryTracker,
-    control: koko_processor::QueryControl<'_>,
+    control: QueryControl<'_>,
 ) -> Result<u64> {
     let delimiter = options.delimiter.unwrap_or(b',');
     let quote = options.quote.unwrap_or(b'"');
@@ -285,7 +284,7 @@ fn write_csv(
     if options.header.unwrap_or(false) {
         write_csv_record(
             &mut output,
-            result.column_names().iter().map(String::as_str),
+            result.columns().iter().map(|column| column.name()),
             delimiter,
             quote,
             escape,
@@ -318,7 +317,7 @@ fn write_csv(
                     quote,
                     escape,
                     &null,
-                    Some((&values, result.schema())),
+                    Some((&values, result.columns())),
                 )?;
                 rows = rows.saturating_add(1);
             }
@@ -335,7 +334,7 @@ fn write_csv_record<I, S>(
     quote: u8,
     escape: u8,
     null: &str,
-    typed: Option<(&[Value], &[ColumnSchema])>,
+    typed: Option<(&[Value], &[ResultColumn])>,
 ) -> Result<()>
 where
     I: IntoIterator<Item = S>,
@@ -410,7 +409,7 @@ fn write_parquet(
     compression: BoundParquetCompression,
     result: &QueryResult,
     memory: &MemoryTracker,
-    control: koko_processor::QueryControl<'_>,
+    control: QueryControl<'_>,
 ) -> Result<u64> {
     let batch_bytes = result
         .batches()
@@ -421,15 +420,15 @@ fn write_parquet(
     let writer_bytes = 64_u64
         .saturating_mul(1024)
         .saturating_add(batch_bytes.saturating_mul(2))
-        .saturating_add((result.schema().len() as u64).saturating_mul(256));
+        .saturating_add((result.columns().len() as u64).saturating_mul(256));
     let _writer_memory = memory.try_reserve(writer_bytes)?;
     use koko_loader::parquet::{
         ParquetCompression, ParquetField, ParquetFileWriter, ParquetSchema, ParquetWriterOptions,
     };
 
-    let mut names = HashSet::with_capacity(result.schema().len());
+    let mut names = HashSet::with_capacity(result.columns().len());
     let fields = result
-        .schema()
+        .columns()
         .iter()
         .enumerate()
         .map(|(index, column)| {
@@ -553,14 +552,14 @@ fn export_graph_image(
         .into_iter()
         .filter_map(|id| database.catalog().node_table(id).cloned())
         .collect();
-    nodes.sort_by(|left, right| left.name.cmp(&right.name));
+    nodes.sort_by(|left, right| left.name().cmp(right.name()));
     for node in nodes {
         query.control().check()?;
-        let file_name = format!("{}.{}", node.name, extension);
+        let file_name = format!("{}.{}", node.name(), extension);
         admit_export_file(&file_name, &mut file_names)?;
         copy.push_str(&copy_statement(
-            &node.name,
-            &node.columns,
+            node.name(),
+            node.columns(),
             &file_name,
             &export.options,
             None,
@@ -582,31 +581,34 @@ fn export_graph_image(
         .into_iter()
         .filter_map(|id| database.catalog().rel_table(id).cloned())
         .collect();
-    rels.sort_by(|left, right| left.name.cmp(&right.name));
+    rels.sort_by(|left, right| left.name().cmp(right.name()));
     for rel in rels {
         query.control().check()?;
-        for ((from, to), member) in rel.pairs.iter().zip(&rel.member_ids) {
+        for pair in rel.pairs() {
             let from_table = database
                 .catalog()
-                .node_table(*from)
+                .node_table(pair.from)
                 .expect("relationship FROM table exists");
             let to_table = database
                 .catalog()
-                .node_table(*to)
+                .node_table(pair.to)
                 .expect("relationship TO table exists");
             let file_name = format!(
                 "{}_{}_{}.{}",
-                rel.name, from_table.name, to_table.name, extension
+                rel.name(),
+                from_table.name(),
+                to_table.name(),
+                extension
             );
             admit_export_file(&file_name, &mut file_names)?;
             copy.push_str(&copy_statement(
-                &rel.name,
-                &rel.columns,
+                rel.name(),
+                rel.columns(),
                 &file_name,
                 &export.options,
-                Some((&from_table.name, &to_table.name)),
+                Some((from_table.name(), to_table.name())),
             ));
-            let mut result = rel_result(database, &rel, *member, from_table, to_table, query)?;
+            let mut result = rel_result(database, &rel, pair.member, from_table, to_table, query)?;
             result.track_memory(database.memory())?;
             write_query_result(
                 &root.join(file_name),
@@ -638,34 +640,37 @@ fn admit_export_file(file_name: &str, names: &mut HashSet<String>) -> Result<()>
 fn index_script(database: &InterchangeReadContext<'_>) -> String {
     let mut indexes = database.catalog().indexes();
     indexes.sort_by(|left, right| {
-        let left_table = database.catalog().table_name(left.table_id).unwrap_or("");
-        let right_table = database.catalog().table_name(right.table_id).unwrap_or("");
+        let left_table = database.catalog().table_name(left.table_id()).unwrap_or("");
+        let right_table = database
+            .catalog()
+            .table_name(right.table_id())
+            .unwrap_or("");
         left_table
             .to_ascii_lowercase()
             .cmp(&right_table.to_ascii_lowercase())
             .then_with(|| {
-                left.name
+                left.name()
                     .to_ascii_lowercase()
-                    .cmp(&right.name.to_ascii_lowercase())
+                    .cmp(&right.name().to_ascii_lowercase())
             })
-            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.name().cmp(right.name()))
     });
     let mut output = String::new();
     for index in indexes {
         let table = database
             .catalog()
-            .table_name(index.table_id)
+            .table_name(index.table_id())
             .expect("indexed table exists");
         let properties = index
-            .property_names
+            .property_names()
             .iter()
             .map(|property| format!("n.{}", quote_ident(property)))
             .collect::<Vec<_>>()
             .join(", ");
         output.push_str(&format!(
             "CREATE {} INDEX {} FOR (n:{}) ON ({});\n",
-            index.index_type.name(),
-            quote_ident(&index.name),
+            index.index_type().name(),
+            quote_ident(index.name()),
             quote_ident(table),
             properties
         ));
@@ -685,22 +690,22 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
         .into_iter()
         .filter_map(|id| database.catalog().node_table(id))
         .collect();
-    nodes.sort_by(|left, right| left.name.cmp(&right.name));
+    nodes.sort_by(|left, right| left.name().cmp(right.name()));
     let mut implicit_sequences = HashSet::new();
     for node in &nodes {
-        for column in &node.columns {
-            if column.type_text.eq_ignore_ascii_case("SERIAL") {
-                implicit_sequences.insert(serial_sequence_name(&node.name, &column.name));
+        for column in node.columns() {
+            if column.is_serial() {
+                implicit_sequences.insert(serial_sequence_name(node.name(), column.name()));
             }
         }
-        if database.catalog().is_any_node_table(node.id) {
+        if database.catalog().is_any_node_table(node.id()) {
             continue;
         }
         output.push_str(&format!(
             "CREATE NODE TABLE {} ({}, PRIMARY KEY({}));\n",
-            quote_ident(&node.name),
-            column_definitions(&node.columns),
-            quote_ident(&node.columns[node.primary_key].name)
+            quote_ident(node.name()),
+            column_definitions(node.columns()),
+            quote_ident(node.primary_key_column().name())
         ));
     }
 
@@ -710,40 +715,40 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
         .into_iter()
         .filter_map(|id| database.catalog().rel_table(id))
         .collect();
-    rels.sort_by(|left, right| left.name.cmp(&right.name));
+    rels.sort_by(|left, right| left.name().cmp(right.name()));
     for rel in &rels {
-        for column in &rel.columns {
-            if column.type_text.eq_ignore_ascii_case("SERIAL") {
-                implicit_sequences.insert(serial_sequence_name(&rel.name, &column.name));
+        for column in rel.columns() {
+            if column.is_serial() {
+                implicit_sequences.insert(serial_sequence_name(rel.name(), column.name()));
             }
         }
-        if database.catalog().is_any_rel_table(rel.id) {
+        if database.catalog().is_any_rel_table(rel.id()) {
             continue;
         }
         let mut definitions: Vec<String> = rel
-            .pairs
+            .pairs()
             .iter()
-            .map(|(from, to)| {
-                let from = &database
+            .map(|pair| {
+                let from = database
                     .catalog()
-                    .node_table(*from)
+                    .node_table(pair.from)
                     .expect("FROM table exists")
-                    .name;
-                let to = &database
+                    .name();
+                let to = database
                     .catalog()
-                    .node_table(*to)
+                    .node_table(pair.to)
                     .expect("TO table exists")
-                    .name;
+                    .name();
                 format!("FROM {} TO {}", quote_ident(from), quote_ident(to))
             })
             .collect();
-        if !rel.columns.is_empty() {
-            definitions.push(column_definitions(&rel.columns));
+        if !rel.columns().is_empty() {
+            definitions.push(column_definitions(rel.columns()));
         }
         let multiplicity = rel
-            .member_ids
+            .pairs()
             .first()
-            .map(|member| database.storage().rel_multiplicity(*member))
+            .map(|pair| database.storage().read().rel_multiplicity(pair.member))
             .unwrap_or_default();
         let src = if multiplicity.dst_single {
             "ONE"
@@ -758,9 +763,9 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
         definitions.push(format!("{src}_{dst}"));
         output.push_str(&format!(
             "CREATE REL TABLE {} ({}) WITH (storage_direction='{}');\n",
-            quote_ident(&rel.name),
+            quote_ident(rel.name()),
             definitions.join(", "),
-            rel.storage_direction.as_str()
+            rel.storage_direction().as_str()
         ));
     }
 
@@ -771,22 +776,30 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
         .map(|(name, current, usage)| (name.to_ascii_lowercase(), (current, usage)))
         .collect();
     for sequence in database.catalog().sequences_sorted() {
-        if implicit_sequences.contains(&sequence.name) {
+        if implicit_sequences.contains(sequence.name()) {
             continue;
         }
         let (current, usage) = state
-            .get(&sequence.name.to_ascii_lowercase())
+            .get(&sequence.name().to_ascii_lowercase())
             .copied()
-            .unwrap_or((sequence.start, 0));
-        let start = if usage == 0 { sequence.start } else { current };
+            .unwrap_or((sequence.start(), 0));
+        let start = if usage == 0 {
+            sequence.start()
+        } else {
+            current
+        };
         output.push_str(&format!(
             "CREATE SEQUENCE {} START {} INCREMENT {} MINVALUE {} MAXVALUE {} {};\n",
-            quote_ident(&sequence.name),
+            quote_ident(sequence.name()),
             start,
-            sequence.increment,
-            sequence.min,
-            sequence.max,
-            if sequence.cycle { "CYCLE" } else { "NO CYCLE" }
+            sequence.increment(),
+            sequence.min(),
+            sequence.max(),
+            if sequence.cycle() {
+                "CYCLE"
+            } else {
+                "NO CYCLE"
+            }
         ));
     }
 
@@ -819,9 +832,9 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
         .into_iter()
         .filter_map(|sequence| {
             let (_, usage) = state
-                .get(&sequence.name.to_ascii_lowercase())
+                .get(&sequence.name().to_ascii_lowercase())
                 .copied()
-                .unwrap_or((sequence.start, 0));
+                .unwrap_or((sequence.start(), 0));
             if usage == 0 {
                 return None;
             }
@@ -829,12 +842,12 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
             // so one call restores their used state. Implicit SERIAL sequences
             // are recreated by CREATE TABLE at their original start and must
             // be advanced once per historical call.
-            let calls = if implicit_sequences.contains(&sequence.name) {
+            let calls = if implicit_sequences.contains(sequence.name()) {
                 usage
             } else {
                 1
             };
-            Some((sequence.name.clone(), calls))
+            Some((sequence.name().to_string(), calls))
         })
         .collect();
     sequence_restores.sort_unstable_by(|left, right| left.0.cmp(&right.0));
@@ -846,12 +859,12 @@ pub(super) fn schema_script(database: &InterchangeReadContext<'_>) -> String {
 
     for table in nodes
         .into_iter()
-        .filter(|table| !database.catalog().is_any_node_table(table.id))
-        .filter_map(|table| table.comment.as_ref().map(|comment| (&table.name, comment)))
+        .filter(|table| !database.catalog().is_any_node_table(table.id()))
+        .filter_map(|table| table.comment().map(|comment| (table.name(), comment)))
         .chain(
             rels.into_iter()
-                .filter(|table| !database.catalog().is_any_rel_table(table.id))
-                .filter_map(|table| table.comment.as_ref().map(|comment| (&table.name, comment))),
+                .filter(|table| !database.catalog().is_any_rel_table(table.id()))
+                .filter_map(|table| table.comment().map(|comment| (table.name(), comment))),
         )
     {
         output.push_str(&format!(
@@ -867,12 +880,10 @@ fn column_definitions(columns: &[Column]) -> String {
     columns
         .iter()
         .map(|column| {
-            let mut definition = format!("{} {}", quote_ident(&column.name), column.type_text);
-            if !column.type_text.eq_ignore_ascii_case("SERIAL")
-                && !matches!(column.default, ColumnDefault::None)
-            {
+            let mut definition = format!("{} {}", quote_ident(column.name()), column.type_text());
+            if !column.is_serial() && column.default().is_some() {
                 definition.push_str(" DEFAULT ");
-                definition.push_str(&column.default_text);
+                definition.push_str(column.default_text());
             }
             definition
         })
@@ -889,7 +900,7 @@ fn copy_statement(
 ) -> String {
     let columns = columns
         .iter()
-        .map(|column| quote_ident(&column.name))
+        .map(|column| quote_ident(column.name()))
         .collect::<Vec<_>>()
         .join(", ");
     let mut bound_options = match options {
@@ -954,15 +965,15 @@ fn node_result(
     table: &NodeTable,
     query: &InterchangeExportContext<'_>,
 ) -> Result<QueryResult> {
-    let projected: Vec<usize> = (0..table.columns.len()).collect();
+    let projected: Vec<usize> = (0..table.columns().len()).collect();
     let mut batches = Vec::new();
     let mut offset = 0u64;
-    let count = database.storage().node_count(table.id);
+    let count = database.storage().read().node_count(table.id());
     while offset < count {
         query.control().check()?;
-        let mut batch = database.storage().scan_node_batch(
+        let mut batch = database.storage().read().scan_node_batch(
             query.read(),
-            table.id,
+            table.id(),
             &projected,
             offset,
             VECTOR_CAPACITY,
@@ -974,7 +985,7 @@ fn node_result(
         batch.columns.remove(0);
         batches.push(batch);
     }
-    Ok(result_from_columns(&table.columns, batches))
+    result_from_columns(table.columns(), batches)
 }
 
 fn rel_result(
@@ -988,9 +999,9 @@ fn rel_result(
     let from_pk = from.primary_key_column();
     let to_pk = to.primary_key_column();
     let mut used: HashSet<String> = rel
-        .columns
+        .columns()
         .iter()
-        .map(|column| column.name.to_ascii_lowercase())
+        .map(|column| column.name().to_ascii_lowercase())
         .collect();
     let mut endpoint_name = |base: &str| {
         let mut name = base.to_string();
@@ -1000,16 +1011,20 @@ fn rel_result(
         name
     };
     let mut names = vec![endpoint_name("__from"), endpoint_name("__to")];
-    names.extend(rel.columns.iter().map(|column| column.name.clone()));
-    let mut types = vec![from_pk.ty.clone(), to_pk.ty.clone()];
-    types.extend(rel.columns.iter().map(|column| column.ty.clone()));
-    let projected: Vec<usize> = (0..rel.columns.len()).collect();
+    names.extend(rel.columns().iter().map(|column| column.name().to_string()));
+    let mut types = vec![from_pk.logical_type().clone(), to_pk.logical_type().clone()];
+    types.extend(
+        rel.columns()
+            .iter()
+            .map(|column| column.logical_type().clone()),
+    );
+    let projected: Vec<usize> = (0..rel.columns().len()).collect();
     let mut batches = Vec::new();
     let mut offset = 0u64;
-    let count = database.storage().rel_count(member);
+    let count = database.storage().read().rel_count(member);
     while offset < count {
         query.control().check()?;
-        let source = database.storage().scan_rel_batch(
+        let source = database.storage().read().scan_rel_batch(
             query.read(),
             member,
             &projected,
@@ -1032,17 +1047,17 @@ fn rel_result(
             .collect();
         let src_offsets: Vec<u64> = endpoint_ids.iter().map(|(src, _)| src.offset.0).collect();
         let dst_offsets: Vec<u64> = endpoint_ids.iter().map(|(_, dst)| dst.offset.0).collect();
-        let src_properties = database.storage().node_properties_batch(
+        let src_properties = database.storage().read().node_properties_batch(
             query.read(),
-            from.id,
+            from.id(),
             &src_offsets,
-            &[from.primary_key],
+            &[from.primary_key_index()],
         );
-        let dst_properties = database.storage().node_properties_batch(
+        let dst_properties = database.storage().read().node_properties_batch(
             query.read(),
-            to.id,
+            to.id(),
             &dst_offsets,
-            &[to.primary_key],
+            &[to.primary_key_index()],
         );
         let mut batch = DataChunk::new(&types);
         for (row, position) in source.sel.iter().enumerate() {
@@ -1055,13 +1070,12 @@ fn rel_result(
         batch.set_flat(source.size());
         batches.push(batch);
     }
-    let schema = names
-        .iter()
-        .cloned()
+    let columns = names
+        .into_iter()
         .zip(types)
-        .map(|(name, logical_type)| ColumnSchema::new(name, logical_type))
+        .map(|(name, logical_type)| ResultColumn::new(name, logical_type))
         .collect();
-    Ok(QueryResult::from_batches(names, schema, batches))
+    QueryResult::from_batches(columns, batches)
 }
 
 fn expect_internal_id(value: Value) -> InternalId {
@@ -1071,18 +1085,17 @@ fn expect_internal_id(value: Value) -> InternalId {
     }
 }
 
-fn result_from_columns(columns: &[Column], batches: Vec<DataChunk>) -> QueryResult {
-    let names: Vec<_> = columns.iter().map(|column| column.name.clone()).collect();
-    let schema = columns
+fn result_from_columns(columns: &[Column], batches: Vec<DataChunk>) -> Result<QueryResult> {
+    let columns = columns
         .iter()
-        .map(|column| ColumnSchema::new(column.name.clone(), column.ty.clone()))
+        .map(|column| ResultColumn::new(column.name().to_string(), column.logical_type().clone()))
         .collect();
-    QueryResult::from_batches(names, schema, batches)
+    QueryResult::from_batches(columns, batches)
 }
 
 pub(super) fn preflight_database_image(
     root: &Path,
-    session: &koko_binder::SessionConfig,
+    session: &koko_binder::config::SessionConfig,
 ) -> Result<DatabaseImage> {
     if !root.is_dir() {
         return Err(Error::binder(format!(
@@ -1190,7 +1203,7 @@ fn preflight_graph_image(
     name: String,
     kind: GraphKind,
     root: PathBuf,
-    session: &koko_binder::SessionConfig,
+    session: &koko_binder::config::SessionConfig,
 ) -> Result<GraphImage> {
     if !root.is_dir() {
         return Err(Error::binder(format!(
@@ -1256,7 +1269,7 @@ fn read_and_parse_script(path: &Path) -> Result<Vec<Statement>> {
 fn preflight_copy_sources(
     root: &Path,
     statements: &[Statement],
-    session: &koko_binder::SessionConfig,
+    session: &koko_binder::config::SessionConfig,
 ) -> Result<()> {
     let config = FileResolverConfig {
         base_dir: root.to_path_buf(),

@@ -1,0 +1,3 @@
+MATCH (a:person) WHERE (a)-[:knows]->(:person) RETURN a.ID
+MATCH (a:person) WHERE NOT (a)-[:knows]->() RETURN a.ID
+MATCH (a:person) WHERE exists { MATCH (a)-[:knows]->(:person) } RETURN a.ID

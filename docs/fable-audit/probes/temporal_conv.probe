@@ -1,0 +1,10 @@
+RETURN date(NULL) IS NULL
+RETURN typeof(date(NULL))
+RETURN [date(NULL)]
+RETURN typeof(DATE('2024-07-01'))
+RETURN typeof(TIMESTAMP('2024-01-05 12:34:56'))
+RETURN typeof(INTERVAL('1 year'))
+RETURN typeof(date_part('year', DATE('2024-07-01')))
+RETURN typeof(DATE('2024-01-05') - DATE('2024-01-01'))
+RETURN typeof(TIMESTAMP('2024-01-05 12:34:56') - TIMESTAMP('2024-01-01 00:00:00'))
+RETURN [INTERVAL('1 year 2 months')]

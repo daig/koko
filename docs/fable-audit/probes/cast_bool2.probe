@@ -1,0 +1,22 @@
+// confirm to_string(null) NULL, to_bool of ints, more bool casts, unary minus, int-div
+RETURN [to_string(null)]
+RETURN typeof(to_string(null))
+RETURN to_bool(1)
+RETURN to_bool(0)
+RETURN to_bool(2)
+RETURN CAST(1.0 AS BOOL)
+RETURN CAST('yes' AS BOOL)
+RETURN CAST(true AS INT8)
+RETURN CAST(true AS DOUBLE)
+RETURN CAST(true AS INT32)
+RETURN to_double(false)
+RETURN -5 / 2
+RETURN 5 / -2
+RETURN -5 / -2
+RETURN 1 / 3
+RETURN -(-5)
+RETURN 5 - -3
+RETURN - 5
+RETURN 7 / 2 * 2
+RETURN to_int64(false)
+RETURN CAST(false AS DOUBLE)

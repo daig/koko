@@ -1,0 +1,5 @@
+RETURN regexp_extract('xyz','[')
+RETURN regexp_replace('xyz','[','Q')
+RETURN regexp_extract_all('xyz','[')
+RETURN regexp_full_match('xyz','[')
+RETURN regexp_split_to_array('xyz','[')

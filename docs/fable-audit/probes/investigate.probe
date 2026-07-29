@@ -1,0 +1,21 @@
+// characterize array_extract on a LIST literal
+RETURN array_extract([10,20,30], 1) AS a
+RETURN array_extract([10,20,30], 2) AS a
+RETURN array_extract([10,20,30], 3) AS a
+RETURN array_extract([10,20,30], 0) AS a
+RETURN array_extract([10,20,30], 4) AS a
+RETURN array_extract(array_value(10,20,30), 2) AS a
+RETURN typeof(array_extract([10,20,30], 2)) AS a
+RETURN list_element([10,20,30], 2) AS a
+RETURN list_extract([10,20,30], 2) AS a
+// list_to_string reversed arg order
+RETURN list_to_string(',', [1,2,3]) AS a
+RETURN list_to_string('-', ['a','b','c']) AS a
+// missing-field extract
+RETURN struct_extract({a:1,b:2}, 'c') AS a
+RETURN union_extract(union_value(x:=1), 'y') AS a
+// empty struct
+RETURN {} AS a
+RETURN typeof({}) AS a
+// array_cross_product dimension check
+RETURN array_cross_product(array_value(1.0,2.0), array_value(3.0,4.0)) AS a

@@ -70,8 +70,8 @@ impl HyperLogLog {
         }
     }
 
-    /// Merge another sketch into this one (register-wise max; C++ "Algorithm 2").
-    /// The basis for partitioned/parallel stats collection in a later phase.
+    /// Merge another sketch into this one using register-wise maxima. This is the
+    /// deterministic union operation for independently collected sketches.
     pub fn merge(&mut self, other: &HyperLogLog) {
         for (r, &o) in self.registers.iter_mut().zip(other.registers.iter()) {
             if o > *r {
@@ -413,7 +413,7 @@ impl TableStats {
     /// backfilled with the constant `default`. A null backfill is recorded exactly
     /// (`null_count = count`); a non-null constant is recorded once (distinct ≈ 1,
     /// `min = max = default`) — an approximation that is sufficient for an estimate
-    /// and rare on the perf path (see `KNOWN_GAPS`).
+    /// and rare on the perf path (see `ROADMAP.md` PERF-02).
     pub fn push_column(&mut self, logical_type: &LogicalType, default: &Value, count: u64) {
         let mut stats = TableStats::with_types(std::iter::once(logical_type));
         let mut cs = stats.columns.pop().expect("one requested column");

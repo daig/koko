@@ -17,6 +17,7 @@ koko-catalog = { path = "crates/koko-catalog" }
 koko-storage = { path = "crates/koko-storage" }
 koko-parser = { path = "crates/koko-parser" }
 koko-function = { path = "crates/koko-function" }
+koko-ir = { path = "crates/koko-ir" }
 koko-binder = { path = "crates/koko-binder" }
 koko-expr = { path = "crates/koko-expr" }
 koko-planner = { path = "crates/koko-planner" }

@@ -1,9 +1,8 @@
-//! Identity newtypes, the logical type system, and the logical→physical mapping.
+//! Identity newtypes, Koko's logical type system, and logical-to-physical mappings.
 //!
-//! P0 implements only the scalar logical types the walking skeleton exercises
-//! (`BOOL`, `INT64`, `DOUBLE`, `STRING`) plus the graph identity types
-//! (`INTERNAL_ID`, `NODE`, `REL`). The full type system arrives in P1; the
-//! shapes here are deliberately extensible.
+//! Logical types cover scalar, decimal, temporal, nested, graph-entity, path,
+//! polymorphic, and internal values. Catalog and execution layers share these
+//! definitions without depending on one another.
 
 use crate::error::{Error, Result};
 use std::fmt;
@@ -445,6 +444,50 @@ impl LogicalType {
             LogicalType::Any => "ANY".to_string(),
         }
     }
+}
+
+/// The established common type for numeric operands. `ANY` operands are ignored
+/// so NULL literals and unconstrained parameters adopt a concrete numeric peer.
+/// Returns `None` when any concrete operand is not numeric.
+pub fn common_numeric_type<'a>(
+    types: impl IntoIterator<Item = &'a LogicalType>,
+) -> Option<LogicalType> {
+    let mut common = LogicalType::Any;
+    for logical_type in types {
+        if *logical_type == LogicalType::Any {
+            continue;
+        }
+        if !logical_type.is_numeric() {
+            return None;
+        }
+        common = match (&common, logical_type) {
+            (LogicalType::Any, _) => logical_type.clone(),
+            (left, right) if left == right => common,
+            (LogicalType::Decimal(p1, s1), LogicalType::Decimal(p2, s2)) => {
+                let scale = (*s1).max(*s2);
+                let integer_digits = (p1 - s1).max(p2 - s2);
+                LogicalType::Decimal((integer_digits + scale).min(38), scale)
+            }
+            (LogicalType::Decimal(precision, scale), other)
+            | (other, LogicalType::Decimal(precision, scale)) => {
+                if other.int_kind().is_some() || *other == LogicalType::Serial {
+                    LogicalType::Decimal((*precision).max(19 + *scale).min(38), *scale)
+                } else {
+                    LogicalType::Double
+                }
+            }
+            (LogicalType::Double, _) | (_, LogicalType::Double) => LogicalType::Double,
+            (LogicalType::Float, _) | (_, LogicalType::Float) => LogicalType::Float,
+            // UINT128 is wider than every IntKind. This matches arithmetic
+            // promotion; a negative signed value still fails its value cast.
+            (LogicalType::UInt128, _) | (_, LogicalType::UInt128) => LogicalType::UInt128,
+            (left, right) => match (left.int_kind(), right.int_kind()) {
+                (Some(left), Some(right)) => LogicalType::Int(left.combine(right)),
+                _ => LogicalType::Int64,
+            },
+        };
+    }
+    Some(common)
 }
 
 impl fmt::Display for LogicalType {

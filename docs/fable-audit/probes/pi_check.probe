@@ -1,0 +1,5 @@
+RETURN typeof(NULL) AS t;
+CREATE NODE TABLE T(id INT64, x INT64, y INT64, PRIMARY KEY(id));
+CREATE (:T {id:1, x:10, y:20});
+MATCH (n:T) SET n = {x: 99};
+MATCH (n:T) RETURN n.x, n.y;

@@ -1,13 +1,12 @@
 //! COPY format dispatch and typed batch insertion.
 
-use koko_binder::BoundCopy;
 use koko_catalog::{Catalog, ColumnDefault};
 use koko_common::warnings::WarningSink;
 use koko_common::{
-    DataChunk, Error, InternalId, LogicalType, MemoryTracker, Result, TableId, VECTOR_CAPACITY,
-    Value,
+    DataChunk, Error, InternalId, LogicalType, MemoryTracker, QueryControl, Result, TableId,
+    VECTOR_CAPACITY, Value,
 };
-use koko_processor::QueryControl;
+use koko_ir::bound::BoundCopy;
 use koko_storage::{SharedStorage, StorageReadHandle, StorageWriteHandle};
 use std::path::{Path, PathBuf};
 
@@ -82,11 +81,12 @@ impl<'a> CopyOperationContext<'a> {
         read: StorageReadHandle,
     ) -> Result<InternalId> {
         let lookup_key = if let Some(table) = self.catalog.node_table(table) {
-            koko_function::cast_value(key, &table.primary_key_column().ty)?
+            koko_function::cast_value(key, table.primary_key_column().logical_type())?
         } else {
             key.clone()
         };
         self.storage
+            .read()
             .find_node_by_pk(read, table, &lookup_key)
             .ok_or_else(|| {
                 Error::copy(format!(
@@ -156,16 +156,20 @@ pub(super) fn run_copy_from_rows(
             .catalog()
             .node_table(copy.table)
             .ok_or_else(|| Error::catalog("COPY into unknown node table".to_string()))?;
-        let table_name = entry.name.clone();
-        let col_types: Vec<LogicalType> = entry.columns.iter().map(|c| c.ty.clone()).collect();
+        let table_name = entry.name().to_string();
+        let col_types: Vec<LogicalType> = entry
+            .columns()
+            .iter()
+            .map(|column| column.logical_type().clone())
+            .collect();
         let input_cols: Vec<usize> = match &copy.columns {
             Some(cols) => cols
                 .iter()
                 .map(|name| {
                     entry
-                        .columns
+                        .columns()
                         .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(name))
+                        .position(|column| column.name().eq_ignore_ascii_case(name))
                         .ok_or_else(|| {
                             Error::binder(format!(
                                 "Table {table_name} does not contain column {name}."
@@ -176,12 +180,10 @@ pub(super) fn run_copy_from_rows(
             // SERIAL columns are not query-fed — they take their sequence
             // defaults (matching the CSV path and the bind-time count).
             None => entry
-                .columns
+                .columns()
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| {
-                    c.ty != LogicalType::Serial && !matches!(c.default, ColumnDefault::NextVal(_))
-                })
+                .filter(|(_, column)| !matches!(column.default(), Some(ColumnDefault::NextVal(_))))
                 .map(|(i, _)| i)
                 .collect(),
         };
@@ -216,7 +218,7 @@ pub(super) fn run_copy_from_rows(
             }
             batch.set_flat(rows.len());
             count += account_copy_insert_results(
-                context.storage().insert_node_batch(
+                context.storage().write().insert_node_batch(
                     context.write(),
                     copy.table,
                     &batch,
@@ -237,18 +239,22 @@ pub(super) fn run_copy_from_rows(
             .into_iter()
             .find(|(member, _, _)| *member == copy.table)
             .ok_or_else(|| Error::catalog("COPY relationship pair is missing".to_string()))?;
-        let prop_types: Vec<LogicalType> = rel.columns.iter().map(|c| c.ty.clone()).collect();
+        let prop_types: Vec<LogicalType> = rel
+            .columns()
+            .iter()
+            .map(|column| column.logical_type().clone())
+            .collect();
         let prop_cols: Vec<usize> = match &copy.columns {
             Some(cols) => cols
                 .iter()
                 .map(|name| {
-                    rel.columns
+                    rel.columns()
                         .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(name))
+                        .position(|column| column.name().eq_ignore_ascii_case(name))
                         .ok_or_else(|| {
                             Error::binder(format!(
                                 "Table {} does not contain column {name}.",
-                                rel.name
+                                rel.name()
                             ))
                         })
                 })
@@ -285,7 +291,7 @@ pub(super) fn run_copy_from_rows(
                     if batch_len > 0 {
                         batch.set_flat(batch_len);
                         count += account_copy_insert_results(
-                            context.storage().insert_rel_batch(
+                            context.storage().write().insert_rel_batch(
                                 context.write(),
                                 copy.table,
                                 &batch,
@@ -327,7 +333,7 @@ pub(super) fn run_copy_from_rows(
             if batch_len == VECTOR_CAPACITY {
                 batch.set_flat(batch_len);
                 count += account_copy_insert_results(
-                    context.storage().insert_rel_batch(
+                    context.storage().write().insert_rel_batch(
                         context.write(),
                         copy.table,
                         &batch,
@@ -343,7 +349,7 @@ pub(super) fn run_copy_from_rows(
         if batch_len > 0 {
             batch.set_flat(batch_len);
             count += account_copy_insert_results(
-                context.storage().insert_rel_batch(
+                context.storage().write().insert_rel_batch(
                     context.write(),
                     copy.table,
                     &batch,
@@ -371,31 +377,28 @@ fn copy_input_types(
                 .iter()
                 .map(|name| {
                     table
-                        .columns
+                        .columns()
                         .iter()
-                        .position(|column| column.name.eq_ignore_ascii_case(name))
+                        .position(|column| column.name().eq_ignore_ascii_case(name))
                         .ok_or_else(|| {
                             Error::binder(format!(
                                 "Table {} does not contain column {name}.",
-                                table.name
+                                table.name()
                             ))
                         })
                 })
                 .collect::<Result<_>>()?,
             None => table
-                .columns
+                .columns()
                 .iter()
                 .enumerate()
-                .filter(|(_, column)| {
-                    column.ty != LogicalType::Serial
-                        && !matches!(column.default, ColumnDefault::NextVal(_))
-                })
+                .filter(|(_, column)| !matches!(column.default(), Some(ColumnDefault::NextVal(_))))
                 .map(|(index, _)| index)
                 .collect(),
         };
         return Ok(indices
             .into_iter()
-            .map(|index| table.columns[index].ty.clone())
+            .map(|index| table.columns()[index].logical_type().clone())
             .collect());
     }
 
@@ -409,14 +412,14 @@ fn copy_input_types(
         .into_iter()
         .find(|(member, _, _)| *member == copy.table)
         .ok_or_else(|| Error::catalog("COPY relationship pair is missing".to_string()))?;
-    let mut types = Vec::with_capacity(rel.columns.len() + 2);
+    let mut types = Vec::with_capacity(rel.columns().len() + 2);
     types.push(
         context
             .catalog()
             .node_table(from)
             .expect("relationship source table exists")
             .primary_key_column()
-            .ty
+            .logical_type()
             .clone(),
     );
     types.push(
@@ -425,7 +428,7 @@ fn copy_input_types(
             .node_table(to)
             .expect("relationship destination table exists")
             .primary_key_column()
-            .ty
+            .logical_type()
             .clone(),
     );
     match &copy.columns {
@@ -434,13 +437,17 @@ fn copy_input_types(
                 let column = rel.column(name).ok_or_else(|| {
                     Error::binder(format!(
                         "Table {} does not contain column {name}.",
-                        rel.name
+                        rel.name()
                     ))
                 })?;
-                types.push(column.ty.clone());
+                types.push(column.logical_type().clone());
             }
         }
-        None => types.extend(rel.columns.iter().map(|column| column.ty.clone())),
+        None => types.extend(
+            rel.columns()
+                .iter()
+                .map(|column| column.logical_type().clone()),
+        ),
     }
     Ok(types)
 }
@@ -470,34 +477,31 @@ fn copy_typed_batch(
             .node_table(copy.table)
             .ok_or_else(|| Error::catalog("COPY into unknown node table".to_string()))?;
         let col_types: Vec<LogicalType> = table
-            .columns
+            .columns()
             .iter()
-            .map(|column| column.ty.clone())
+            .map(|column| column.logical_type().clone())
             .collect();
         let input_cols: Vec<usize> = match &copy.columns {
             Some(columns) => columns
                 .iter()
                 .map(|name| {
                     table
-                        .columns
+                        .columns()
                         .iter()
-                        .position(|column| column.name.eq_ignore_ascii_case(name))
+                        .position(|column| column.name().eq_ignore_ascii_case(name))
                         .ok_or_else(|| {
                             Error::binder(format!(
                                 "Table {} does not contain column {name}.",
-                                table.name
+                                table.name()
                             ))
                         })
                 })
                 .collect::<Result<_>>()?,
             None => table
-                .columns
+                .columns()
                 .iter()
                 .enumerate()
-                .filter(|(_, column)| {
-                    column.ty != LogicalType::Serial
-                        && !matches!(column.default, ColumnDefault::NextVal(_))
-                })
+                .filter(|(_, column)| !matches!(column.default(), Some(ColumnDefault::NextVal(_))))
                 .map(|(index, _)| index)
                 .collect(),
         };
@@ -553,7 +557,7 @@ fn copy_typed_batch(
         }
         output.set_flat(output_row);
         return account_copy_insert_results(
-            context.storage().insert_node_batch(
+            context.storage().write().insert_node_batch(
                 context.write(),
                 copy.table,
                 &output,
@@ -574,18 +578,22 @@ fn copy_typed_batch(
         .into_iter()
         .find(|(member, _, _)| *member == copy.table)
         .ok_or_else(|| Error::catalog("COPY relationship pair is missing".to_string()))?;
-    let prop_types: Vec<LogicalType> = rel.columns.iter().map(|column| column.ty.clone()).collect();
+    let prop_types: Vec<LogicalType> = rel
+        .columns()
+        .iter()
+        .map(|column| column.logical_type().clone())
+        .collect();
     let prop_cols: Vec<usize> = match &copy.columns {
         Some(columns) => columns
             .iter()
             .map(|name| {
-                rel.columns
+                rel.columns()
                     .iter()
-                    .position(|column| column.name.eq_ignore_ascii_case(name))
+                    .position(|column| column.name().eq_ignore_ascii_case(name))
                     .ok_or_else(|| {
                         Error::binder(format!(
                             "Table {} does not contain column {name}.",
-                            rel.name
+                            rel.name()
                         ))
                     })
             })
@@ -656,9 +664,12 @@ fn copy_typed_batch(
     }
     output.set_flat(output_row);
     account_copy_insert_results(
-        context
-            .storage()
-            .insert_rel_batch(context.write(), copy.table, &output, ignore_errors),
+        context.storage().write().insert_rel_batch(
+            context.write(),
+            copy.table,
+            &output,
+            ignore_errors,
+        ),
         ignore_errors,
         context,
     )

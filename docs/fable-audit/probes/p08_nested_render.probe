@@ -1,0 +1,12 @@
+RETURN {a: ['x','y']}
+RETURN typeof({a: ['x','y']})
+RETURN [{a: 'x'}]
+RETURN {a: {b: 'x'}}
+RETURN {a: {b: ['x','y']}}
+RETURN [['x','y'],['z']]
+RETURN {s: {t: 'hello'}}
+RETURN [{s: ['a','b']}]
+RETURN {m: 'plain'}
+RETURN {a: 1, b: 'txt'}
+RETURN {outer: {inner: 'v'}}
+RETURN [{k: ['a']}]

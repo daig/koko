@@ -1,0 +1,79 @@
+PASS  alter_rel_group.AlterRelGroup
+PASS  alter_rel_group.Example
+PASS  ddl.DropAndCreateTables
+PASS  ddl.DDLOutputMessages
+PASS  ddl.CreateRelGroup
+PASS  ddl.CreateNodeTableCommitNormalExecution
+PASS  ddl.CreateRelTableCommitNormalExecution
+PASS  ddl.DropNodeTableCommitNormalExecution
+PASS  ddl.DropRelTableCommitNormalExecution
+FAIL  ddl.AddNodeProperty — statement #17 `CALL TABLE_INFO('Comment') RETURN *`: row mismatch: expected `2|propi|FLOAT|5.4|False`, got `2|propi|FLOAT|5.400000|False`
+PASS  ddl.AddNodePropertyRecovery
+PASS  ddl.AddRelPropertyRecovery
+PASS  ddl.AddRelProperty
+PASS  ddl.DropNodeTablePropertyNormalExecution
+PASS  ddl.DropRelTablePropertyNormalExecution
+PASS  ddl.AddInt64PropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddFixListPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddStringPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddListOfInt64PropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddListOfStringPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddListOfStructPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddMapPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddStructPropertyToPersonTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddInt64PropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddStringPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfInt64PropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfStringPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfListOfStringPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfStructPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddMapPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddStructPropertyToPersonTableWithDefaultValueNormalExecution
+PASS  ddl.AddInt64PropertyToStudyAtTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddStringPropertyToStudyAtTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddListOfInt64PropertyToStudyAtTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddListOfStringPropertyToStudyAtTableWithoutDefaultValueNormalExecution
+PASS  ddl.AddInt64PropertyToStudyAtTableWithDefaultValueNormalExecution
+PASS  ddl.AddStringPropertyToStudyAtTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfINT64PropertyToStudyAtTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfStringPropertyToStudyAtTableWithDefaultValueNormalExecution
+PASS  ddl.AddListOfListOfStringPropertyToStudyAtTableWithDefaultValueNormalExecution
+PASS  ddl.AddPropertyWithComplexExpression
+PASS  ddl.RenameTableNormalExecution
+PASS  ddl.RenamePropertyNormalExecution
+PASS  ddl.CreateTableIfNotExists
+FAIL  ddl.CaseInsensitiveProperty — statement #1 `CREATE NODE TABLE Wrong(id INT64, NAME STRING, name INT64, PRIMARY KEY(id))`: expected error `Binder exception: Duplicated column name: name, column name must be unique.`, got `Binder exception: Duplicate column name name in table definition.`
+PASS  ddl.CreateNodeTableAs
+FAIL  ddl.CreateNodeTableAsDuplicateIntIDs — statement #1 `CREATE NODE TABLE Foo AS LOAD FROM "${KOKO_ROOT_DIRECTORY}/dataset/copy-fault-te…`: expected error `Copy exception: Found duplicated primary key value 10, which violates the uniqueness constraint of the primary key column.`, but statement succeeded
+FAIL  ddl.CreateNodeTableAsEmptyReturn — statement #1 `CREATE NODE TABLE Bar AS RETURN *`: expected error `Binder exception: RETURN or WITH * is not allowed when there are no variables in scope.`, got `Binder exception: RETURN * requires at least one bound variable`
+FAIL  ddl.CreateRelTableAs — statement #5 `MATCH (a:Person2)-[k:Knows2]->(b:Person2) RETURN a.fname, b.fname`: expected 6 row(s), got 5: ["Alice|Carol", "Alice|Dan", "Bob|Alice", "Bob|Carol", "Bob|Dan"]
+PASS  ddl.DropTablesReloadWithoutForceCheckpoint
+PASS  ddl.CreateTableAsExample
+PASS  ddl.EscapeInDataType
+FAIL  ddl_empty.CreateHashIndexWithDefaultPKIndex — statement #3 `CREATE INDEX idx_default_person_pk IF NOT EXISTS FOR (p:idx_default_person) ON (…`: expected rows, got error: Parser exception: expected LParen but found Ident("INDEX")
+FAIL  ddl_empty.CreateHashIndex — statement #6 `CREATE HASH INDEX idx_person_pk IF NOT EXISTS FOR (p:idx_person) ON (p.ID)`: expected rows, got error: Parser exception: expected LParen but found Ident("HASH")
+FAIL  ddl_empty.CreateArtIndex — statement #7 `CREATE ART INDEX art_person_pk FOR (p:art_person) ON (p.ID)`: expected rows, got error: Parser exception: expected LParen but found Ident("ART")
+FAIL  ddl_empty.ArtIndexCopyFrom — statement #3 `CREATE ART INDEX art_copy_person_pk FOR (p:art_copy_person) ON (p.ID)`: expected rows, got error: Parser exception: expected LParen but found Ident("ART")
+FAIL  ddl_empty.ArtIndexUnsupportedCreate — statement #3 `CREATE ART INDEX art_bad_person_name FOR (p:art_bad_person) ON (p.name)`: expected error `Binder exception: ART indexes are currently supported only on node primary keys.`, got `Parser exception: expected LParen but found Ident("ART")`
+PASS  ddl_empty.AddInt64PropertyWithoutDefault
+PASS  ddl_empty.InsertNodeAfterDropAddCol
+PASS  ddl_empty.InsertRelAfterDropAddCol
+PASS  ddl_empty.CopyNodeAfterDropAddCol
+PASS  ddl_empty.CopyNodeAfterDropAddColNewGroup
+PASS  ddl_empty.CopyRelAfterDropAddCol
+PASS  ddl_empty.CopyRelAfterDropAddColNewGroup
+PASS  sequence.CreateDrop
+PASS  sequence.CreateOptions
+PASS  sequence.ExpectedError
+PASS  sequence.ExpectedFunctionError
+PASS  sequence.BasicIncDec
+PASS  sequence.EdgesNoCycle
+PASS  sequence.EdgesCycle
+PASS  sequence.CreateTableDefaultSequence
+PASS  sequence.CreateTableDefaultSequencePKey
+PASS  sequence.CycleSequencePKey
+PASS  sequence.AddPropertySequence
+PASS  sequence.DefaultSharedSequence
+PASS  sequence.DropInvalidSequence
+
+67 passed, 0 skipped, 10 failed

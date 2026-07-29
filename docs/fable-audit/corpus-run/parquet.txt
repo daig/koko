@@ -1,0 +1,3 @@
+SKIP  tinysnb_parquet.TinySnbParquet (dataset `CSV_TO_PARQUET(tinysnb)` is not available)
+
+0 passed, 1 skipped, 0 failed

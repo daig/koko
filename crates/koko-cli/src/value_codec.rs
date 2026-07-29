@@ -1,10 +1,13 @@
 //! Normative typed JSON value boundary shared by parameters and machine output.
 
 use base64::Engine as _;
-use koko::{
-    IntKind, InternalId, Interval, JsonValue, LogicalType, NodeValue, RecursiveRelValue, RelValue,
-    TableId, Value,
+use koko::result::{Cell, CellValue, ResultTypeContext};
+use koko::value::{
+    IntKind, InternalId, Interval, JsonValue, NodeValue, RecursiveRelValue, RelValue, TableId,
+    format_date, format_decimal, format_timestamp, format_uuid, parse_date, parse_decimal,
+    parse_timestamp,
 };
+use koko::{LogicalType, Value};
 use serde::de::{DeserializeSeed, MapAccess, Visitor};
 use std::collections::HashSet;
 use std::fmt;
@@ -162,13 +165,13 @@ fn decode_tagged(
         "JSON" => raw_json(field(object, tag, "value")?).map(Value::Json),
         "DATE" => {
             let text = string_field(object, tag, "value")?;
-            koko::parse_date(text)
+            parse_date(text)
                 .map(Value::Date)
                 .ok_or_else(|| tagged(tag, "`value` is not a canonical date"))
         }
         "TIMESTAMP" | "TIMESTAMP_NS" | "TIMESTAMP_MS" | "TIMESTAMP_SEC" | "TIMESTAMP_TZ" => {
             let text = string_field(object, tag, "value")?;
-            let value = koko::parse_timestamp(text)
+            let value = parse_timestamp(text)
                 .ok_or_else(|| tagged(tag, "`value` is not a canonical timestamp"))?;
             Ok(if tag == "TIMESTAMP" {
                 Value::Timestamp(value)
@@ -258,7 +261,7 @@ fn decode_decimal(
             "precision and scale must satisfy 1 <= scale <= precision <= 38, except scale may be zero",
         ));
     }
-    let value = koko::parse_decimal(string_field(object, tag, "value")?, scale)
+    let value = parse_decimal(string_field(object, tag, "value")?, scale)
         .ok_or_else(|| tagged(tag, "`value` is not a plain decimal"))?;
     if value.unsigned_abs() >= 10_u128.pow(u32::from(precision)) {
         return Err(tagged(tag, "`value` exceeds precision"));
@@ -596,44 +599,44 @@ pub enum EncodeError {
 /// Stream one borrowed result cell through the normative machine mapping.
 pub fn write_cell(
     writer: &mut impl std::io::Write,
-    cell: koko::CellRef<'_>,
-    context: &koko::ResultTypeContext,
+    cell: Cell<'_>,
+    context: &ResultTypeContext,
 ) -> Result<(), EncodeError> {
-    use koko::CellValueRef;
     match cell.value() {
-        CellValueRef::Null => writer.write_all(b"null")?,
-        CellValueRef::Bool(value) => write_bool(writer, value)?,
-        CellValueRef::Int { value, .. } => {
+        CellValue::Null => writer.write_all(b"null")?,
+        CellValue::Bool(value) => write_bool(writer, value)?,
+        CellValue::Int { value, .. } => {
             write_integer(writer, value, &cell.logical_type().to_string())?
         }
-        CellValueRef::UInt128(value) => {
+        CellValue::UInt128(value) => {
             write_unsigned_integer(writer, value, &cell.logical_type().to_string())?
         }
-        CellValueRef::Decimal {
+        CellValue::Decimal {
             value,
             precision,
             scale,
         } => write_decimal(writer, value, precision, scale)?,
-        CellValueRef::Double(value) => write_float(writer, value, "DOUBLE")?,
-        CellValueRef::Float(value) => write_float(writer, f64::from(value), "FLOAT")?,
-        CellValueRef::String(value) => write_json_string(writer, value)?,
-        CellValueRef::Date(value) => write_text_wrapper(writer, "DATE", &koko::format_date(value))?,
-        CellValueRef::Timestamp(value) => write_text_wrapper(
+        CellValue::Double(value) => write_float(writer, value, "DOUBLE")?,
+        CellValue::Float(value) => write_float(writer, f64::from(value), "FLOAT")?,
+        CellValue::String(value) => write_json_string(writer, value)?,
+        CellValue::Date(value) => write_text_wrapper(writer, "DATE", &format_date(value))?,
+        CellValue::Timestamp(value) => write_text_wrapper(
             writer,
             &cell.logical_type().to_string(),
-            &koko::format_timestamp(value),
+            &format_timestamp(value),
         )?,
-        CellValueRef::TimestampTz(value) => write_text_wrapper(
+        CellValue::TimestampTz(value) => write_text_wrapper(
             writer,
             "TIMESTAMP_TZ",
-            &format!("{}+00", koko::format_timestamp(value)),
+            &format!("{}+00", format_timestamp(value)),
         )?,
-        CellValueRef::Interval(value) => write_interval(writer, value)?,
-        CellValueRef::Uuid(value) => write_text_wrapper(writer, "UUID", &koko::format_uuid(value))?,
-        CellValueRef::InternalId(value) => write_internal_id(writer, value)?,
-        CellValueRef::Generic(value) => {
+        CellValue::Interval(value) => write_interval(writer, value)?,
+        CellValue::Uuid(value) => write_text_wrapper(writer, "UUID", &format_uuid(value))?,
+        CellValue::InternalId(value) => write_internal_id(writer, value)?,
+        CellValue::Generic(value) => {
             write_typed_value(writer, value, cell.logical_type(), context)?
         }
+        _ => write_typed_value(writer, &cell.to_owned(), cell.logical_type(), context)?,
     }
     Ok(())
 }
@@ -643,7 +646,7 @@ pub fn write_typed_value(
     writer: &mut impl std::io::Write,
     value: &Value,
     logical_type: &LogicalType,
-    context: &koko::ResultTypeContext,
+    context: &ResultTypeContext,
 ) -> Result<(), EncodeError> {
     match value {
         Value::Null => writer.write_all(b"null")?,
@@ -662,19 +665,17 @@ pub fn write_typed_value(
         Value::Float(value) => write_float(writer, f64::from(*value), "FLOAT")?,
         Value::String(value) => write_json_string(writer, value)?,
         Value::Json(value) => write_raw_json(writer, value)?,
-        Value::Date(value) => write_text_wrapper(writer, "DATE", &koko::format_date(*value))?,
-        Value::Timestamp(value) => write_text_wrapper(
-            writer,
-            &logical_type.to_string(),
-            &koko::format_timestamp(*value),
-        )?,
+        Value::Date(value) => write_text_wrapper(writer, "DATE", &format_date(*value))?,
+        Value::Timestamp(value) => {
+            write_text_wrapper(writer, &logical_type.to_string(), &format_timestamp(*value))?
+        }
         Value::TimestampTz(value) => write_text_wrapper(
             writer,
             "TIMESTAMP_TZ",
-            &format!("{}+00", koko::format_timestamp(*value)),
+            &format!("{}+00", format_timestamp(*value)),
         )?,
         Value::Interval(value) => write_interval(writer, *value)?,
-        Value::Uuid(value) => write_text_wrapper(writer, "UUID", &koko::format_uuid(*value))?,
+        Value::Uuid(value) => write_text_wrapper(writer, "UUID", &format_uuid(*value))?,
         Value::Blob(value) => write_blob(writer, value)?,
         Value::List(values) => {
             let element_type = match logical_type {
@@ -794,7 +795,7 @@ fn write_decimal(
         writer,
         r#"{{"$type":"DECIMAL","precision":{precision},"scale":{scale},"value":"#
     )?;
-    write_json_string(writer, &koko::format_decimal(value, scale))?;
+    write_json_string(writer, &format_decimal(value, scale))?;
     writer.write_all(b"}")?;
     Ok(())
 }
@@ -874,7 +875,7 @@ fn write_internal_id(
 fn write_node(
     writer: &mut impl std::io::Write,
     value: &NodeValue,
-    context: &koko::ResultTypeContext,
+    context: &ResultTypeContext,
 ) -> Result<(), EncodeError> {
     writer.write_all(br#"{"$type":"NODE","id":"#)?;
     write_internal_id(writer, value.id)?;
@@ -898,7 +899,7 @@ fn write_node(
 fn write_rel(
     writer: &mut impl std::io::Write,
     value: &RelValue,
-    context: &koko::ResultTypeContext,
+    context: &ResultTypeContext,
 ) -> Result<(), EncodeError> {
     writer.write_all(br#"{"$type":"REL","id":"#)?;
     write_internal_id(writer, value.id)?;
@@ -926,7 +927,7 @@ fn write_rel(
 fn write_recursive_rel(
     writer: &mut impl std::io::Write,
     value: &RecursiveRelValue,
-    context: &koko::ResultTypeContext,
+    context: &ResultTypeContext,
 ) -> Result<(), EncodeError> {
     writer.write_all(br#"{"$type":"RECURSIVE_REL","nodes":["#)?;
     for (index, node) in value.nodes.iter().enumerate() {
@@ -953,7 +954,7 @@ fn write_recursive_rel(
 }
 
 fn graph_property_type<'a>(
-    context: &'a koko::ResultTypeContext,
+    context: &'a ResultTypeContext,
     table: u64,
     name: &str,
 ) -> Option<&'a LogicalType> {
@@ -962,7 +963,7 @@ fn graph_property_type<'a>(
         .properties()
         .iter()
         .find(|property| property.name() == name)
-        .map(koko::PropertyDescriptor::logical_type)
+        .map(|property| property.logical_type())
 }
 
 fn value_type(value: &Value) -> &LogicalType {

@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "divergences": {
+    "alter-table-kind-first": [
+      {
+        "fixture": "alter_rel_group.test",
+        "statement": "ALTER TABLE Person ADD FROM Person TO Person"
+      }
+    ],
+    "contextual-null-union-typing": [
+      {
+        "fixture": "union.test",
+        "statement": "RETURN 1 AS x UNION ALL RETURN null AS x"
+      }
+    ],
+    "count-distinct-factorized": [
+      {
+        "fixture": "factorization.test",
+        "statement": "MATCH (a:P)-[:K]->(b:P) WHERE a.id = 0 RETURN count(DISTINCT a.id)"
+      }
+    ],
+    "ddl-error-vector": [
+      {
+        "fixture": "ddl.test",
+        "statement": "CREATE (:Q {id: 101})"
+      },
+      {
+        "fixture": "ddl.test",
+        "statement": "MATCH (q:Q) RETURN q.id ORDER BY q.id"
+      }
+    ],
+    "list-comprehension-syntax": [
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN [1,2,3,4,5] WHERE x > 2 | x * 10]"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN [1,2,3] | x + 1], [x IN [1,NULL,3] WHERE x > 0], [x IN [1,2,3]]"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN NULL WHERE true | x] IS NULL"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "UNWIND [10,20] AS base RETURN base, [x IN [1,2,3] WHERE x < 3 | x + base] ORDER BY base"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN [1,2] | [x IN [x,x+1] WHERE x > 1 | x * 10]]"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN [1,2] WHERE x | x]"
+      },
+      {
+        "fixture": "list_comprehension.test",
+        "statement": "RETURN [x IN [1,2] WHERE x > 0 | x], x"
+      }
+    ],
+    "numeric-variadic-extrema": [
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(1, 9, 4), least(3, 1, 2)"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN typeof(greatest(CAST(1 AS INT8), CAST(200 AS UINT8))), greatest(CAST(1 AS INT8), CAST(200 AS UINT8)), typeof(greatest(CAST(1 AS FLOAT), CAST(3 AS DOUBLE), 2.5)), greatest(CAST(1 AS FLOAT), CAST(3 AS DOUBLE), 2.5), typeof(greatest(CAST(1.25 AS DECIMAL(4,2)), CAST(9 AS INT64))), greatest(CAST(1.25 AS DECIMAL(4,2)), CAST(9 AS INT64))"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(CAST(340282366920938463463374607431768211455 AS UINT128), CAST(1 AS UINT64)), least(CAST(340282366920938463463374607431768211455 AS UINT128), CAST(1 AS UINT64)), typeof(greatest(CAST(7 AS UINT128), CAST(1 AS UINT64)))"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(1, NULL, 3), least(NULL, 2), typeof(greatest(1, NULL, 3)), typeof(least(NULL, CAST(2 AS INT16)))"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(CAST(-0.0 AS DOUBLE), CAST(0.0 AS DOUBLE)), greatest(CAST(0.0 AS DOUBLE), CAST(-0.0 AS DOUBLE))"
+      },
+      {
+        "fixture": "introspection.test",
+        "statement": "CALL show_functions() WHERE name IN ['GREATEST', 'LEAST'] AND signature = '(NUMERIC,NUMERIC,...) -> NUMERIC' RETURN name ORDER BY name"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(1)"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN least('a', 'b')"
+      },
+      {
+        "fixture": "scalars.test",
+        "statement": "RETURN greatest(1, date('2020-01-01'))"
+      }
+    ],
+    "pk-float-probe": [
+      {
+        "fixture": "index_scan.test",
+        "statement": "MATCH (n:N) WHERE n.id = 2.0 RETURN n.val"
+      }
+    ]
+  }
+}

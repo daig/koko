@@ -1,0 +1,14 @@
+// DIRECT display of list literal of strings
+RETURN ['toronto','montr,eal']
+// DIRECT display of struct with nested list of strings
+RETURN {x: ['a','b']}
+// DIRECT display, single string in list
+RETURN ['plain']
+// string() cast of top-level list
+RETURN string(['a','b'])
+// string() cast of struct
+RETURN string({x: ['a','b']})
+// list of int (no strings) direct
+RETURN [1,2,3]
+// nested list of strings direct
+RETURN [['a'],['b','c']]

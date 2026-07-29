@@ -1,0 +1,6 @@
+FAIL  unwind.Unwind — statement #2 `MATCH p = (a:person)-[e:knows*1..2]->(b:person) UNWIND nodes(p) AS n SET n.fName…`: expected error `Binder exception: Cannot set expression n with type VARIABLE. Expect node or rel pattern.`, got `Binder exception: Cannot set a property on n: it is not a node or relationship.`
+PASS  unwind.UnwindNull
+PASS  unwind_list_node.UnwindListOfNodes
+SKIP  unwind_mixed.UnwindMixedTypes (dataset `EMPTY` is not available)
+
+2 passed, 1 skipped, 1 failed

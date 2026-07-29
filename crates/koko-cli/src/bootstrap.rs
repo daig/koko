@@ -3,6 +3,7 @@
 use crate::parameter::{ParameterError, ParameterStore};
 use crate::registry::{OPTION_REGISTRY, OptionId, OptionSpec, clap_command};
 use clap::error::ErrorKind;
+use koko::tooling::version;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 
@@ -295,7 +296,7 @@ where
             return Ok(BootstrapAction::Print(format!(
                 "koko {}\nKoko engine {}\n",
                 env!("CARGO_PKG_VERSION"),
-                koko::version()
+                version()
             )));
         }
         Err(error) => return Err(BootstrapError::Usage(error.to_string())),

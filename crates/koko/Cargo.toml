@@ -12,6 +12,7 @@ koko-catalog = { workspace = true }
 koko-storage = { workspace = true }
 koko-parser = { workspace = true }
 koko-binder = { workspace = true }
+koko-ir = { workspace = true }
 koko-planner = { workspace = true }
 koko-expr = { workspace = true }
 koko-function = { workspace = true }

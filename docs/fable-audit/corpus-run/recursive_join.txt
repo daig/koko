@@ -1,0 +1,15 @@
+FAIL  multi_label.VarLengthMultiLabel — statement #12 `MATCH p = (a)-[e*2..3 (r, n | WHERE n.ID + offset(id(r)) < 3)]->(b) RETURN p`: expected error `Binder exception: Cannot evaluate LESS_THAN(+(n.ID,OFFSET(r._ID)),3) because it depends on both n and r.`, got `Binder exception: Cannot evaluate LESS_THAN(+(STRUCT_EXTRACT(n,ID),OFFSET(r._ID)),3) because it depends on both n and r.`
+PASS  n_1.VarLengthExtendN1Tests
+PASS  n_n.VarLengthExtendNNTests
+PASS  range_literal.SingleUpperBound
+PASS  range_literal.BothBound
+PASS  range_literal.SingleAsterisk
+PASS  range_literal.NoBound
+PASS  range_literal.CreateRangeLiteralTest
+PASS  range_literal.ExceedsVarLengthExceptionTest
+PASS  range_literal.ZeroBound
+PASS  semantic.SemanticTest
+SKIP  semantic_empty.TwoCycle (dataset `EMPTY` is not available)
+SKIP  semantic_empty.ThreeCycle (dataset `EMPTY` is not available)
+
+10 passed, 2 skipped, 1 failed

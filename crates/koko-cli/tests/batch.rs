@@ -315,7 +315,7 @@ fn bat_08_output_collision_atomic_rollback_unicode_and_broken_pipe() {
         .success();
     assert_eq!(std::fs::read_to_string(&destination).unwrap(), "value\n9\n");
 
-    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("koko"))
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("koko"))
         .args([
             "--no-config",
             "--command",

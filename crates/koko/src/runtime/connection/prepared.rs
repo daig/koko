@@ -1,137 +1,21 @@
 //! Prepared-statement metadata, invalidation, and execution delegation.
 
-use super::execution::statement_writes;
+use super::execution::{normalize_query_parameters, statement_writes};
 use super::{Connection, ConnectionState};
+use crate::execution::Parameter;
 use crate::macros::{self, MacroRegistry};
+use crate::prepared::{ParameterInfo, PreparedStatement, StatementKind};
+use crate::result::Column;
 use crate::runtime::context::binder_config_from_settings;
 use crate::runtime::graph::{GraphData, GraphId};
-use crate::{ColumnSchema, Error, LogicalType, QueryResult, Result, Value};
-use koko_binder::{BoundStatement, SessionConfig};
+use crate::{Error, LogicalType, QueryResult, Result, Value};
+use koko_binder::config::SessionConfig;
 use koko_catalog::Catalog;
 use koko_common::Ts;
+use koko_ir::bound::BoundStatement;
 use koko_parser::parse_statement;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
-
-/// The syntactic kind of a prepared statement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreparedStatementType {
-    Query,
-    CreateGraph,
-    UseGraph,
-    DropGraph,
-    CreateIndex,
-    DropIndex,
-    CreateNodeTable,
-    CreateRelTable,
-    CreateTableAs,
-    DropTable,
-    AlterTable,
-    CreateSequence,
-    DropSequence,
-    Comment,
-    CreateType,
-    Copy,
-    CopyTo,
-    ExportDatabase,
-    ImportDatabase,
-    CreateMacro,
-    DropMacro,
-    Call,
-    Transaction,
-    Explain,
-    Profile,
-}
-
-/// One borrowed named query parameter with an optional declared type.
-#[derive(Debug, Clone, Copy)]
-pub struct QueryParameter<'a> {
-    name: &'a str,
-    value: &'a Value,
-    declared_type: Option<&'a LogicalType>,
-}
-
-impl<'a> QueryParameter<'a> {
-    pub const fn new(name: &'a str, value: &'a Value) -> Self {
-        Self {
-            name,
-            value,
-            declared_type: None,
-        }
-    }
-
-    pub const fn typed(name: &'a str, value: &'a Value, declared_type: &'a LogicalType) -> Self {
-        Self {
-            name,
-            value,
-            declared_type: Some(declared_type),
-        }
-    }
-
-    pub const fn name(&self) -> &'a str {
-        self.name
-    }
-
-    pub const fn value(&self) -> &'a Value {
-        self.value
-    }
-
-    pub const fn declared_type(&self) -> Option<&'a LogicalType> {
-        self.declared_type
-    }
-}
-
-/// One named query parameter and the type supplied when metadata was last bound.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParameterMetadata {
-    name: String,
-    logical_type: LogicalType,
-}
-
-impl ParameterMetadata {
-    #[cfg(test)]
-    pub(crate) fn new(name: String, logical_type: LogicalType) -> Self {
-        Self { name, logical_type }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn logical_type(&self) -> &LogicalType {
-        &self.logical_type
-    }
-}
-
-/// Whether and how a prepared statement mutates database state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PreparedWriteMetadata {
-    statement_type: PreparedStatementType,
-    read_only: bool,
-}
-
-impl PreparedWriteMetadata {
-    #[cfg(test)]
-    pub(crate) const fn new(statement_type: PreparedStatementType, read_only: bool) -> Self {
-        Self {
-            statement_type,
-            read_only,
-        }
-    }
-
-    pub fn statement_type(self) -> PreparedStatementType {
-        self.statement_type
-    }
-
-    pub fn is_read_only(self) -> bool {
-        self.read_only
-    }
-
-    pub fn writes(self) -> bool {
-        !self.read_only
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PreparedCatalogToken {
@@ -164,64 +48,49 @@ impl PreparedCatalogToken {
 }
 
 #[derive(Debug)]
-struct PreparedMetadata {
+pub(crate) struct Metadata {
     catalog_token: PreparedCatalogToken,
-    parameters: Vec<ParameterMetadata>,
-    result_schema: Vec<ColumnSchema>,
-}
-
-/// A parsed and initially bound Cypher statement, ready for repeated execution.
-///
-/// Execution re-binds against current parameter values. If catalog state changed
-/// since the previous bind, metadata is rebuilt against the current catalog before
-/// execution, so a dropped or reshaped dependency fails safely in the binder.
-pub struct PreparedStatement<'conn> {
-    conn: &'conn Connection,
-    stmt: koko_parser::ast::Statement,
-    parameter_names: Vec<String>,
-    metadata: RefCell<PreparedMetadata>,
+    parameters: Vec<ParameterInfo>,
+    columns: Vec<Column>,
 }
 
 impl PreparedStatement<'_> {
-    pub fn parameters(&self) -> Vec<ParameterMetadata> {
-        self.metadata.borrow().parameters.clone()
+    pub fn parameters(&self) -> &[ParameterInfo] {
+        &self.metadata.parameters
     }
 
-    pub fn result_schema(&self) -> Vec<ColumnSchema> {
-        self.metadata.borrow().result_schema.clone()
+    pub fn columns(&self) -> &[Column] {
+        &self.metadata.columns
     }
 
-    pub fn statement_type(&self) -> PreparedStatementType {
-        prepared_statement_type(&self.stmt)
+    pub fn kind(&self) -> StatementKind {
+        statement_kind(&self.stmt)
     }
 
     pub fn is_read_only(&self) -> bool {
         !statement_writes(&self.stmt)
     }
 
-    pub fn write_metadata(&self) -> PreparedWriteMetadata {
-        PreparedWriteMetadata {
-            statement_type: self.statement_type(),
-            read_only: self.is_read_only(),
-        }
+    pub fn execute(&mut self) -> Result<QueryResult> {
+        self.execute_with(std::iter::empty())
     }
 
-    /// Execute with the given `$name` parameter values. Metadata is rebound first,
+    /// Execute with one owned parameter set. Metadata is rebound first,
     /// including after transactional or committed catalog changes.
-    pub fn execute(&self, params: &[(&str, Value)]) -> Result<QueryResult> {
+    pub fn execute_with(
+        &mut self,
+        parameters: impl IntoIterator<Item = Parameter>,
+    ) -> Result<QueryResult> {
         let metadata_started = Instant::now();
-        let (catalog_token, parameters, result_schema) =
+        let values = normalize_query_parameters(parameters)?;
+        let (catalog_token, parameter_info, columns) =
             self.conn
-                .prepared_metadata(&self.stmt, &self.parameter_names, params)?;
-        {
-            let mut metadata = self.metadata.borrow_mut();
-            let _catalog_changed = metadata.catalog_token != catalog_token;
-            metadata.catalog_token = catalog_token;
-            metadata.parameters = parameters;
-            metadata.result_schema = result_schema;
-        }
+                .prepared_metadata(&self.stmt, &self.parameter_names, &values)?;
+        self.metadata.catalog_token = catalog_token;
+        self.metadata.parameters = parameter_info;
+        self.metadata.columns = columns;
         self.conn
-            .execute_parsed(&self.stmt, params, metadata_started.elapsed())
+            .execute_parsed(&self.stmt, values, metadata_started.elapsed())
     }
 }
 
@@ -255,34 +124,34 @@ fn statement_parameter_names(cypher: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
-fn prepared_statement_type(stmt: &koko_parser::ast::Statement) -> PreparedStatementType {
+fn statement_kind(stmt: &koko_parser::ast::Statement) -> StatementKind {
     use koko_parser::ast::Statement;
     match stmt {
-        Statement::Query(_) => PreparedStatementType::Query,
-        Statement::CreateGraph(_) => PreparedStatementType::CreateGraph,
-        Statement::UseGraph { .. } => PreparedStatementType::UseGraph,
-        Statement::DropGraph { .. } => PreparedStatementType::DropGraph,
-        Statement::CreateIndex(_) => PreparedStatementType::CreateIndex,
-        Statement::DropIndex(_) => PreparedStatementType::DropIndex,
-        Statement::CreateNodeTable(_) => PreparedStatementType::CreateNodeTable,
-        Statement::CreateRelTable(_) => PreparedStatementType::CreateRelTable,
-        Statement::CreateTableAs(_) => PreparedStatementType::CreateTableAs,
-        Statement::DropTable(_) => PreparedStatementType::DropTable,
-        Statement::Alter(_) => PreparedStatementType::AlterTable,
-        Statement::CreateSequence(_) => PreparedStatementType::CreateSequence,
-        Statement::DropSequence(_) => PreparedStatementType::DropSequence,
-        Statement::Comment(_) => PreparedStatementType::Comment,
-        Statement::CreateType(_) => PreparedStatementType::CreateType,
-        Statement::Copy(_) => PreparedStatementType::Copy,
-        Statement::CopyTo(_) => PreparedStatementType::CopyTo,
-        Statement::ExportDatabase(_) => PreparedStatementType::ExportDatabase,
-        Statement::ImportDatabase(_) => PreparedStatementType::ImportDatabase,
-        Statement::CreateMacro(_) => PreparedStatementType::CreateMacro,
-        Statement::DropMacro { .. } => PreparedStatementType::DropMacro,
-        Statement::Call(_) => PreparedStatementType::Call,
-        Statement::Transaction(_) => PreparedStatementType::Transaction,
-        Statement::Explain { profile: true, .. } => PreparedStatementType::Profile,
-        Statement::Explain { profile: false, .. } => PreparedStatementType::Explain,
+        Statement::Query(_) => StatementKind::Query,
+        Statement::CreateGraph(_) => StatementKind::CreateGraph,
+        Statement::UseGraph { .. } => StatementKind::UseGraph,
+        Statement::DropGraph { .. } => StatementKind::DropGraph,
+        Statement::CreateIndex(_) => StatementKind::CreateIndex,
+        Statement::DropIndex(_) => StatementKind::DropIndex,
+        Statement::CreateNodeTable(_) => StatementKind::CreateNodeTable,
+        Statement::CreateRelTable(_) => StatementKind::CreateRelTable,
+        Statement::CreateTableAs(_) => StatementKind::CreateTableAs,
+        Statement::DropTable(_) => StatementKind::DropTable,
+        Statement::Alter(_) => StatementKind::AlterTable,
+        Statement::CreateSequence(_) => StatementKind::CreateSequence,
+        Statement::DropSequence(_) => StatementKind::DropSequence,
+        Statement::Comment(_) => StatementKind::Comment,
+        Statement::CreateType(_) => StatementKind::CreateType,
+        Statement::Copy(_) => StatementKind::Copy,
+        Statement::CopyTo(_) => StatementKind::CopyTo,
+        Statement::ExportDatabase(_) => StatementKind::ExportDatabase,
+        Statement::ImportDatabase(_) => StatementKind::ImportDatabase,
+        Statement::CreateMacro(_) => StatementKind::CreateMacro,
+        Statement::DropMacro { .. } => StatementKind::DropMacro,
+        Statement::Call(_) => StatementKind::Call,
+        Statement::Transaction(_) => StatementKind::Transaction,
+        Statement::Explain { profile: true, .. } => StatementKind::Profile,
+        Statement::Explain { profile: false, .. } => StatementKind::Explain,
     }
 }
 
@@ -293,7 +162,7 @@ fn prepared_bind_metadata(
     parameter_names: &[String],
     initial_types: &HashMap<String, LogicalType>,
     config: &SessionConfig,
-) -> Result<(HashMap<String, LogicalType>, Vec<ColumnSchema>)> {
+) -> Result<(HashMap<String, LogicalType>, Vec<Column>)> {
     use koko_parser::ast::{CallStmt, Statement};
 
     let unconstrained_parameters = || {
@@ -328,12 +197,12 @@ fn prepared_bind_metadata(
         }) => {
             let columns = koko_binder::table_func_schema(
                 catalog,
-                koko_binder::BoundTableFunc::from(*func),
+                koko_binder::bound_table_func(*func),
                 arg.as_deref(),
                 extra_args,
             )?
             .into_iter()
-            .map(|(name, logical_type)| ColumnSchema::new(name, logical_type))
+            .map(|(name, logical_type)| Column::new(name, logical_type))
             .collect();
             return Ok((unconstrained_parameters(), columns));
         }
@@ -346,7 +215,7 @@ fn prepared_bind_metadata(
         | Statement::DropGraph { .. } => {
             return Ok((
                 unconstrained_parameters(),
-                vec![ColumnSchema::new("result".to_string(), LogicalType::String)],
+                vec![Column::new("result".to_string(), LogicalType::String)],
             ));
         }
         _ => {}
@@ -367,47 +236,43 @@ fn prepared_bind_metadata(
         config,
     )?;
     let columns = match prepared.statement {
-        BoundStatement::Query(query) => query
-            .operands
-            .first()
-            .map(koko_binder::BoundQuery::result_columns)
-            .unwrap_or_default(),
+        BoundStatement::Query(query) => query.result_columns().to_vec(),
         BoundStatement::CopyTo(copy) => copy.columns,
         _ => vec![("result".to_string(), LogicalType::String)],
     }
     .into_iter()
-    .map(|(name, logical_type)| ColumnSchema::new(name, logical_type))
+    .map(|(name, logical_type)| Column::new(name, logical_type))
     .collect();
     Ok((prepared.parameter_types, columns))
 }
 
 impl Connection {
-    /// Parse and bind a statement for repeated execution, publishing its parameter,
-    /// result-schema, statement-kind, and read/write metadata.
+    /// Parse and bind a statement for repeated execution.
     pub fn prepare(&self, cypher: &str) -> Result<PreparedStatement<'_>> {
-        self.prepare_with_params(cypher, &[])
+        self.prepare_with(cypher, std::iter::empty())
     }
 
-    /// Prepare with initial parameter values so parameter-dependent result types are
-    /// known immediately. Every execution still re-binds against its supplied values.
-    pub fn prepare_with_params(
+    /// Prepare with initial parameter values so parameter-dependent result
+    /// types are known immediately. Values are not retained for execution.
+    pub fn prepare_with(
         &self,
         cypher: &str,
-        params: &[(&str, Value)],
+        parameters: impl IntoIterator<Item = Parameter>,
     ) -> Result<PreparedStatement<'_>> {
         let stmt = parse_statement(cypher)?;
         let parameter_names = statement_parameter_names(cypher)?;
-        let (catalog_token, parameters, result_schema) =
-            self.prepared_metadata(&stmt, &parameter_names, params)?;
+        let values = normalize_query_parameters(parameters)?;
+        let (catalog_token, parameters, columns) =
+            self.prepared_metadata(&stmt, &parameter_names, &values)?;
         Ok(PreparedStatement {
             conn: self,
             stmt,
             parameter_names,
-            metadata: RefCell::new(PreparedMetadata {
+            metadata: Metadata {
                 catalog_token,
                 parameters,
-                result_schema,
-            }),
+                columns,
+            },
         })
     }
 
@@ -415,29 +280,21 @@ impl Connection {
         &self,
         stmt: &koko_parser::ast::Statement,
         parameter_names: &[String],
-        params: &[(&str, Value)],
-    ) -> Result<(
-        PreparedCatalogToken,
-        Vec<ParameterMetadata>,
-        Vec<ColumnSchema>,
-    )> {
+        values: &HashMap<String, Value>,
+    ) -> Result<(PreparedCatalogToken, Vec<ParameterInfo>, Vec<Column>)> {
         let _execution = self
             .execution
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let (scalar_udfs, scalar_udf_generation) = self.scalar_udf_snapshot();
-        if let Some((name, _)) = params
-            .iter()
-            .find(|(name, _)| !parameter_names.iter().any(|expected| expected == name))
+        if let Some(name) = values
+            .keys()
+            .find(|name| !parameter_names.iter().any(|expected| expected == *name))
         {
             return Err(Error::binder(format!(
                 "Unexpected prepared-statement parameter ${name}."
             )));
         }
-        let values: HashMap<String, Value> = params
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.clone()))
-            .collect();
         let database = self.inner.lock().unwrap_or_else(|error| error.into_inner());
         let mut connection = self.state.lock().unwrap_or_else(|error| error.into_inner());
         let graph = Self::selected_graph(&database, &mut connection)?;
@@ -454,7 +311,7 @@ impl Connection {
             .iter()
             .map(|(name, value)| (name.clone(), value.logical_type()))
             .collect();
-        let (inferred_parameters, result_schema) = prepared_bind_metadata(
+        let (inferred_parameters, columns) = prepared_bind_metadata(
             &graph_data.catalog,
             &graph_data.macros,
             stmt,
@@ -469,7 +326,7 @@ impl Connection {
                     .get(name)
                     .cloned()
                     .unwrap_or(LogicalType::Any);
-                ParameterMetadata {
+                ParameterInfo {
                     name: name.clone(),
                     logical_type: if inferred == LogicalType::Any {
                         values
@@ -485,7 +342,7 @@ impl Connection {
         Ok((
             PreparedCatalogToken::current(graph.id, graph_data, &connection, scalar_udf_generation),
             parameters,
-            result_schema,
+            columns,
         ))
     }
 }

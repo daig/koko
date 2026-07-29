@@ -1,0 +1,543 @@
+FAIL  Aggregation1.Scenario1 — statement #2 `CREATE (:A {name: 'a', num: 33}), (:A {name: 'b', num: 42}), ({name: 'a'})`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  Aggregation1.Scenario2
+PASS  Aggregation2.Scenario1
+PASS  Aggregation2.Scenario2
+PASS  Aggregation2.Scenario3
+PASS  Aggregation2.Scenario4
+SKIP  Aggregation2.Scenario5 (-SKIP)
+SKIP  Aggregation2.Scenario6 (-SKIP)
+PASS  Aggregation2.Scenario7
+PASS  Aggregation2.Scenario8
+SKIP  Aggregation2.Scenario9 (-SKIP)
+SKIP  Aggregation2.Scenario10 (-SKIP)
+SKIP  Aggregation2.Scenario11 (-SKIP)
+SKIP  Aggregation2.Scenario12 (-SKIP)
+PASS  Aggregation3.Scenario1
+PASS  Aggregation3.Scenario2
+SKIP  Aggregation5.Scenario1 (-SKIP)
+SKIP  Aggregation5.Scenario2 (-SKIP)
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/aggregation/Aggregation6.test: statement `CREATE ({price: 10.0}), ({price: 20.0}), ({price: 30.0});` is missing a `----` result block
+SKIP  Aggregation8.Scenario1 (-SKIP)
+FAIL  Aggregation8.Scenario2 — statement #2 `CREATE ()`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  Aggregation8.Scenario3
+PASS  Aggregation8.Scenario4
+PASS  Boolean1.Scenario1
+PASS  Boolean1.Scenario2
+PASS  Boolean1.Scenario3
+PASS  Boolean1.Scenario4
+SKIP  Boolean1.Scenario5 (-SKIP)
+PASS  Boolean1.Scenario6
+SKIP  Boolean1.Scenario7 (-SKIP)
+PASS  Boolean1.Scenario8
+PASS  Boolean2.Scenario1
+PASS  Boolean2.Scenario2
+PASS  Boolean2.Scenario3
+PASS  Boolean2.Scenario4
+SKIP  Boolean2.Scenario5 (-SKIP)
+PASS  Boolean2.Scenario6
+SKIP  Boolean2.Scenario7 (-SKIP)
+PASS  Boolean2.Scenario8
+PASS  Boolean3.Scenario1
+PASS  Boolean3.Scenario2
+PASS  Boolean3.Scenario3
+PASS  Boolean3.Scenario4
+SKIP  Boolean3.Scenario5 (-SKIP)
+PASS  Boolean3.Scenario6
+SKIP  Boolean3.Scenario7 (-SKIP)
+PASS  Boolean3.Scenario8
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/boolean/Boolean4.test: statement `CREATE (A:{name: 'a'});` is missing a `----` result block
+PASS  Boolean5.Scenario1
+SKIP  Boolean5.Scenario2 (-SKIP)
+PASS  Boolean5.Scenario3
+SKIP  Boolean5.Scenario4 (-SKIP)
+PASS  Boolean5.Scenario5
+SKIP  Boolean5.Scenario6 (-SKIP)
+SKIP  Boolean5.Scenario7 (-SKIP)
+SKIP  Boolean5.Scenario8 (-SKIP)
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/comparison/Comparison1.test: statement `CREATE ({id: 0});` is missing a `----` result block
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/comparison/Comparison2.test: statement `CREATE (root:Root)-[:T]->(:Child {var: '0'}), (root)-[:T]->(:Child {var: 'xx'}), (root)-[:T]->(:Child);` is missing a `----` result block
+PASS  Comparison3.Scenario1
+PASS  Comparison3.Scenario2
+PASS  Comparison3.Scenario3
+PASS  Comparison3.Scenario4
+PASS  Comparison3.Scenario5
+PASS  Comparison3.Scenario6
+PASS  Comparison3.Scenario7
+PASS  Comparison3.Scenario8
+PASS  Comparison3.Scenario9
+PASS  Comparison4.Scenario1
+PASS  Conditional2.Scenario1
+SKIP  Conditional2.Scenario1b (-SKIP)
+PASS  List1.Scenario1
+PASS  List1.Scenario2
+SKIP  List1.Scenario3 (-SKIP)
+SKIP  List1.Scenario4 (-SKIP)
+SKIP  List1.Scenario5 (-SKIP)
+PASS  List1.Scenario8
+PASS  List11.Scenario1
+PASS  List11.Scenario2
+SKIP  List11.Scenario3 (-SKIP)
+FAIL  List11.Scenario4 — statement #1 `RETURN range(0, 0, 0)`: expected error `Runtime exception: Step of range cannot be 0.`, got `Runtime exception: range() step must be non-zero.`
+FAIL  List11.Scenario5 — statement #1 `RETURN range(true, 1, 1)`: expected error `Binder exception: Function RANGE did not receive correct arguments:
+Actual:   (BOOL,INT64,INT64)
+Expected: (INT128,INT128) -> LIST
+          (INT128,INT128,INT128) -> LIST
+          (INT64,INT64) -> LIST
+          (INT64,INT64,INT64) -> LIST
+          (INT32,INT32) -> LIST
+          (INT32,INT32,INT32) -> LIST
+          (INT16,INT16) -> LIST
+          (INT16,INT16,INT16) -> LIST
+          (INT8,INT8) -> LIST
+          (INT8,INT8,INT8) -> LIST
+          (SERIAL,SERIAL) -> LIST
+          (SERIAL,SERIAL,SERIAL) -> LIST
+          (UINT128,UINT128) -> LIST
+          (UINT128,UINT128,UINT128) -> LIST
+          (UINT64,UINT64) -> LIST
+          (UINT64,UINT64,UINT64) -> LIST
+          (UINT32,UINT32) -> LIST
+          (UINT32,UINT32,UINT32) -> LIST
+          (UINT16,UINT16) -> LIST
+          (UINT16,UINT16,UINT16) -> LIST
+          (UINT8,UINT8) -> LIST
+          (UINT8,UINT8,UINT8) -> LIST`, got `Binder exception: Function RANGE did not receive correct arguments:
+Actual:   (BOOL,INT64,INT64)
+Expected: (INT64,INT64) -> INT64[]
+          (INT64,INT64,INT64) -> INT64[]`
+PASS  List2.Scenario1
+PASS  List2.Scenario2
+PASS  List2.Scenario3
+PASS  List2.Scenario4
+PASS  List2.Scenario5
+SKIP  List2.Scenario6 (-SKIP)
+SKIP  List2.Scenario7 (-SKIP)
+SKIP  List2.Scenario8 (-SKIP)
+PASS  List2.Scenario9
+PASS  List2.Scenario10
+PASS  List2.Scenario11
+PASS  List2.Scenario12
+PASS  List2.Scenario13
+SKIP  List2.Scenario14 (-SKIP)
+SKIP  List2.Scenario15 (-SKIP)
+SKIP  List3.Scenario1 (-SKIP)
+PASS  List3.Scenario2
+PASS  List3.Scenario3
+PASS  List3.Scenario4
+SKIP  List3.Scenario5 (-SKIP)
+SKIP  List3.Scenario6 (-SKIP)
+SKIP  List3.Scenario7 (-SKIP)
+PASS  List4.Scenario1
+SKIP  List4.Scenario2 (-SKIP)
+SKIP  List5.Scenario1 (-SKIP)
+SKIP  List5.Scenario2 (-SKIP)
+SKIP  List5.Scenario3 (-SKIP)
+SKIP  List5.Scenario4 (-SKIP)
+SKIP  List5.Scenario5 (-SKIP)
+SKIP  List5.Scenario6 (-SKIP)
+SKIP  List5.Scenario7 (-SKIP)
+SKIP  List5.Scenario8 (-SKIP)
+SKIP  List5.Scenario9 (-SKIP)
+SKIP  List5.Scenario10 (-SKIP)
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/list/List6.test: statement `CREATE (:TheLabel);` is missing a `----` result block
+PASS  Map1.Scenario1
+SKIP  Map1.Scenario2 (-SKIP)
+PASS  Map1.Scenario3
+PASS  Map1.Scenario4
+SKIP  Map1.Scenario4_error (-SKIP)
+SKIP  Map1.Scenario5 (-SKIP)
+FAIL  Map1.Scenario6 — statement #1 `WITH 123 AS nonMap RETURN nonMap.num`: expected error `Binder exception: nonMap has data type INT64 but (NODE,REL,STRUCT,ANY) was expected.`, got `Binder exception: Cannot bind property for expression nonMap with type INT64.`
+SKIP  Map2.Scenario1 (-SKIP)
+SKIP  Map2.Scenario2 (-SKIP)
+SKIP  Map2.Scenario3 (-SKIP)
+SKIP  Map2.Scenario4 (-SKIP)
+SKIP  Map2.Scenario5 (-SKIP)
+SKIP  Map2.Scenario6 (-SKIP)
+SKIP  Map2.Scenario13 (-SKIP)
+SKIP  Map2.Scenario7 (-SKIP)
+SKIP  Map3.Scenario1 (-SKIP)
+SKIP  Map3.Scenario2 (-SKIP)
+PASS  Map3.Scenario3
+PASS  Map3.Scenario4
+SKIP  Map3.Scenario5 (-SKIP)
+PASS  Mathematical11.Scenario1
+PASS  Mathematical13.Scenario1
+PASS  Mathematical2.Scenario1
+FAIL  Mathematical3.Scenario1 — statement #1 `RETURN 42 — 41`: expected error `Parser exception: Invalid input < —>: expected rule iC_Statements (line: 1, offset: 10)
+"RETURN 42 — 41;"
+           ^`, got `Parser exception: unexpected character 'â' in query`
+PASS  Mathematical8.Scenario1
+PASS  Mathematical8.Scenario2
+PASS  Precedence1.Scenario1
+PASS  Precedence1.Scenario2
+PASS  Precedence1.Scenario3
+PASS  Precedence1.Scenario4
+PASS  Precedence1.Scenario5
+PASS  Precedence1.Scenario6
+PASS  Precedence1.Scenario7
+PASS  Precedence1.Scenario8
+PASS  Precedence1.Scenario9
+SKIP  Precedence1.Scenario10 (-SKIP)
+SKIP  Precedence1.Scenario11 (-SKIP)
+SKIP  Precedence1.Scenario12 (-SKIP)
+SKIP  Precedence1.Scenario13 (-SKIP)
+SKIP  Precedence1.Scenario14 (-SKIP)
+SKIP  Precedence1.Scenario15 (-SKIP)
+SKIP  Precedence1.Scenario16 (-SKIP)
+SKIP  Precedence1.Scenario17 (-SKIP)
+SKIP  Precedence1.Scenario18 (-SKIP)
+SKIP  Precedence1.Scenario19 (-SKIP)
+SKIP  Precedence1.Scenario20 (-SKIP)
+PASS  Precedence2.Scenario1
+FAIL  Precedence2.Scenario2 — statement #1 `RETURN 4 ^ 3 * 2 ^ 3 AS a, (4 ^ 3) * (2 ^ 3) AS b, 4 ^ (3 * 2) ^ 3 AS c`: expected rows, got error: Parser exception: unexpected character '^' in query
+FAIL  Precedence2.Scenario3 — statement #2 `RETURN 4 ^ 3 + 2 ^ 3 AS a, (4 ^ 3) + (2 ^ 3) AS b, 4 ^ (3 + 2) ^ 3 AS c`: expected rows, got error: Parser exception: unexpected character '^' in query
+FAIL  Precedence2.Scenario4 — statement #2 `RETURN -3 ^ 2 AS a, (-3) ^ 2 AS b, -(3 ^ 2) AS c`: expected rows, got error: Parser exception: unexpected character '^' in query
+PASS  Precedence2.Scenario5
+SKIP  Precedence3.Scenario1 (-SKIP)
+SKIP  Precedence3.Scenario2 (-SKIP)
+SKIP  Precedence3.Scenario3 (-SKIP)
+SKIP  Precedence3.Scenario4 (-SKIP)
+SKIP  Precedence3.Scenario5 (-SKIP)
+SKIP  Precedence4.Scenario1 (-SKIP)
+SKIP  Precedence4.Scenario2 (-SKIP)
+SKIP  Precedence4.Scenario3 (-SKIP)
+SKIP  Precedence4.Scenario4 (-SKIP)
+SKIP  Precedence4.Scenario5 (-SKIP)
+SKIP  Precedence4.Scenario6 (-SKIP)
+PASS  String1.Scenario1
+PASS  String3.Scenario1
+SKIP  String4.Scenario1 (-SKIP)
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/typeConversion/TypeConversion1.test: statement `CREATE ()-[:T]->();` is missing a `----` result block
+parse error in /Users/dai/code/koko/test/test_files/tck/expressions/typeConversion/TypeConversion2.test: statement `CREATE (:Person {name: '42'});` is missing a `----` result block
+PASS  match1.Scenario1
+PASS  match1.Scenario2
+PASS  match1.Scenario3
+PASS  match1.Scenario4
+PASS  match1.Scenario5
+FAIL  match1.Scenario6 — statement #2 `MATCH (n $param) RETURN n`: expected error `Parser exception: Invalid input <MATCH (n $>: expected rule oC_SingleQuery (line: 1, offset: 9)
+"MATCH (n $param) RETURN n;"
+          ^`, got `Parser exception: expected RParen but found Dollar`
+PASS  match1.Scenario7
+PASS  match1.Scenario8
+PASS  match1.Scenario9
+PASS  match1.Scenario10
+PASS  match1.Scenario11
+PASS  match2.Scenario1
+PASS  match2.Scenario2
+PASS  match2.Scenario3&4
+PASS  match2.Scenario5
+FAIL  match2.Scenario6 — statement #8 `MATCH (n)-[r:KNOWS|HATES]->(x) RETURN r`: row mismatch: expected `(0:0)-{_LABEL: HATES, _ID: 3:0}->(0:1)`, got `(0:0)-{_LABEL: HATES, _ID: 3:0}->(0:2)`
+PASS  match2.Scenario7
+FAIL  match2.Scenario8 — statement #3 `MATCH ()-[r:FOO $param]->() RETURN r`: expected error `Parser exception: Invalid input <MATCH ()-[r:FOO $>: expected rule oC_SingleQuery (line: 1, offset: 16)
+"MATCH ()-[r:FOO $param]->() RETURN r;"
+                 ^`, got `Parser exception: expected RBracket but found Dollar`
+PASS  match2.Scenario9
+PASS  match2.Scenario10
+PASS  match2.Scenario11
+PASS  match2.Scenario12
+PASS  match2.Scenario13
+PASS  match3.Scenario1
+PASS  match3.Scenario2
+PASS  match3.Scenario3
+PASS  match3.Scenario5
+FAIL  match3.Scenario6 — statement #4 `CREATE (a)-[:T]->(b1), (a)-[:T]->(b2)`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  match3.Scenario8
+PASS  match3.Scenario9
+PASS  match3.Scenario10
+SKIP  match3.Scenario11&12 (-SKIP)
+PASS  match3.Scenario13&14
+SKIP  match3.Scenario15&16 (-SKIP)
+PASS  match3.Scenario17&18
+PASS  match3.Scenario19
+PASS  match3.Scenario20
+FAIL  match3.Scenario21 — statement #3 `CREATE (a {name: 'a'}), (b {name: 'b'}), (c {name: 'c'}), (d {name: 'd'}), (e {n…`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+FAIL  match3.Scenario22 — statement #3 `CREATE (a {name: 'A'}), (b {name: 'B'}), (c {name: 'C'}) CREATE (a)-[:KNOWS]->(b…`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  match3.Scenario23
+PASS  match3.Scenario24
+FAIL  match3.Scenario25 — statement #3 `CREATE ()-[:T]->()`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+PASS  match3.Scenario26
+PASS  match3.Scenario27
+PASS  match3.Scenario29
+PASS  match3.Scenario30
+SKIP  match4.Scenario1 (-SKIP)
+FAIL  match4.Scenario2 — statement #3 `CREATE (a {name: 'A'}), (b {name: 'B'}), (c {name: 'C'}), (d {name: 'D'}) CREATE…`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+FAIL  match4.Scenario3 — statement #4 `CREATE (a {name: 'A'}), (b {name: 'B'}), (c {name: 'C'}), ({name: 'D'}), ({name:…`: expected success, got error: Binder exception: a node pattern must specify exactly one label in this phase
+SKIP  match4.Scenario4 (-SKIP)
+PASS  match4.Scenario5
+SKIP  match4.Scenario6 (-SKIP)
+PASS  match4.Scenario7
+PASS  match4.Scenario8
+FAIL  match4.Scenario9&10 — statement #7 `MATCH (a:A) MATCH (a)-[:LIKES..]->(c) RETURN c.name`: expected error `Parser exception: Invalid input <MATCH (a:A)            MATCH (a)-[:LIKES..>: expected rule oC_SingleQuery (line: 1, offset: 40)
+"MATCH (a:A)            MATCH (a)-[:LIKES..]->(c)             RETURN c.name;"
+                                         ^^`, got `Parser exception: expected RBracket but found DotDot`
+PASS  match5.Scenario1_24
+PASS  match5.Scenario25
+PASS  match5.Scenario26
+SKIP  match5.Scenario27 (-SKIP)
+PASS  match5.Scenario28
+PASS  match5.Scenario29
+PASS  match6.Scenario1
+PASS  match6.Scenario2
+PASS  match6.Scenario3
+PASS  match6.Scenario4
+PASS  match6.Scenario5
+PASS  match6.Scenario6
+PASS  match6.Scenario7
+SKIP  match6.Scenario8 (-SKIP)
+SKIP  match6.Scenario9 (-SKIP)
+SKIP  match6.Scenario10 (-SKIP)
+SKIP  match6.Scenario11 (-SKIP)
+SKIP  match6.Scenario12 (-SKIP)
+SKIP  match6.Scenario13 (-SKIP)
+SKIP  match6.Scenario14 (-SKIP)
+SKIP  match6.Scenario15 (-SKIP)
+PASS  match6.Scenario16
+SKIP  match6.Scenario17 (-SKIP)
+SKIP  match6.Scenario18 (-SKIP)
+FAIL  match6.Scenario19 — statement #4 `MATCH p = ({name: 'A'})-[:KNOWS*..2]->() RETURN p`: row mismatch: expected `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A},{_ID: 0:1, _LABEL: A, ID: 1, name: B},{_ID: 0:2, _LABEL: A, ID: 2, name: C}], _RELS: [(0:0)-{_LABEL: KNOWS, _ID: 1:1}->(0:1),(0:1)-{_LABEL: KNOWS, _ID: 1:0}->(0:2)]}`, got `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A},{_ID: 0:1, _LABEL: A, ID: 1, name: B},{_ID: 0:2, _LABEL: A, ID: 2, name: C}], _RELS: [(0:0)-{_LABEL: KNOWS, _ID: 1:0}->(0:1),(0:1)-{_LABEL: KNOWS, _ID: 1:1}->(0:2)]}`
+FAIL  match6.Scenario20 — statement #4 `MATCH p = ({name: 'A'})-[:KNOWS*..]->() RETURN p`: row mismatch: expected `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A},{_ID: 0:1, _LABEL: A, ID: 1, name: B},{_ID: 0:2, _LABEL: A, ID: 2, name: C}], _RELS: [(0:0)-{_LABEL: KNOWS, _ID: 1:1}->(0:1),(0:1)-{_LABEL: KNOWS, _ID: 1:0}->(0:2)]}`, got `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A},{_ID: 0:1, _LABEL: A, ID: 1, name: B},{_ID: 0:2, _LABEL: A, ID: 2, name: C}], _RELS: [(0:0)-{_LABEL: KNOWS, _ID: 1:0}->(0:1),(0:1)-{_LABEL: KNOWS, _ID: 1:1}->(0:2)]}`
+SKIP  match6.Scenario21 (-SKIP)
+SKIP  match6.Scenario22 (-SKIP)
+SKIP  match6.Scenario23 (-SKIP)
+SKIP  match6.Scenario24 (-SKIP)
+SKIP  match6.Scenario25 (-SKIP)
+PASS  match7.Scenario1
+PASS  match7.Scenario2
+PASS  match7.Scenario3
+SKIP  match7.Scenario4 (-SKIP)
+SKIP  match7.Scenario5 (-SKIP)
+SKIP  match7.Scenario6 (-SKIP)
+PASS  match7.Scenario7
+PASS  match7.Scenario8
+PASS  match7.Scenario9
+PASS  match7.Scenario10
+PASS  match7.Scenario11
+SKIP  match7.Scenario12 (-SKIP)
+PASS  match7.Scenario13
+SKIP  match7.Scenario14 (-SKIP)
+PASS  match7.Scenario15
+SKIP  match7.Scenario16 (-SKIP)
+PASS  match7.Scenario17
+SKIP  match7.Scenario18 (-SKIP)
+FAIL  match7.Scenario19 — statement #4 `MATCH (a {name: 'A'}) OPTIONAL MATCH p = (a)-->(b)-[*]->(c) RETURN p`: row mismatch: expected `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A},,], _RELS: []}`, got `{_NODES: [{_ID: 0:0, _LABEL: A, ID: 0, name: A}], _RELS: []}`
+PASS  match7.Scenario20
+PASS  match7.Scenario21
+SKIP  match7.Scenario22 (-SKIP)
+SKIP  match7.Scenario23 (-SKIP)
+SKIP  match7.Scenario24 (-SKIP)
+PASS  match7.Scenario25
+PASS  match7.Scenario26
+PASS  match7.Scenario27
+PASS  match7.Scenario28
+PASS  match7.Scenario29
+SKIP  match7.Scenario30 (-SKIP)
+SKIP  match7.Scenario31 (-SKIP)
+PASS  match8.Scenario1
+SKIP  match8.Scenario2 (-SKIP)
+SKIP  match8.Scenario3 (-SKIP)
+SKIP  match9.Scenario1 (-SKIP)
+SKIP  match9.Scenario2 (-SKIP)
+SKIP  match9.Scenario3 (-SKIP)
+SKIP  match9.Scenario4 (-SKIP)
+SKIP  match9.Scenario5 (-SKIP)
+SKIP  match9.Scenario6 (-SKIP)
+SKIP  match9.Scenario7 (-SKIP)
+PASS  match9.Scenario8
+SKIP  match9.Scenario9 (-SKIP)
+parse error in /Users/dai/code/koko/test/test_files/tck/match_where/match_where1.test: statement `CREATE (a:A {p1: 12}), (b:B {p2: 13}), (c:C);` is missing a `----` result block
+PASS  match_where2.Scenario1
+SKIP  match_where2.Scenario2 (-SKIP)
+PASS  match_where3.Scenario1
+PASS  match_where3.Scenario2
+PASS  match_where3.Scenario3
+PASS  match_where4.Scenario1
+SKIP  match_where4.Scenario2 (-SKIP)
+PASS  match_where5.Scenario1
+PASS  match_where5.Scenario2
+PASS  match_where5.Scenario3
+SKIP  match_where5.Scenario4 (-SKIP)
+PASS  match_where6.Scenario1
+PASS  match_where6.Scenario2
+PASS  match_where6.Scenario3
+PASS  match_where6.Scenario4
+SKIP  match_where6.Scenario5 (-SKIP)
+PASS  match_where6.Scenario6
+PASS  match_where6.Scenario7
+PASS  match_where6.Scenario8
+PASS  return1.Scenario1
+PASS  return1.Scenario2
+FAIL  return2.Scenario1 — statement #2 `RETURN 1 + (2 - (3 * (4 / (5 ^ (6 % null))))) AS a`: expected rows, got error: Parser exception: unexpected character '^' in query
+PASS  return2.Scenario2
+SKIP  return2.Scenario3 (-SKIP)
+PASS  return2.Scenario4
+SKIP  return2.Scenario5 (-SKIP)
+PASS  return2.Scenario6
+PASS  return2.Scenario7
+PASS  return2.Scenario8
+PASS  return2.Scenario9
+PASS  return2.Scenario10
+PASS  return2.Scenario11
+SKIP  return2.Scenario12 (-SKIP)
+PASS  return2.Scenario13
+PASS  return2.Scenario14
+SKIP  return2.Scenario15 (-SKIP)
+SKIP  return2.Scenario16 (-SKIP)
+SKIP  return2.Scenario17 (-SKIP)
+PASS  return2.Scenario18
+SKIP  return3.Scenario1 (-SKIP)
+PASS  return3.Scenario2
+PASS  return3.Scenario3
+SKIP  return5.Scenario1 (-SKIP)
+PASS  return5.Scenario2
+SKIP  return5.Scenario3 (-SKIP)
+SKIP  return5.Scenario4 (-SKIP)
+SKIP  return5.Scenario5 (-SKIP)
+PASS  return6.Scenario1
+PASS  return6.Scenario2
+SKIP  return6.Scenario3 (-SKIP)
+SKIP  return6.Scenario4 (-SKIP)
+SKIP  return6.Scenario5 (-SKIP)
+PASS  return6.Scenario6
+PASS  return6.Scenario7
+PASS  return6.Scenario8
+PASS  return6.Scenario9
+PASS  return6.Scenario10
+SKIP  return6.Scenario11 (-SKIP)
+PASS  return6.Scenario12
+PASS  return6.Scenario13
+FAIL  return6.Scenario14 — statement #2 `RETURN count(count(*))`: expected error `Binder exception: Expression COUNT(COUNT_STAR()) contains nested aggregation.`, got `Binder exception: aggregates cannot be nested`
+SKIP  return6.Scenario15 (-SKIP)
+SKIP  return6.Scenario16 (-SKIP)
+SKIP  return6.Scenario17 (-SKIP)
+SKIP  return6.Scenario18 (-SKIP)
+SKIP  return6.Scenario19 (-SKIP)
+SKIP  return6.Scenario20 (-SKIP)
+SKIP  return6.Scenario21 (-SKIP)
+PASS  return7.Scenario1
+FAIL  return7.Scenario2 — statement #2 `MATCH () RETURN *`: expected error `Binder exception: RETURN or WITH * is not allowed when there are no variables in scope.`, got `Binder exception: RETURN * requires at least one bound variable`
+PASS  return8.Scenario1
+PASS  return_orderby1.Scenario1
+PASS  return_orderby1.Scenario2
+PASS  return_orderby1.Scenario3
+PASS  return_orderby1.Scenario4
+PASS  return_orderby1.Scenario5
+PASS  return_orderby1.Scenario6
+PASS  return_orderby1.Scenario7
+PASS  return_orderby1.Scenario8
+SKIP  return_orderby1.Scenario9 (-SKIP)
+SKIP  return_orderby1.Scenario10 (-SKIP)
+SKIP  return_orderby1.Scenario11 (-SKIP)
+SKIP  return_orderby1.Scenario12 (-SKIP)
+PASS  return_orderby2.Scenario1
+PASS  return_orderby2.Scenario2
+PASS  return_orderby2.Scenario3
+PASS  return_orderby2.Scenario4
+SKIP  return_orderby2.Scenario5 (-SKIP)
+SKIP  return_orderby2.Scenario6 (-SKIP)
+PASS  return_orderby2.Scenario7
+PASS  return_orderby2.Scenario8
+PASS  return_orderby2.Scenario9
+PASS  return_orderby2.Scenario10
+PASS  return_orderby2.Scenario11
+SKIP  return_orderby2.Scenario12 (-SKIP)
+SKIP  return_orderby2.Scenario13 (-SKIP)
+FAIL  return_orderby2.Scenario14 — statement #2 `MATCH (n) RETURN n.num1 ORDER BY max(n.num2)`: expected error `Cannot evaluate expression with type AGGREGATE_FUNCTION.`, got `Binder exception: aggregate function not allowed in this context`
+SKIP  return_orderby3.Scenario1 (-SKIP)
+PASS  return_orderby4.Scenario1
+PASS  return_orderby4.Scenario2
+SKIP  return_orderby5.Scenario1 (-SKIP)
+SKIP  return_orderby6.Scenario1 (-SKIP)
+SKIP  return_orderby6.Scenario2 (-SKIP)
+SKIP  return_orderby6.Scenario3 (-SKIP)
+SKIP  return_orderby6.Scenario4 (-SKIP)
+SKIP  return_orderby6.Scenario5 (-SKIP)
+PASS  return_skip_limit1.Scenario1
+SKIP  return_skip_limit1.Scenario2 (-SKIP)
+SKIP  return_skip_limit1.Scenario3 (-SKIP)
+PASS  return_skip_limit1.Scenario4
+FAIL  return_skip_limit1.Scenario5 — statement #2 `MATCH (n) RETURN n SKIP n.count`: expected error `Binder exception: The number of rows to skip/limit must be a parameter/literal expression.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+SKIP  return_skip_limit1.Scenario6 (-SKIP)
+FAIL  return_skip_limit1.Scenario7 — statement #3 `MATCH (p:Person) RETURN p.name AS name SKIP -1`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+SKIP  return_skip_limit1.Scenario8 (-SKIP)
+FAIL  return_skip_limit1.Scenario9 — statement #3 `MATCH (p:Person) RETURN p.name AS name SKIP 1.5`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+FAIL  return_skip_limit1.Scenario10 — statement #2 `MATCH (n) RETURN n SKIP n.count`: expected error `Binder exception: The number of rows to skip/limit must be a parameter/literal expression.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+FAIL  return_skip_limit1.Scenario11 — statement #2 `MATCH (n) RETURN n SKIP -1`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: SKIP requires a constant integer in this phase`
+PASS  return_skip_limit2.Scenario1
+PASS  return_skip_limit2.Scenario2
+PASS  return_skip_limit2.Scenario3
+PASS  return_skip_limit2.Scenario4
+PASS  return_skip_limit2.Scenario5
+FAIL  return_skip_limit2.Scenario6 — statement #3 `MATCH (n) WITH n LIMIT to_int64(ceil(1.7)) RETURN count(*) AS count`: expected rows, got error: Not implemented exception: LIMIT requires a constant integer in this phase
+PASS  return_skip_limit2.Scenario7
+PASS  return_skip_limit2.Scenario8
+FAIL  return_skip_limit2.Scenario9 — statement #2 `MATCH (n) RETURN n LIMIT n.count`: expected error `Binder exception: The number of rows to skip/limit must be a parameter/literal expression.`, got `Not implemented exception: LIMIT requires a constant integer in this phase`
+SKIP  return_skip_limit2.Scenario10 (-SKIP)
+SKIP  return_skip_limit2.Scenario11 (-SKIP)
+FAIL  return_skip_limit2.Scenario12 — statement #2 `MATCH (n) RETURN n LIMIT -1`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: LIMIT requires a constant integer in this phase`
+FAIL  return_skip_limit2.Scenario13 — statement #3 `MATCH (p:Person) RETURN p.name AS name LIMIT -1`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: LIMIT requires a constant integer in this phase`
+SKIP  return_skip_limit2.Scenario14 (-SKIP)
+SKIP  return_skip_limit2.Scenario15 (-SKIP)
+FAIL  return_skip_limit2.Scenario16 — statement #2 `MATCH (n) RETURN n LIMIT 1.7`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: LIMIT requires a constant integer in this phase`
+FAIL  return_skip_limit2.Scenario17 — statement #3 `MATCH (p:Person) RETURN p.name AS name LIMIT 1.5`: expected error `Runtime exception: The number of rows to skip/limit must be a non-negative integer.`, got `Not implemented exception: LIMIT requires a constant integer in this phase`
+PASS  return_skip_limit3.Scenario1
+SKIP  return_skip_limit3.Scenario2 (-SKIP)
+PASS  return_skip_limit3.Scenario3
+PASS  with1.Scenario1
+PASS  with1.Scenario2
+SKIP  with1.Scenario3 (-SKIP)
+SKIP  with1.Scenario4 (-SKIP)
+PASS  with1.Scenario5
+PASS  with1.Scenario6
+SKIP  with2.Scenario1 (-SKIP)
+PASS  with2.Scenario2
+SKIP  with3.Scenario1 (-SKIP)
+PASS  with4.Scenario1
+PASS  with4.Scenario2
+PASS  with4.Scenario3
+PASS  with4.Scenario4
+PASS  with4.Scenario5
+SKIP  with4.Scenario6 (-SKIP)
+PASS  with4.Scenario7
+PASS  with5.Scenario1
+SKIP  with5.Scenario2 (-SKIP)
+PASS  with6.Scenario1
+SKIP  with6.Scenario2 (-SKIP)
+SKIP  with6.Scenario3 (-SKIP)
+SKIP  with6.Scenario4 (-SKIP)
+SKIP  with6.Scenario5 (-SKIP)
+SKIP  with6.Scenario6 (-SKIP)
+SKIP  with6.Scenario7 (-SKIP)
+SKIP  with6.Scenario8 (-SKIP)
+SKIP  with6.Scenario9 (-SKIP)
+SKIP  with7.Scenario1 (-SKIP)
+PASS  with7.Scenario2
+SKIP  with_skip_limit1.Scenario1 (-SKIP)
+PASS  with_skip_limit1.Scenario2
+PASS  with_skip_limit2.Scenario1
+SKIP  with_skip_limit2.Scenario2 (-SKIP)
+PASS  with_skip_limit2.Scenario3
+PASS  with_skip_limit2.Scenario4
+PASS  with_skip_limit3.Scenario1
+SKIP  with_skip_limit3.Scenario2 (-SKIP)
+PASS  with_skip_limit3.Scenario3
+PASS  with_where1.Scenario1
+SKIP  with_where1.Scenario2 (-SKIP)
+SKIP  with_where1.Scenario3 (-SKIP)
+SKIP  with_where1.Scenario4 (-SKIP)
+SKIP  with_where2.Scenario1 (-SKIP)
+SKIP  with_where2.Scenario2 (-SKIP)
+PASS  with_where3.Scenario1
+PASS  with_where3.Scenario2
+PASS  with_where3.Scenario3
+PASS  with_where4.Scenario1
+SKIP  with_where4.Scenario2 (-SKIP)
+PASS  with_where5.Scenario1
+PASS  with_where5.Scenario2
+PASS  with_where5.Scenario3
+SKIP  with_where5.Scenario4 (-SKIP)
+PASS  with_where6.Scenario1
+SKIP  with_where7.Scenario1 (-SKIP)
+PASS  with_where7.Scenario2
+SKIP  with_where7.Scenario3 (-SKIP)
+
+260 passed, 202 skipped, 45 failed

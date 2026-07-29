@@ -4,12 +4,12 @@ use super::{Connection, ConnectionState};
 use crate::runtime::context::RUNTIME_SETTING_SPECS;
 use crate::runtime::database::DatabaseState;
 use crate::runtime::graph::{GraphData, GraphState, MAIN_GRAPH_ID};
-use crate::tooling;
-use crate::{
-    CatalogSnapshot, EndpointDescriptor, Error, GraphDescriptor, GraphIdentity, GraphKind,
-    IndexDescriptor, LogicalType, MacroDescriptor, NodeTableDescriptor,
-    RelationshipTableDescriptor, Result, SessionSnapshot, SettingDescriptor, TransactionMode,
+use crate::tooling::{
+    self, CatalogSnapshot, EndpointDescriptor, GraphDescriptor, GraphIdentity, GraphKind,
+    IndexDescriptor, MacroDescriptor, NodeTableDescriptor, RelationshipTableDescriptor,
+    SessionSnapshot, SettingDescriptor, TransactionMode,
 };
+use crate::{Error, LogicalType, Result};
 
 impl Connection {
     /// Capture authoritative immutable session state under the connection's
@@ -183,7 +183,10 @@ fn build_catalog_snapshot(
     connection: &ConnectionState,
     graph: &GraphState,
     view: &GraphData,
-    scalar_udfs: &std::collections::HashMap<String, std::sync::Arc<koko_common::ScalarUdf>>,
+    scalar_udfs: &std::collections::HashMap<
+        String,
+        std::sync::Arc<koko_common::RegisteredScalarFunction>,
+    >,
     function_revision: u64,
 ) -> CatalogSnapshot {
     let catalog = &view.catalog;
@@ -201,17 +204,17 @@ fn build_catalog_snapshot(
         .filter(|identity| !catalog.is_any_node_table(*identity))
         .filter_map(|identity| catalog.node_table(identity))
         .map(|table| NodeTableDescriptor {
-            identity: table.id.0,
-            name: table.name.clone(),
+            identity: table.id().0,
+            name: table.name().to_string(),
             properties: table
-                .columns
+                .columns()
                 .iter()
                 .enumerate()
                 .map(|(index, column)| {
-                    tooling::property_descriptor(column, index == table.primary_key)
+                    tooling::property_descriptor(column, index == table.primary_key_index())
                 })
                 .collect(),
-            comment: table.comment.clone(),
+            comment: table.comment().map(str::to_string),
         })
         .collect();
     let relationship_tables = catalog
@@ -220,36 +223,36 @@ fn build_catalog_snapshot(
         .filter(|identity| !catalog.is_any_rel_table(*identity))
         .filter_map(|identity| catalog.rel_table(identity))
         .map(|table| RelationshipTableDescriptor {
-            identity: table.id.0,
-            name: table.name.clone(),
+            identity: table.id().0,
+            name: table.name().to_string(),
             properties: table
-                .columns
+                .columns()
                 .iter()
                 .map(|column| tooling::property_descriptor(column, false))
                 .collect(),
             endpoints: table
-                .pairs
+                .pairs()
                 .iter()
-                .map(|(from, to)| EndpointDescriptor {
-                    from: catalog.table_name(*from).unwrap_or("?").to_string(),
-                    to: catalog.table_name(*to).unwrap_or("?").to_string(),
+                .map(|pair| EndpointDescriptor {
+                    from: catalog.table_name(pair.from).unwrap_or("?").to_string(),
+                    to: catalog.table_name(pair.to).unwrap_or("?").to_string(),
                 })
                 .collect(),
-            storage_direction: table.storage_direction.as_str().to_string(),
-            comment: table.comment.clone(),
+            storage_direction: table.storage_direction().as_str().to_string(),
+            comment: table.comment().map(str::to_string),
         })
         .collect();
     let indexes = catalog
         .indexes()
         .into_iter()
         .map(|index| IndexDescriptor {
-            name: index.name.clone(),
+            name: index.name().to_string(),
             table: catalog
-                .table_name(index.table_id)
+                .table_name(index.table_id())
                 .unwrap_or("?")
                 .to_string(),
-            index_type: index.index_type.name().to_string(),
-            properties: index.property_names.clone(),
+            index_type: index.index_type().name().to_string(),
+            properties: index.property_names().to_vec(),
         })
         .collect();
     let mut macros: Vec<_> = view

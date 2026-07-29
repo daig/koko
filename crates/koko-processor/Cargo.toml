@@ -8,11 +8,9 @@ authors.workspace = true
 
 [dependencies]
 koko-common = { workspace = true }
-koko-planner = { workspace = true }
-koko-binder = { workspace = true }
+koko-ir = { workspace = true }
 koko-expr = { workspace = true }
 koko-function = { workspace = true }
 koko-storage = { workspace = true }
 koko-catalog = { workspace = true }
 koko-loader = { workspace = true }
-csv = { workspace = true }

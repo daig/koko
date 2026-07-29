@@ -1,0 +1,2 @@
+MATCH (a:person) RETURN a.fName ORDER BY a.fName LIMIT 3;
+MATCH (a:person)-[:knows]->(b:person) RETURN COUNT(*);

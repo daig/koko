@@ -4,7 +4,8 @@ use crate::bootstrap::{Format, OutputDestination, Settings};
 use crate::command::{OutputCommand, OutputMode};
 use crate::output::{CollisionPolicy, OutputError, OutputTransaction};
 use crate::presentation::{PresentationError, PresentationSettings, Presenter, StatementContext};
-use koko::{QueryResult, StatementFailure};
+use koko::QueryResult;
+use koko::diagnostics::Failure;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -147,7 +148,7 @@ impl OutputManager {
     pub fn present_failure(
         &mut self,
         statement: &StatementContext<'_>,
-        failure: &StatementFailure,
+        failure: &Failure,
     ) -> Result<(), AppOutputError> {
         self.failed = true;
         self.presenter

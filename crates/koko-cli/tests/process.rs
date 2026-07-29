@@ -79,7 +79,7 @@ fn process_config_error_reports_provenance_before_activation() {
 #[cfg(unix)]
 #[test]
 fn batch_sigint_exits_130_and_closes_machine_protocol() {
-    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("koko"))
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("koko"))
         .args([
             "--no-config",
             "--command",
@@ -130,7 +130,7 @@ fn batch_sigint_exits_130_and_closes_machine_protocol() {
 
 #[test]
 fn batch_deadline_remains_distinct_from_user_cancellation() {
-    let output = std::process::Command::new(assert_cmd::cargo::cargo_bin!("koko"))
+    let output = std::process::Command::new(assert_cmd::cargo::cargo_bin("koko"))
         .args([
             "--no-config",
             "--command",

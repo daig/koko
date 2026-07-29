@@ -1,23 +1,18 @@
 //! Canonical Cypher rendering of an [`Expr`] AST back to source text.
 //!
-//! This mirrors the C++ front-end's `ParsedExpression::toString()`, which returns
-//! the expression's `rawName` — a string built during transformation. Two regimes
-//! matter (see `transform_expression.cpp`):
+//! The implementation originated from the reference front-end's `rawName`
+//! rendering rules. Two behaviors remain important:
 //!
-//! * **Operator expressions** (arithmetic, boolean, `IS NULL`, …) are rebuilt with
-//!   single spaces around the operator and **drop redundant parentheses**
-//!   (`(a+b)` → `a + b`), because the parse tree has no parenthesis node.
-//! * **Atoms** (variables, literals, `CASE`, function calls, list literals) take
-//!   their `rawName` from `ctx.getText()`. Because the Cypher grammar makes
-//!   whitespace (`SP`) an explicit in-grammar token, `getText()` reconstructs the
-//!   *source substring including whitespace*. The corpus writes these atoms
-//!   canonically single-spaced, so a recursive renderer that emits single spaces
-//!   reproduces them byte-for-byte.
+//! * **Operator expressions** (arithmetic, boolean, `IS NULL`, and peers) are
+//!   rebuilt with single spaces around the operator and drop redundant
+//!   parentheses because the parse tree has no parenthesis node.
+//! * **Atoms** (variables, literals, `CASE`, function calls, and list literals)
+//!   are rendered recursively with canonical single spacing.
 //!
-//! Only the constructs exercised by `show_macros` are byte-exact-verified against
-//! the corpus: variables, integer literals, `+`/`-` arithmetic, and simple `CASE`
-//! (with/without `ELSE`). Other constructs are rendered in the same canonical
-//! style (best-effort; see `docs/KNOWN_GAPS.md`).
+//! The `show_macros` surface has byte-exact regressions for variables, integer
+//! literals, `+`/`-` arithmetic, and simple `CASE` with or without `ELSE`.
+//! Other constructs use the same best-effort canonical style; this helper is
+//! not a lossless source-code serializer.
 
 use crate::ast::{ArithOp, CmpOp, Expr};
 use koko_common::Value;

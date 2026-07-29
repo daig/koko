@@ -1,7 +1,9 @@
 //! Query parameter admission, origin tracking, and redacted storage.
 
 use crate::value_codec::{CodecError, decode_parameter_object, decode_value};
-use koko::{LogicalType, QueryParameter, SyntaxStatus, TokenKind, Value, analyze_cypher};
+use koko::execution::Parameter;
+use koko::tooling::{SyntaxStatus, TokenKind, analyze_cypher};
+use koko::{LogicalType, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -135,10 +137,16 @@ impl ParameterStore {
         self.entries.clear();
     }
 
-    pub fn query_parameters(&self) -> Vec<QueryParameter<'_>> {
+    pub fn query_parameters(&self) -> Vec<Parameter> {
         self.entries
             .values()
-            .map(|entry| QueryParameter::typed(&entry.name, &entry.value, &entry.logical_type))
+            .map(|entry| {
+                Parameter::typed(
+                    entry.name.clone(),
+                    entry.value.clone(),
+                    entry.logical_type.clone(),
+                )
+            })
             .collect()
     }
 }

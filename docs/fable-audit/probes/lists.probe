@@ -1,0 +1,68 @@
+// ===== indexing (1-based?) =====
+RETURN [10,20,30][1] AS x
+RETURN [10,20,30][2] AS x
+RETURN [10,20,30][3] AS x
+RETURN [10,20,30][0] AS x
+RETURN [10,20,30][4] AS x
+RETURN [10,20,30][-1] AS x
+RETURN [10,20,30][-3] AS x
+RETURN [10,20,30][NULL] AS x
+RETURN ['a','b','c'][2] AS x
+RETURN [[1,2],[3,4]][1] AS x
+RETURN [[1,2],[3,4]][1][2] AS x
+RETURN [1,2,3][100] AS x
+RETURN typeof([10,20,30][5]) AS x
+RETURN typeof([10,20,30][0]) AS x
+// ===== slicing x[a..b] =====
+RETURN [1,2,3,4,5][2..4] AS x
+RETURN [1,2,3,4,5][1..3] AS x
+RETURN [1,2,3,4,5][..3] AS x
+RETURN [1,2,3,4,5][3..] AS x
+RETURN [1,2,3,4,5][..] AS x
+RETURN [1,2,3,4,5][2..2] AS x
+RETURN [1,2,3,4,5][4..2] AS x
+RETURN [1,2,3,4,5][0..2] AS x
+RETURN [1,2,3,4,5][3..100] AS x
+RETURN [1,2,3,4,5][-2..] AS x
+RETURN [1,2,3,4,5][..-1] AS x
+RETURN size([1,2,3,4,5][2..4]) AS x
+// ===== range() =====
+RETURN range(1,5) AS x
+RETURN range(1,5,2) AS x
+RETURN range(0,0) AS x
+RETURN range(5,1) AS x
+RETURN range(5,1,-1) AS x
+RETURN range(1,10,3) AS x
+RETURN range(-3,3) AS x
+RETURN size(range(1,5)) AS x
+RETURN size(range(1,100)) AS x
+// ===== list comprehension =====
+RETURN [x IN [1,2,3] | x*2] AS x
+RETURN [x IN [1,2,3] WHERE x > 1 | x*10] AS x
+RETURN [x IN [1,2,3] WHERE x > 1] AS x
+RETURN [x IN [1,2,3,4] WHERE x % 2 = 0 | x] AS x
+RETURN [x IN range(1,5) | x*x] AS x
+RETURN [x IN [] | x] AS x
+RETURN [x IN [1,NULL,3] WHERE x IS NOT NULL | x] AS x
+// ===== quantifiers =====
+RETURN all(x IN [1,2,3] WHERE x > 0) AS x
+RETURN all(x IN [1,2,3] WHERE x > 1) AS x
+RETURN any(x IN [1,2,3] WHERE x > 2) AS x
+RETURN any(x IN [1,2,3] WHERE x > 5) AS x
+RETURN none(x IN [1,2,3] WHERE x > 5) AS x
+RETURN none(x IN [1,2,3] WHERE x > 2) AS x
+RETURN single(x IN [1,2,3] WHERE x = 2) AS x
+RETURN single(x IN [1,2,3] WHERE x > 1) AS x
+RETURN all(x IN [] WHERE x > 0) AS x
+RETURN any(x IN [] WHERE x > 0) AS x
+// ===== reduce() =====
+RETURN reduce(acc = 0, x IN [1,2,3] | acc + x) AS x
+RETURN reduce(s = 1, x IN [1,2,3,4] | s * x) AS x
+RETURN reduce(acc = 0, x IN [] | acc + x) AS x
+RETURN reduce(acc = '', x IN ['a','b','c'] | acc + x) AS x
+// ===== list functions =====
+RETURN size([1,2,3]) AS x
+RETURN list_extract([10,20,30], 2) AS x
+RETURN list_transform([1,2,3], x -> x*2) AS x
+RETURN list_filter([1,2,3,4], x -> x > 2) AS x
+RETURN size([]) AS x

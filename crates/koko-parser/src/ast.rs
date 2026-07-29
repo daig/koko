@@ -1,9 +1,7 @@
-//! The parser's output: an owned Cypher AST for the P0 subset.
+//! The parser's owned Cypher abstract syntax tree.
 //!
-//! Mirrors the C++ front-end shapes (see `docs/cpp-reference/04-frontend-catalog.md`)
-//! but uses owned `Box`/`Vec` enums in place of the `unique_ptr` hierarchy.
-//! Types are still *unresolved* here (DDL types are raw strings, variables are
-//! names); the binder resolves them against the catalog.
+//! Types and names remain unresolved here: DDL types are source text and variables
+//! are names. The binder resolves them against catalog and function metadata.
 
 use koko_common::Value;
 
@@ -11,8 +9,8 @@ use koko_common::Value;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     /// `EXPLAIN [LOGICAL] <stmt>` / `PROFILE <stmt>` — EXPLAIN validates and
-    /// plans without executing; PROFILE executes. Plan rendering is
-    /// engine-specific (see docs/DIVERGENCES.md explain-profile-plans).
+    /// plans without executing; PROFILE executes. Plan rendering is engine-specific
+    /// (see `ROADMAP.md` decision `explain-profile-plans`).
     Explain {
         inner: Box<Statement>,
         profile: bool,
@@ -423,9 +421,9 @@ pub enum ReadingClause {
     /// only by `call_statement` when a `WHERE` or non-`*` `RETURN` follows (a bare
     /// `CALL` / `RETURN *` stays the standalone [`CallStmt::TableFunc`]).
     TableFuncScan(TableFuncScanClause),
-    /// `LOAD [WITH HEADERS (col TYPE, …)] FROM "<file>" [(options)]` — scan a file
-    /// (CSV in this phase) as a 0→N row source. Like a table-function scan, the
-    /// surrounding query reads/filters/creates over the loaded columns.
+    /// `LOAD [WITH HEADERS (col TYPE, …)] FROM "<file>" [(options)]` — scan a
+    /// resolved CSV, Parquet, or NPY source as a 0→N row source. The surrounding
+    /// query reads, filters, and updates over the loaded columns.
     LoadFrom(LoadFromClause),
 }
 
@@ -433,9 +431,9 @@ pub enum ReadingClause {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadFromClause {
     /// `Some` when `WITH HEADERS (name TYPE, …)` gives explicit columns/types;
-    /// `None` for the headerless form (auto-detect — rejected at bind in this
-    /// phase). Each entry is `(column name, canonical type-name string)` (the
-    /// type-name is resolved by the binder, like a DDL column type).
+    /// `None` delegates schema discovery to CSV sniffing or columnar metadata.
+    /// Each entry is `(column name, canonical type-name string)`; the binder
+    /// resolves the type name like a DDL column type.
     pub headers: Option<Vec<(String, String)>>,
     /// The quoted file path (already `${KOKO_ROOT_DIRECTORY}`-expanded by the runner
     /// for the corpus). May be a glob pattern (`vPerson*.csv`), expanded by the

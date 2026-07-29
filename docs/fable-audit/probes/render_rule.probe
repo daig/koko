@@ -1,0 +1,6 @@
+RETURN {name: 'CsWork', n: 1} AS x
+RETURN ['a,b','c'] AS x
+RETURN {loc: ['a,b','c']} AS x
+RETURN [{a: 'x'}] AS x
+RETURN {s: {inner: 'y'}} AS x
+RETURN {m: map(['k'],['v,w'])} AS x

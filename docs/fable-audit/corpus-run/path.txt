@@ -1,0 +1,3 @@
+PASS  path.Path
+
+1 passed, 0 skipped, 0 failed

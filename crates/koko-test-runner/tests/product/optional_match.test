@@ -1,0 +1,78 @@
+-DATASET CSV empty
+--
+# OPTIONAL MATCH left-join and NULL-extension behavior over an explicitly created graph.
+# Graph: Alice -[:Knows]-> Bob, Alice -[:Knows]-> Carol; Bob and Carol have no
+# outgoing edges.
+
+-CASE OptionalMatch
+-STATEMENT CREATE NODE TABLE Person(name STRING, id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE Knows(FROM Person TO Person)
+---- ok
+-STATEMENT CREATE (:Person {name:'Alice', id:1})
+---- ok
+-STATEMENT CREATE (:Person {name:'Bob', id:2})
+---- ok
+-STATEMENT CREATE (:Person {name:'Carol', id:3})
+---- ok
+-STATEMENT MATCH (a:Person {id:1}), (b:Person {id:2}) CREATE (a)-[:Knows]->(b)
+---- ok
+-STATEMENT MATCH (a:Person {id:1}), (b:Person {id:3}) CREATE (a)-[:Knows]->(b)
+---- ok
+# A standalone OPTIONAL MATCH that matches nothing still yields one (NULL) row.
+-STATEMENT OPTIONAL MATCH (p:Person) WHERE p.id < 0 RETURN count(*)
+---- 1
+1
+-STATEMENT OPTIONAL MATCH (p:Person) WHERE p.id < 0 RETURN p.name
+---- 1
+
+# Correlated optional extend: unmatched rows are NULL-extended.
+-STATEMENT MATCH (a:Person) OPTIONAL MATCH (a)-[:Knows]->(b:Person) RETURN a.name, b.name
+---- 4
+Alice|Bob
+Alice|Carol
+Bob|
+Carol|
+# The WHERE inside an OPTIONAL MATCH filters matches before the NULL decision.
+-STATEMENT MATCH (a:Person) OPTIONAL MATCH (a)-[:Knows]->(b:Person) WHERE b.name='Bob' RETURN a.name, b.name
+---- 3
+Alice|Bob
+Bob|
+Carol|
+# count() over an optional skips NULLs (Bob/Carol contribute 0).
+-STATEMENT MATCH (a:Person) OPTIONAL MATCH (a)-[:Knows]->(b:Person) WITH a, count(b) AS c RETURN a.name, c
+---- 3
+Alice|2
+Bob|0
+Carol|0
+# IS NULL on the optional variable.
+-STATEMENT MATCH (a:Person) OPTIONAL MATCH (a)-[:Knows]->(b:Person) RETURN a.name, b IS NULL
+---- 4
+Alice|False
+Alice|False
+Bob|True
+Carol|True
+# Chained OPTIONAL MATCH: the second extends from a possibly-NULL node.
+-STATEMENT MATCH (a:Person) OPTIONAL MATCH (a)-[:Knows]->(b:Person) OPTIONAL MATCH (b)-[:Knows]->(c:Person) RETURN count(*)
+---- 1
+4
+# Projecting a whole nullable node — NULL renders empty.
+-STATEMENT MATCH (a:Person) WHERE a.id=2 OPTIONAL MATCH (a)-[:Knows]->(b:Person) RETURN a.name, b
+---- 1
+Bob|
+
+-CASE OptionalThenWith
+-STATEMENT CREATE NODE TABLE Person(name STRING, id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE Knows(FROM Person TO Person)
+---- ok
+-STATEMENT CREATE (:Person {name:'Alice', id:1})
+---- ok
+# An unmatched OPTIONAL forwards a NULL node through WITH; an independent MATCH
+# after it still runs (cross product with the NULL row).
+-STATEMENT OPTIONAL MATCH (a:Person) WHERE a.id=99 WITH a MATCH (b:Person) WHERE b.id=1 RETURN b.name
+---- 1
+Alice
+# Re-extending from a carried NULL node matches nothing → zero rows.
+-STATEMENT OPTIONAL MATCH (a:Person) WHERE a.id=99 WITH a MATCH (a)-[:Knows]->(b:Person) RETURN b.name
+---- 0

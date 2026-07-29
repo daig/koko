@@ -1,0 +1,4 @@
+RETURN FLOOR(CAST(0.2,'decimal') + CAST(-10,'decimal')), CEIL(CAST(0.2,'decimal') + CAST(-10,'decimal'))
+RETURN typeof(FLOOR(CAST(0.2,'decimal')))
+MATCH (:person)-[s:studyAt]->(:organisation) RETURN SUM(s.code)
+MATCH (:person)-[s:studyAt]->(:organisation) RETURN typeof(s.code)

@@ -1,0 +1,59 @@
+FAIL  copy.CopyRelSetStorageDirection — statement #6 `MATCH (a:person)-[k:knows]->(b:person) HINT a JOIN (k JOIN b) RETURN COUNT(*)`: expected error `Runtime exception: Failed to get bwd data for rel table "knows", please set the storage direction to BOTH`, but statement succeeded
+PASS  create_batch.CreateRelBatch1
+PASS  create_batch.CreateRelBatch2
+PASS  create_batch.CreateRelBatchAndDelete
+PASS  create_ldbc_sf01.CreateLikeComment
+SKIP  create_ldbc_sf01.CreateManyRelsSeparateCommit (uses -LOOP)
+PASS  create_read_tinysnb.CreateRelRead1
+PASS  create_read_tinysnb.CreateRelRead2
+PASS  create_read_tinysnb.OptionalCreate
+PASS  create_small.CreateOneToOneRel1
+PASS  create_small.CreateOneToOneRel2
+PASS  create_small.CreateOneToOneRelMultiplicityError
+PASS  create_small.CreateOneToOneRelTableAfterCreateNodes
+PASS  create_small.CreateOneToOneInBatch
+PASS  create_small.CreateOneToOneRelOnLargeNodeTable
+PASS  create_small.CreateAndScanOneToOneRel
+PASS  create_small.CreateAndScanManyToManyRel
+PASS  create_small.DeleteNewlyCreatedRel
+PASS  create_small.ResizeAndDistribute
+PASS  create_small.ScanUnCommittedRel
+PASS  create_small.issue3906
+PASS  insert_rel_str_1000_1000_1.InsertNodeStr
+SKIP  delete_empty.DeleteALPException (dataset `EMPTY` is not available)
+SKIP  delete_empty.DetachDeleteSingleDirectionRelStorage (-SKIP)
+SKIP  delete_empty.DeleteAllRels (-SKIP_IN_MEM)
+SKIP  delete_empty.DeleteSecondNodeGroup (-SKIP_IN_MEM)
+PASS  delete_ldbc_sf01.DeleteLikeComment1
+PASS  delete_tinysnb.DeleteFromKnows1
+PASS  delete_tinysnb.DeleteFromKnows2
+PASS  delete_tinysnb.DeleteRelMultiLabel1
+PASS  delete_tinysnb.DeleteRelMultiLabel2
+PASS  delete_tinysnb.RedundantRelDeletions
+PASS  delete_tinysnb.OptionalMatchDelete
+PASS  delete_tinysnb.DetachDeleteRelException
+PASS  delete_tinysnb.MixedDeleteInsertAndSetOneToOneRel
+PASS  delete_tinysnb.DeleteDuplicateNodes
+FAIL  many_to_many_stats.CreateIntegerStats — statement #6 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN min`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  many_to_many_stats.CreateDoubleStats — statement #6 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN min`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  many_to_many_stats.DeleteIntegerStats — statement #7 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN to_int8(min) <=…`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+SKIP  many_to_many_stats.UpdateIntegerStats (-SKIP_IN_MEM)
+SKIP  many_to_many_stats.UpdateDoubleStats (-SKIP_IN_MEM)
+PASS  merge_tinysnb.Merge1
+PASS  merge_tinysnb.Merge2
+PASS  merge_tinysnb.Merge3
+PASS  merge_tinysnb.MergeOneToOne
+FAIL  set_empty.SetRelStringColumnHighDuplication — statement #3 `COPY nodes FROM (unwind range(1, 200000) as i return i)`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+PASS  set_ldbc_sf01.SetLikeComment
+PASS  set_read_tinysnb.SetReadTest1
+PASS  set_read_tinysnb.SetReadTest2
+PASS  set_read_tinysnb.OptionalSetReadTest
+PASS  set_tinysnb.SETMultiLabelNodePropTest
+PASS  set_tinysnb.SetOneToOneTable
+FAIL  stats.CreateIntegerStats — statement #6 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN min`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  stats.CreateDoubleStats — statement #6 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN min`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+FAIL  stats.DeleteIntegerStats — statement #7 `CALL storage_info('Rel1') WHERE column_name = "fwd_value" RETURN to_int8(min) <=…`: expected rows, got error: Not implemented exception: CALL storage_info(...) table functions are not supported in this phase
+SKIP  stats.UpdateIntegerStats (-SKIP_IN_MEM)
+SKIP  stats.UpdateDoubleStats (-SKIP_IN_MEM)
+
+40 passed, 9 skipped, 8 failed

@@ -1,0 +1,5 @@
+#ORDER# CREATE SEQUENCE seq1 START 1
+#ORDER# RETURN nextval('seq1')
+#ORDER# RETURN nextval('seq1')
+#ORDER# RETURN currval('seq1')
+RETURN cost()

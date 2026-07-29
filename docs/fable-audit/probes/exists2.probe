@@ -1,0 +1,13 @@
+// Graph/aggregate/sequence existence probes (tinysnb)
+RETURN array_prepend([1,2], 0)
+RETURN array_push_front([1,2], 0)
+MATCH (a:person)-[e:knows]->(b:person) RETURN start_node(e).ID LIMIT 1
+MATCH (a:person)-[e:knows]->(b:person) RETURN end_node(e).ID LIMIT 1
+MATCH (a:person) RETURN rowid(a) LIMIT 1
+UNWIND [1,2,3,4,5] AS x RETURN percentile_disc(x, 0.5)
+UNWIND [1,2,3,4,5] AS x RETURN percentile_cont(x, 0.5)
+UNWIND [1,2,3,4,5] AS x RETURN percentiledisc(x, 0.5)
+RETURN nextval('nonexistent_seq')
+RETURN currval('nonexistent_seq')
+UNWIND [1,2,3] AS x RETURN collect(x)
+UNWIND [1.0,2.0,3.0] AS x RETURN sum(x)

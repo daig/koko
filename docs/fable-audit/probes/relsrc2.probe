@@ -1,0 +1,16 @@
+CREATE NODE TABLE A(id INT64, name STRING, PRIMARY KEY(id));
+CREATE REL TABLE R(FROM A TO A, w INT64);
+CREATE (:A {id: 1, name: 'a'});
+CREATE (:A {id: 2, name: 'b'});
+MATCH (x:A {id: 1}), (y:A {id: 2}) CREATE (x)-[:R {w: 7}]->(y);
+MATCH (a:A)-[r:R]->(b:A) RETURN properties(r) AS p;
+MATCH (a:A)-[r:R]->(b:A) RETURN keys(r) AS k;
+MATCH (a:A)-[r:R]->(b:A) RETURN label(r) AS l;
+MATCH p = (a:A)-[:R]->(b:A) RETURN properties(rels(p)[1]) AS pr;
+MATCH p = (a:A)-[:R]->(b:A) RETURN label(rels(p)[1]) AS lb;
+MATCH p = (a:A)-[:R]->(b:A) RETURN rels(p)[1].w AS w;
+MATCH p = (a:A)-[:R]->(b:A) RETURN nodes(p)[1].name AS nm;
+MATCH (a:A)-[r:R]->(b:A) RETURN struct_extract(a, '_id') AS aid;
+MATCH (a:A)-[r:R]->(b:A) RETURN struct_extract(a, 'name') AS anm;
+MATCH (a:A)-[r:R]->(b:A) RETURN CAST(r, 'STRING') AS rs;
+MATCH (a:A)-[r:R]->(b:A) RETURN CAST(a, 'STRING') AS as_;

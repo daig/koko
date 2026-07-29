@@ -1,0 +1,9 @@
+MATCH (a:person) WHERE a.ID IN [0] RETURN a.ID
+MATCH (a:person) WHERE a.ID IN [0,2] RETURN a.ID
+MATCH (a:person) WHERE a.fName STARTS WITH 'A' RETURN a.fName
+MATCH (a:person) WHERE a.fName CONTAINS 'l' RETURN a.fName
+MATCH (a:person) WHERE a.fName ENDS WITH 'e' RETURN a.fName
+MATCH (a:person) WHERE 'aa' STARTS WITH 'a' RETURN a.ID
+MATCH (a:person) WHERE a.ID IN [0] RETURN a.fName
+RETURN 1 IN [0,1] AS x
+MATCH (a:person) RETURN a.fName STARTS WITH 'A'

@@ -1,0 +1,142 @@
+# Sequence, table, macro, and table-info introspection functions.
+-DATASET CSV empty
+
+--
+
+-CASE ShowSequences
+-STATEMENT CREATE SEQUENCE a;
+           CREATE SEQUENCE b START 10;
+           CREATE SEQUENCE e INCREMENT BY -5;
+           CREATE SEQUENCE k CYCLE
+---- ok
+---- ok
+---- ok
+---- ok
+-STATEMENT CALL SHOW_SEQUENCES() RETURN * ORDER BY name
+---- 4
+a|main(graph)|1|1|1|9223372036854775807|False
+b|main(graph)|10|1|1|9223372036854775807|False
+e|main(graph)|-1|-5|-9223372036854775808|-1|False
+k|main(graph)|1|1|1|9223372036854775807|True
+
+-CASE ShowTables
+-STATEMENT CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City)
+---- ok
+-STATEMENT CALL SHOW_TABLES() RETURN *
+---- 3
+0|Person|NODE|main(graph)|
+1|City|NODE|main(graph)|
+3|LivesIn|REL|main(graph)|
+
+-CASE TableInfoNode
+-STATEMENT CREATE NODE TABLE P(id INT64, cnt INT64 DEFAULT 7, age INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CALL TABLE_INFO('P') RETURN *
+---- 3
+0|id|INT64|NULL|True
+1|cnt|INT64|7|False
+2|age|INT64|NULL|False
+
+-CASE TableInfoRel
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO A, since INT64)
+---- ok
+-STATEMENT CALL TABLE_INFO('R') RETURN *
+---- 1
+1|since|INT64|NULL|both
+
+-CASE TableInfoMissing
+-STATEMENT CALL TABLE_INFO('Ghost') RETURN *
+---- error
+Catalog exception: Ghost does not exist in catalog.
+
+# A table function used as an in-query SCAN source: `CALL f() [WHERE] RETURN`
+# routes through the query pipeline so it can be filtered / projected / aggregated.
+
+-CASE ShowTablesCountAggregate
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B)
+---- ok
+-STATEMENT CALL show_tables() RETURN COUNT(*)
+---- 1
+3
+
+-CASE ShowTablesCountTxnRollback
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CALL show_tables() RETURN COUNT(*)
+---- 1
+2
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT CALL show_tables() RETURN COUNT(*)
+---- 1
+0
+
+-CASE ShowTablesFilterByType
+-STATEMENT CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City)
+---- ok
+-STATEMENT CALL show_tables() WHERE type = 'REL' RETURN name
+---- 1
+LivesIn
+
+-CASE ShowTablesWhereProjectColumn
+-STATEMENT CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CALL show_tables() WHERE name = 'City' RETURN type
+---- 1
+NODE
+
+-CASE ShowTablesOrderByName
+-STATEMENT CREATE NODE TABLE Zebra(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE Apple(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CALL show_tables() RETURN name ORDER BY name
+-CHECK_ORDER
+---- 2
+Apple
+Zebra
+
+-CASE ShowTablesBareAndStarRegression
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- ok
+# A non-standalone table function requires an explicit RETURN clause.
+-STATEMENT CALL show_tables()
+---- error
+Binder exception: Only standalone table functions can be called without return statement.
+-STATEMENT CALL show_tables() RETURN *
+---- 1
+0|T|NODE|main(graph)|
+
+-CASE ShowMacrosFilter
+-STATEMENT CREATE MACRO X(a) AS a
+---- ok
+-STATEMENT CALL show_macros() WHERE name = 'X' RETURN name
+---- 1
+X
+
+-CASE ShowNumericExtremaOverloads
+-STATEMENT CALL show_functions() WHERE name IN ['GREATEST', 'LEAST'] AND signature = '(NUMERIC,NUMERIC,...) -> NUMERIC' RETURN name ORDER BY name
+-CHECK_ORDER
+---- 2
+GREATEST
+LEAST

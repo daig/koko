@@ -1707,6 +1707,7 @@ fn error_without_prefix(error: Error) -> String {
             "Unable to allocate memory! The buffer pool is full and no memory could be freed!"
                 .to_string()
         }
+        other => other.to_string(),
     }
 }
 

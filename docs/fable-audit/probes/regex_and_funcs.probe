@@ -1,0 +1,5 @@
+MATCH (a:person) WHERE a.fName =~ 'A.*' RETURN a.fName
+RETURN list_contains([0,1,2], 1) AS x
+RETURN starts_with('Alice','A') AS x
+RETURN contains('Alice','ic') AS x
+RETURN ends_with('Alice','e') AS x

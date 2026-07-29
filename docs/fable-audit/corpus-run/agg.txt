@@ -1,0 +1,16 @@
+PASS  distinct_agg.AggDistinct
+PASS  distinct_agg.Debug
+PASS  hash.AggHash
+PASS  hash.ListHashTest
+FAIL  hash.StructHashTest — statement #4 `MATCH (o:organisation) RETURN o.state, count(*)`: expected 4 row(s), got 6: ["{revenue: 138, location: ['toronto','montr,eal'], stock: {price: [96,56], volume: 1000}}|1", "{revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}|1", "{revenue: 558, location: ['very long city name','new york'], stock: {price: [22], volume: 99}}|1", "{revenue: 55, location: [''toronto''], stock: {price: [22,33], volume: 28}}|1", "{revenue: 138, location: [''toronto'',''montr,eal''], stock: {price: [96,56], volume: 1000}}|1", "{revenue: 558, location: [''very long city name'',''new york''], stock: {price: [22], volume: 99}}|1"]
+PASS  hash_large.AggHash
+PASS  hash_large.DistinctAggHash
+PASS  hash_ldbc.AggHash
+FAIL  hash_leak.LargeAggregateLeakTest — statement #3 `MATCH (a:vertex) RETURN a.ID, MIN("very looooooooooooooooooooooooooooooooooooooo…`: expected error `Buffer manager exception: Unable to allocate memory! The buffer pool is full and no memory could be freed!`, but statement succeeded
+PASS  multi_label.AggMultiLabel
+PASS  multi_query_part.AggMultiQueryPart
+FAIL  percentile_disc.PercentileDiscAggregate — statement #1 `UNWIND [10.0, 20.0, 30.0, 40.0] AS v RETURN percentileDisc(v, 0.0), percentileDi…`: expected rows, got error: Catalog exception: function PERCENTILEDISC does not exist.
+PASS  serial_hash.AggSerial
+FAIL  simple.AggSimple — statement #66 `MATCH (:person)-[s:studyAt]->(:organisation) RETURN SUM(s.code)`: expected rows, got error: Overflow exception: SUM of INT64 values is not within INT64 range.
+
+10 passed, 0 skipped, 4 failed

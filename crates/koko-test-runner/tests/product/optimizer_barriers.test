@@ -1,0 +1,94 @@
+# Optimizer contract: semantic barriers that make otherwise-valid relocation or
+# factorization unsafe. Tiny inputs keep the optimizer-disabled form inexpensive.
+-DATASET CSV empty
+
+--
+
+-CASE SequenceFilterBarrier
+-STATEMENT CREATE SEQUENCE s
+---- ok
+# A projection sequence runs only after the input filter. The structural planner
+# tests below this fixture separately pin the opposite ordering as an opaque barrier.
+-STATEMENT UNWIND range(1, 4) AS i WITH i WHERE i = 2 RETURN i, nextval('s')
+---- 1
+2|1
+-STATEMENT RETURN currval('s')
+---- 1
+1
+
+-CASE NullExtensionSubqueryAndMaterializationBarriers
+-STATEMENT CREATE NODE TABLE P(id INT64, gate INT64, label STRING, spare STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P, weight INT64, spare STRING)
+---- ok
+-STATEMENT CREATE (:P {id:1, gate:10, label:'A', spare:'u'})
+---- ok
+-STATEMENT CREATE (:P {id:2, gate:20, label:'B', spare:'v'})
+---- ok
+-STATEMENT CREATE (:P {id:3, gate:30, label:'C', spare:'w'})
+---- ok
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:2}) CREATE (a)-[:K {weight:5, spare:'r12'}]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:3}) CREATE (a)-[:K {weight:7, spare:'r13'}]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:2}), (b:P {id:3}) CREATE (a)-[:K {weight:3, spare:'r23'}]->(b)
+---- ok
+
+# The OPTIONAL predicate belongs inside the branch, before NULL extension. Moving it
+# above or below the correlation boundary changes the unmatched row for node 3.
+-STATEMENT MATCH (a:P) OPTIONAL MATCH (a)-[r:K]->(b:P) WHERE r.weight > 4 RETURN a.id, b.id ORDER BY a.id, b.id
+-CHECK_ORDER
+---- 4
+1|2
+1|3
+2|
+3|
+# A correlated predicate prevents decorrelation because it reads the outer row from
+# inside the subquery pattern.
+-STATEMENT MATCH (a:P) RETURN a.id, COUNT { MATCH (a)-[r:K]->(b:P) WHERE r.weight > a.gate / 2 } AS c ORDER BY a.id
+-CHECK_ORDER
+---- 3
+1|1
+2|0
+3|0
+# Whole graph values crossing collect/UNWIND must materialize before downstream
+# property access; pruning cannot turn them into id-only values.
+-STATEMENT MATCH (a:P) WITH collect(a) AS nodes UNWIND nodes AS x WITH x WHERE x.gate >= 20 RETURN x.label ORDER BY x.gate
+-CHECK_ORDER
+---- 2
+B
+C
+# UNWIND does not propagate multiplicity, so the extend below it must remain a real
+# fan-out: three relationship rows times two list elements.
+-STATEMENT MATCH (a:P)-[:K]->(b:P) UNWIND [1, 2] AS i RETURN count(*)
+---- 1
+6
+# A named path materialization is also a factorization boundary.
+-STATEMENT MATCH p = (a:P)-[:K]->(b:P) RETURN count(*)
+---- 1
+3
+
+-CASE UpdatingPartDisablesReadPruningAndFactorization
+-STATEMENT CREATE NODE TABLE P(id INT64, value INT64, spare STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P)
+---- ok
+-STATEMENT CREATE (:P {id:1, value:10, spare:'a'})
+---- ok
+-STATEMENT CREATE (:P {id:2, value:20, spare:'b'})
+---- ok
+-STATEMENT CREATE (:P {id:3, value:30, spare:'c'})
+---- ok
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:2}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:3}) CREATE (a)-[:K]->(b)
+---- ok
+# Updating parts retain the complete read rows and must not collapse the two matches.
+-STATEMENT MATCH (a:P)-[:K]->(b:P) SET b.value = b.value + a.value
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.id, p.value ORDER BY p.id
+-CHECK_ORDER
+---- 3
+1|10
+2|30
+3|40

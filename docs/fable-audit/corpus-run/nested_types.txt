@@ -1,0 +1,10 @@
+FAIL  large_array.CopyLargeArray — dataset load failed: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+PASS  nested_types.Union
+PASS  nested_types.RelList
+PASS  nested_types.RelStruct
+PASS  nested_types.RelMap
+PASS  nested_types.RelUnion
+SKIP  nested_types_errors.SizeError (uses -BATCH_STATEMENTS)
+PASS  nested_types_errors.DuplicateFields
+
+6 passed, 1 skipped, 1 failed

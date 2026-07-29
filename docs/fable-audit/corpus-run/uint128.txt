@@ -1,0 +1,11 @@
+PASS  uint128.Simple
+FAIL  uint128.UInt128PK — statement #5 `CREATE (n4:tab {uint128key: 340282366920938463463374607431768211456, value: 0}) …`: expected error `Conversion exception: Cast failed. Could not convert "340282366920938463463374607431768211456" to UINT128.`, got `Parser exception: integer literal 340282366920938463463374607431768211456 out of UINT128 range`
+PASS  uint128.UInt128PKMatch
+PASS  uint128.UInt128PKMatchAndDelete
+PASS  uint128.Set
+FAIL  uint128.Overflow — statement #4 `CREATE(n3:tab {intkey: 3, value: 340282366920938463463374607431768211456})`: expected error `Conversion exception: Cast failed. Could not convert "340282366920938463463374607431768211456" to UINT128.`, got `Parser exception: integer literal 340282366920938463463374607431768211456 out of UINT128 range`
+PASS  uint128.Comparisons
+PASS  uint128.OrderBy
+FAIL  uint128.AggregateFunctions — statement #6 `MATCH (z:tab) RETURN sum(z.value)`: expected rows, got error: Overflow exception: SUM of INT64 values is not within INT64 range.
+
+6 passed, 0 skipped, 3 failed

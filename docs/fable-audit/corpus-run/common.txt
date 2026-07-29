@@ -1,0 +1,14 @@
+FAIL  arrayimplicitcasting.ArrayImplicitCast — statement #1 `call threads=4.5`: expected error `Binder exception: Expression 4.500000 has data type DOUBLE but expected UINT64. Implicit cast is not supported.`, but statement succeeded
+PASS  arrayimplicitcasting.ListArrayImplicitCast
+SKIP  arrayimplicitcasting.CastCostTest (-SKIP)
+FAIL  columnname.ColumnName — statement #1 `MATCH (a:User) RETURN a.name, COUNT { MATCH (a)<-[:Follows]-(b:User) } AS num_fo…`: expected 5 row(s), got 4: ["Adam|0", "Karissa|1", "Noura|1", "Zhang|2"]
+FAIL  columnname.ColumnNameOrdered — statement #1 `MATCH (u:User) RETURN u.name, u.age ORDER BY u.age`: expected 5 row(s), got 4: ["Noura|25", "Adam|30", "Karissa|40", "Zhang|50"]
+parse error in /Users/dai/code/koko/test/test_files/common/comment.test: statement block has 2 statement(s) but 1 result block(s): `RETURN 1; // This is a comment`
+PASS  todatecast.ToDateCastTest
+FAIL  interval.DifferentTypesCheck — statement #4 `RETURN INTERVAL("3 quarter")`: expected rows, got error: Conversion exception: Cast failed. 3 quarter is not a valid INTERVAL.
+FAIL  interval.FractionalCheck — statement #1 `RETURN INTERVAL("1.5 microsecond")`: expected rows, got error: Conversion exception: Cast failed. 1.5 microsecond is not a valid INTERVAL.
+FAIL  interval.BasicUsageCheck — statement #5 `RETURN INTERVAL("9999999999:54:32.101234")`: expected error `Conversion exception: Error occurred during parsing time. Given: "9999999999:54:32.101234".`, got `Conversion exception: Cast failed. 9999999999:54:32.101234 is not a valid INTERVAL.`
+PASS  null.NullTest
+SKIP  type_alias.TypeAlias (dataset `EMPTY` is not available)
+
+3 passed, 2 skipped, 7 failed

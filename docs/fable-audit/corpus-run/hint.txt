@@ -1,0 +1,3 @@
+FAIL  hint.Hint — statement #1 `MATCH (a:person) WITH * OPTIONAL MATCH (a)-[e:knows]->(b:person) WHERE a.ID <> b…`: expected error `Hint join pattern has correlation with previous patterns. This is not supported yet.`, but statement succeeded
+
+0 passed, 0 skipped, 1 failed

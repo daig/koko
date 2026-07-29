@@ -1,4 +1,5 @@
-use koko_common::{Error, MemoryResource, Result};
+use koko_common::{Error, Result};
+pub use koko_common::{MemoryResource, MemoryUsage};
 use std::sync::Arc;
 
 /// Resource limits for an in-memory [`crate::Database`].
@@ -7,7 +8,7 @@ use std::sync::Arc;
 /// limit is always meaningful; omit the limit to retain the unrestricted default.
 #[derive(Debug, Clone, Default)]
 pub struct DatabaseConfig {
-    max_workers: Option<usize>,
+    max_threads: Option<usize>,
     memory_limit: Option<u64>,
     memory_resource: Option<Arc<dyn MemoryResource>>,
 }
@@ -16,20 +17,20 @@ impl DatabaseConfig {
     /// Start with the unrestricted, backwards-compatible defaults.
     pub const fn new() -> Self {
         Self {
-            max_workers: None,
+            max_threads: None,
             memory_limit: None,
             memory_resource: None,
         }
     }
 
-    /// Cap the workers an individual query may use.
-    pub fn with_max_workers(mut self, max_workers: usize) -> Result<Self> {
-        if max_workers == 0 {
+    /// Cap the threads an individual query may use.
+    pub fn with_max_threads(mut self, max_threads: usize) -> Result<Self> {
+        if max_threads == 0 {
             return Err(Error::configuration(
-                "Database max_workers must be greater than zero.",
+                "Database max_threads must be greater than zero.",
             ));
         }
-        self.max_workers = Some(max_workers);
+        self.max_threads = Some(max_threads);
         Ok(self)
     }
 
@@ -52,9 +53,9 @@ impl DatabaseConfig {
         self
     }
 
-    /// Configured per-query worker cap, or `None` when unrestricted.
-    pub const fn max_workers(&self) -> Option<usize> {
-        self.max_workers
+    /// Configured per-query thread cap, or `None` when unrestricted.
+    pub const fn max_threads(&self) -> Option<usize> {
+        self.max_threads
     }
 
     /// Configured tracked-memory cap in bytes, or `None` when unrestricted.

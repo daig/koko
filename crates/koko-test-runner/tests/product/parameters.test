@@ -1,0 +1,36 @@
+-DATASET CSV empty
+--
+# Runner-supplied Cypher parameters persist across statements in one case.
+
+-CASE Parameters
+-STATEMENT CREATE NODE TABLE Person(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:Person {name:'Alice', age:35})
+---- ok
+-STATEMENT CREATE (:Person {name:'Bob', age:20})
+---- ok
+# An integer parameter in a WHERE comparison.
+-PARAMETER minAge=30
+-STATEMENT MATCH (p:Person) WHERE p.age >= $minAge RETURN p.name
+---- 1
+Alice
+# A string parameter; the earlier parameter is still in scope.
+-PARAMETER nm="Bob"
+-STATEMENT MATCH (p:Person) WHERE p.name = $nm RETURN p.age
+---- 1
+20
+# A parameter used in an arithmetic expression (its type comes from the value).
+-STATEMENT RETURN $minAge + 5
+---- 1
+35
+# A parameter standing in for a list, then UNWIND it.
+-PARAMETER lst=7
+-STATEMENT RETURN $lst * 2
+---- 1
+14
+
+-CASE MissingParameter
+# A missing parameter binds NULL rather than failing at bind time.
+-STATEMENT RETURN $nope
+---- 1
+

@@ -1,0 +1,13 @@
+CREATE NODE TABLE V(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE links_to(FROM V TO V);
+CREATE REL TABLE parent(FROM V TO V);
+CREATE (:V {id: 1});
+CREATE (:V {id: 2});
+CREATE (:V {id: 3});
+MATCH (a:V {id:1}), (b:V {id:3}) CREATE (a)-[:links_to]->(b);
+MATCH (a:V {id:1}), (b:V {id:2}) CREATE (a)-[:parent]->(b);
+OPTIONAL MATCH (v1:V)-[:links_to*1..]->(:V) WHERE EXISTS { MATCH (v1)-[:parent]->(:V {id:2}) } RETURN v1.id;
+MATCH (v1:V)-[:links_to*1..]->(:V) WHERE EXISTS { MATCH (v1)-[:parent]->(:V {id:2}) } RETURN v1.id;
+CREATE NODE TABLE S(id INT64, st STRUCT(loc STRING[]), PRIMARY KEY(id));
+CREATE (:S {id:1, st: {loc: ['van,couver']}});
+MATCH (s:S) RETURN s.st;

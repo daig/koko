@@ -1,0 +1,21 @@
+// array / vector functions
+RETURN array_value(1.0,2.0,3.0) AS a
+RETURN typeof(array_value(1.0,2.0,3.0)) AS a
+RETURN array_value(1,2,3) AS a
+RETURN typeof(array_value(1,2,3)) AS a
+RETURN array_distance(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_squared_distance(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_inner_product(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_dot_product(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_cosine_similarity(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_cross_product(array_value(1.0,0.0,0.0), array_value(0.0,1.0,0.0)) AS a
+RETURN array_distance(array_value(1.0,2.0), array_value(4.0,6.0)) AS a
+RETURN array_squared_distance(array_value(0.0,0.0), array_value(3.0,4.0)) AS a
+RETURN array_cosine_similarity(array_value(1.0,0.0), array_value(1.0,0.0)) AS a
+RETURN array_cosine_similarity(array_value(1.0,0.0), array_value(0.0,1.0)) AS a
+RETURN array_cross_product(array_value(1.0,2.0,3.0), array_value(4.0,5.0,6.0)) AS a
+RETURN array_distance(array_value(1.0,2.0,3.0), array_value(4.0,5.0)) AS a
+RETURN array_cross_product(array_value(1.0,2.0), array_value(3.0,4.0)) AS a
+RETURN array_value() AS a
+RETURN size(array_value(1.0,2.0,3.0)) AS a
+RETURN array_value(1.0,2.0,3.0)[2] AS a

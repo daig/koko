@@ -1,0 +1,6 @@
+RETURN 5!
+RETURN "abc" STARTS WITH "a"
+RETURN "abc" CONTAINS "b"
+MATCH (a:person) WHERE a.fName CONTAINS "a" RETURN count(*)
+RETURN map([NULL, NULL], [1, 2])
+RETURN ['a', , []]

@@ -1,0 +1,148 @@
+// ===== AND truth table =====
+RETURN true AND true AS x
+RETURN true AND false AS x
+RETURN false AND true AS x
+RETURN false AND false AS x
+RETURN true AND NULL AS x
+RETURN NULL AND true AS x
+RETURN false AND NULL AS x
+RETURN NULL AND false AS x
+RETURN NULL AND NULL AS x
+// ===== OR truth table =====
+RETURN true OR true AS x
+RETURN true OR false AS x
+RETURN false OR true AS x
+RETURN false OR false AS x
+RETURN true OR NULL AS x
+RETURN NULL OR true AS x
+RETURN false OR NULL AS x
+RETURN NULL OR false AS x
+RETURN NULL OR NULL AS x
+// ===== NOT =====
+RETURN NOT true AS x
+RETURN NOT false AS x
+RETURN NOT NULL AS x
+RETURN NOT (1 = 1) AS x
+RETURN NOT NOT true AS x
+// ===== XOR truth table =====
+RETURN true XOR true AS x
+RETURN true XOR false AS x
+RETURN false XOR true AS x
+RETURN false XOR false AS x
+RETURN true XOR NULL AS x
+RETURN NULL XOR false AS x
+RETURN NULL XOR NULL AS x
+// ===== boolean precedence =====
+RETURN true OR false AND false AS x
+RETURN (true OR false) AND false AS x
+RETURN NOT true AND false AS x
+RETURN NOT (true AND false) AS x
+RETURN true AND false OR true AS x
+RETURN true AND true XOR false AS x
+// ===== comparison operators with NULL =====
+RETURN 1 = NULL AS x
+RETURN 1 <> NULL AS x
+RETURN 1 < NULL AS x
+RETURN 1 > NULL AS x
+RETURN 1 <= NULL AS x
+RETURN 1 >= NULL AS x
+RETURN NULL = NULL AS x
+RETURN NULL <> NULL AS x
+RETURN NULL < NULL AS x
+RETURN NULL = 1 AS x
+// ===== comparisons non-null =====
+RETURN 1 = 1 AS x
+RETURN 1 <> 2 AS x
+RETURN 1 < 2 AS x
+RETURN 2 <= 2 AS x
+RETURN 3 > 2 AS x
+RETURN 3 >= 3 AS x
+RETURN 1 = 1.0 AS x
+RETURN 1 < 1.5 AS x
+RETURN 'a' < 'b' AS x
+RETURN 'abc' < 'abd' AS x
+RETURN 'Z' < 'a' AS x
+RETURN true = true AS x
+RETURN true < false AS x
+RETURN false < true AS x
+// ===== comparison chains =====
+RETURN 1 < 2 < 3 AS x
+RETURN 1 < 2 = true AS x
+RETURN 3 > 2 > 1 AS x
+// ===== IS NULL / IS NOT NULL =====
+RETURN NULL IS NULL AS x
+RETURN 1 IS NULL AS x
+RETURN NULL IS NOT NULL AS x
+RETURN 1 IS NOT NULL AS x
+RETURN '' IS NULL AS x
+RETURN (1 = NULL) IS NULL AS x
+RETURN (1 = 1) IS NOT NULL AS x
+RETURN [1,2] IS NULL AS x
+RETURN [NULL] IS NULL AS x
+// ===== IN with NULL / empty =====
+RETURN 1 IN [1,2,3] AS x
+RETURN 4 IN [1,2,3] AS x
+RETURN 1 IN [] AS x
+RETURN NULL IN [1,2] AS x
+RETURN 1 IN [1, NULL] AS x
+RETURN 2 IN [1, NULL] AS x
+RETURN NULL IN [NULL] AS x
+RETURN NULL IN [] AS x
+RETURN 1 IN NULL AS x
+RETURN 'a' IN ['a','b'] AS x
+RETURN 1.0 IN [1,2] AS x
+RETURN 1 IN [1.0, 2.0] AS x
+RETURN 3 IN [1, NULL, 3] AS x
+RETURN [1] IN [[1],[2]] AS x
+// ===== NOT IN =====
+RETURN 1 NOT IN [2,3] AS x
+RETURN 1 NOT IN [1,2] AS x
+RETURN NULL NOT IN [1,2] AS x
+RETURN 5 NOT IN [1, NULL] AS x
+// ===== CASE simple =====
+RETURN CASE 1 WHEN 1 THEN 'a' WHEN 2 THEN 'b' ELSE 'c' END AS x
+RETURN CASE 2 WHEN 1 THEN 'a' WHEN 2 THEN 'b' ELSE 'c' END AS x
+RETURN CASE 3 WHEN 1 THEN 'a' WHEN 2 THEN 'b' ELSE 'c' END AS x
+RETURN CASE 3 WHEN 1 THEN 'a' END AS x
+RETURN CASE 1 WHEN 1 THEN 'a' END AS x
+RETURN CASE NULL WHEN NULL THEN 'a' ELSE 'b' END AS x
+RETURN CASE NULL WHEN 1 THEN 'a' ELSE 'b' END AS x
+RETURN CASE 1 WHEN NULL THEN 'a' ELSE 'b' END AS x
+// ===== CASE searched =====
+RETURN CASE WHEN true THEN 'a' ELSE 'b' END AS x
+RETURN CASE WHEN false THEN 'a' ELSE 'b' END AS x
+RETURN CASE WHEN 1 > 2 THEN 'a' WHEN 2 > 1 THEN 'b' END AS x
+RETURN CASE WHEN false THEN 'a' END AS x
+RETURN CASE WHEN NULL THEN 'a' ELSE 'b' END AS x
+RETURN CASE WHEN NULL THEN 'a' WHEN true THEN 'b' ELSE 'c' END AS x
+RETURN CASE WHEN 1 = NULL THEN 'a' ELSE 'b' END AS x
+// ===== CASE type mixing =====
+RETURN CASE WHEN true THEN 1 ELSE 'a' END AS x
+RETURN CASE WHEN true THEN 1 ELSE 2.5 END AS x
+RETURN CASE WHEN false THEN 1 ELSE 2.5 END AS x
+// ===== COALESCE =====
+RETURN COALESCE(NULL, 1) AS x
+RETURN COALESCE(NULL, NULL, 2) AS x
+RETURN COALESCE(1, 2) AS x
+RETURN COALESCE(NULL) AS x
+RETURN COALESCE(NULL, NULL) AS x
+RETURN COALESCE(NULL, 'a', 'b') AS x
+RETURN COALESCE(1, NULL) AS x
+// ===== IFNULL =====
+RETURN IFNULL(NULL, 5) AS x
+RETURN IFNULL(3, 5) AS x
+RETURN IFNULL(NULL, NULL) AS x
+RETURN IFNULL('a', 'b') AS x
+// ===== NULLIF =====
+RETURN NULLIF(1, 1) AS x
+RETURN NULLIF(1, 2) AS x
+RETURN NULLIF(NULL, 1) AS x
+RETURN NULLIF('a', 'a') AS x
+RETURN NULLIF('a', 'b') AS x
+RETURN NULLIF(1, NULL) AS x
+// ===== typeof for null-producing exprs =====
+RETURN typeof(true AND NULL) AS x
+RETURN typeof(1 = NULL) AS x
+RETURN typeof(NULL IS NULL) AS x
+RETURN typeof(CASE WHEN true THEN 1 END) AS x
+RETURN typeof(COALESCE(NULL, 1)) AS x

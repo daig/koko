@@ -1,0 +1,6 @@
+FAIL  correlated.CorrelatedSubquery — statement #2 `MATCH (a:person) WITH a, a.fName AS newName WHERE EXISTS { MATCH (a)-[:knows]->(…`: expected rows, got error: Not implemented exception: a subquery or sequence call in a WITH ... WHERE is not supported in this phase
+PASS  count.CountSubquery
+FAIL  exists.ExistsSubquery — statement #1 `MATCH (a:person) MATCH (b:person) WHERE (a)-[:knows]->(c:person) RETURN COUNT(*)`: expected rows, got error: Parser exception: unexpected token Colon in expression
+PASS  multi_label.SubqueryMultiLabel
+
+2 passed, 0 skipped, 2 failed

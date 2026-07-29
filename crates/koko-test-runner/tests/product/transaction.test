@@ -1,0 +1,117 @@
+-DATASET CSV empty
+--
+
+# A read-write transaction owns a private catalog/storage snapshot until COMMIT or
+# ROLLBACK. These cases cover one connection; Rust integration tests own
+# cross-connection visibility and writer-conflict behavior.
+
+-CASE WriterSeesOwnWritesRollbackDiscards
+-STATEMENT CREATE NODE TABLE P(id INT64, age INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1, age: 10})
+---- ok
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE (:P {id: 2, age: 20})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.id, p.age
+---- 2
+1|10
+2|20
+-STATEMENT MATCH (p:P) WHERE p.id = 1 SET p.age = 99
+---- ok
+-STATEMENT MATCH (p:P) WHERE p.id = 1 RETURN p.age
+---- 1
+99
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.id, p.age
+---- 1
+1|10
+
+-CASE CommitPersists
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE (:P {id: 1})
+---- ok
+-STATEMENT CREATE (:P {id: 2})
+---- ok
+-STATEMENT COMMIT
+---- ok
+-STATEMENT MATCH (p:P) RETURN count(*)
+---- 1
+2
+
+-CASE DdlCreateInTxnRollback
+-STATEMENT CREATE NODE TABLE Keep(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Keep {id: 1})
+---- ok
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE NODE TABLE Tmp(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Tmp {id: 9})
+---- ok
+-STATEMENT MATCH (t:Tmp) RETURN count(*)
+---- 1
+1
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT MATCH (t:Tmp) RETURN count(*)
+---- error
+Binder exception: Table Tmp does not exist.
+-STATEMENT MATCH (k:Keep) RETURN k.id
+---- 1
+1
+
+-CASE DdlDropInTxnRollback
+-STATEMENT CREATE NODE TABLE Keep(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Keep {id: 1})
+---- ok
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT DROP TABLE Keep
+---- ok
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT MATCH (k:Keep) RETURN k.id
+---- 1
+1
+
+-CASE NestedBeginAbortsTransaction
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT CREATE NODE TABLE PERSON (id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CALL show_tables() return *
+---- 1
+0|PERSON|NODE|main(graph)|
+-STATEMENT BEGIN TRANSACTION
+---- error
+Connection already has an active transaction. Cannot start a transaction within another one. For concurrent multiple transactions, please open other connections.
+-STATEMENT CALL show_tables() return *
+---- 0
+
+-CASE ReadOnlyTransactionRejectsWrites
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT BEGIN TRANSACTION READ ONLY
+---- ok
+-STATEMENT MATCH (p:P) RETURN count(*)
+---- 1
+0
+-STATEMENT CREATE (:P {id: 1})
+---- error
+Can not execute a write query inside a read-only transaction.
+
+-CASE InvalidCommitRollback
+-STATEMENT COMMIT
+---- error
+No active transaction for COMMIT.
+-STATEMENT ROLLBACK
+---- error
+No active transaction for ROLLBACK.

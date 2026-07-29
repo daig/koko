@@ -1,0 +1,7 @@
+FAIL  explain.Explain — statement #1 `EXPLAIN create node table npytable (id INT64,i32 INT32, PRIMARY KEY(id))`: expected success, got error: Parser exception: expected a MATCH, CREATE, or RETURN clause but found Ident("EXPLAIN")
+SKIP  export_explain.ExplainEmptyExportSchemaOnly (-SKIP_IN_MEM)
+SKIP  export_explain.ExplainEmptyExport (-SKIP_IN_MEM)
+SKIP  export_explain.ExplainExportSchemaOnly (-SKIP_IN_MEM)
+SKIP  export_explain.ExplainExport (-SKIP_IN_MEM)
+
+0 passed, 4 skipped, 1 failed

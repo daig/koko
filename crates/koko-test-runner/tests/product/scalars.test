@@ -1,0 +1,93 @@
+# FLOAT, UUID, BLOB, and typed scalar behavior.
+-DATASET CSV empty
+
+--
+
+-CASE Uuid
+-STATEMENT RETURN uuid('A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11')
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+-STATEMENT RETURN uuid('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11') = uuid('A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11')
+---- 1
+True
+-STATEMENT RETURN CAST('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' AS UUID)
+---- 1
+a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+-CASE Float
+-STATEMENT RETURN CAST('1.5' AS FLOAT)
+---- 1
+1.500000
+-STATEMENT RETURN CAST(2 AS FLOAT) + CAST(3 AS FLOAT)
+---- 1
+5.000000
+
+-CASE Blob
+-STATEMENT RETURN CAST('\\xAA\\xABinteresting' AS BLOB)
+---- 1
+\xAA\xABinteresting
+-STATEMENT RETURN CAST('pure ascii' AS BLOB)
+---- 1
+pure ascii
+
+-CASE TypedColumns
+-STATEMENT CREATE NODE TABLE T(id INT64, score FLOAT, key UUID, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, score: CAST(1.5 AS FLOAT), key: uuid('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')})
+---- ok
+-STATEMENT MATCH (t:T) RETURN t.score, t.key
+---- 1
+1.500000|a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+# Koko extends Ladybug's binary temporal GREATEST/LEAST overloads with a
+# strict, variadic numeric family.
+-CASE NumericExtrema
+-STATEMENT RETURN greatest(1, 9, 4), least(3, 1, 2)
+---- 1
+9|1
+-STATEMENT RETURN typeof(greatest(CAST(1 AS INT8), CAST(200 AS UINT8))), greatest(CAST(1 AS INT8), CAST(200 AS UINT8)), typeof(greatest(CAST(1 AS FLOAT), CAST(3 AS DOUBLE), 2.5)), greatest(CAST(1 AS FLOAT), CAST(3 AS DOUBLE), 2.5), typeof(greatest(CAST(1.25 AS DECIMAL(4,2)), CAST(9 AS INT64))), greatest(CAST(1.25 AS DECIMAL(4,2)), CAST(9 AS INT64))
+---- 1
+INT16|200|DOUBLE|3.000000|DECIMAL(21, 2)|9.00
+-STATEMENT RETURN greatest(CAST(340282366920938463463374607431768211455 AS UINT128), CAST(1 AS UINT64)), least(CAST(340282366920938463463374607431768211455 AS UINT128), CAST(1 AS UINT64)), typeof(greatest(CAST(7 AS UINT128), CAST(1 AS UINT64)))
+---- 1
+340282366920938463463374607431768211455|1|UINT128
+-STATEMENT RETURN greatest(1, NULL, 3), least(NULL, 2), typeof(greatest(1, NULL, 3)), typeof(least(NULL, CAST(2 AS INT16)))
+---- 1
+||INT64|INT16
+-STATEMENT RETURN greatest(CAST(-0.0 AS DOUBLE), CAST(0.0 AS DOUBLE)), greatest(CAST(0.0 AS DOUBLE), CAST(-0.0 AS DOUBLE))
+---- 1
+-0.000000|0.000000
+-PARAMETER candidate=2
+-STATEMENT RETURN greatest(1.5, $candidate, 1), typeof(greatest(1.5, $candidate, 1))
+---- 1
+2.000000|DOUBLE
+-STATEMENT RETURN greatest(date('2020-01-01'), date('2021-01-01')), least(timestamp('2021-01-01 00:00:00'), timestamp('2020-01-01 00:00:00'))
+---- 1
+2021-01-01|2020-01-01 00:00:00
+
+-CASE NumericExtremaMinimumArity
+-STATEMENT RETURN greatest(1)
+---- error
+Binder exception: Function GREATEST did not receive correct arguments:
+Actual:   (INT64)
+Expected: (DATE,DATE) -> DATE
+          (TIMESTAMP,TIMESTAMP) -> TIMESTAMP
+          (NUMERIC,NUMERIC,...) -> NUMERIC
+
+-CASE NumericExtremaRejectsStrings
+-STATEMENT RETURN least('a', 'b')
+---- error
+Binder exception: Function LEAST did not receive correct arguments:
+Actual:   (STRING,STRING)
+Expected: (DATE,DATE) -> DATE
+          (TIMESTAMP,TIMESTAMP) -> TIMESTAMP
+          (NUMERIC,NUMERIC,...) -> NUMERIC
+
+-CASE NumericExtremaRejectsMixedFamilies
+-STATEMENT RETURN greatest(1, date('2020-01-01'))
+---- error
+Binder exception: Function GREATEST did not receive correct arguments:
+Actual:   (INT64,DATE)
+Expected: (DATE,DATE) -> DATE
+          (TIMESTAMP,TIMESTAMP) -> TIMESTAMP
+          (NUMERIC,NUMERIC,...) -> NUMERIC

@@ -1,0 +1,3 @@
+parse error in /Users/dai/code/koko/test/test_files/load_from/load_from.test: invalid result count `error(regex)`
+
+0 passed, 0 skipped, 1 failed

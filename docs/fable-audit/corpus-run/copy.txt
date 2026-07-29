@@ -1,0 +1,107 @@
+parse error in /Users/dai/code/koko/test/test_files/copy/copy_after_error.test: invalid result count `error(regex)`
+PASS  copy_dates.NodePropertyColumnWithDate
+PASS  copy_dos_style_newline.DOSStyleNewlineTest
+PASS  copy_edge_case.CopyLongListTest
+PASS  copy_edge_case.CopyLongStringTest
+FAIL  copy_from_table_func.CopyFromTableFunc — statement #2 `COPY person_info from TABLE_INFO('person')`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found Ident("TABLE_INFO")
+FAIL  copy_from_tinysnb.CopyFromSubquery — statement #2 `COPY A FROM  (MATCH (a:person) RETURN a.ID, a.fName)`: expected error `Binder exception: Query returns 2 columns but 1 columns were expected.`, got `Parser exception: expected a quoted file path after COPY ... FROM, found LParen`
+FAIL  copy_from_tinysnb.CopyFromLegacyRelGroup — statement #2 `COPY A_person_person from '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/eKnows.csv'`: expected success, got error: Binder exception: Table A_person_person does not exist.
+PASS  copy_init_rel_tables.CopyNodeAndQueryEmptyRelTable
+PASS  copy_interval.NodePropertyColumnWithInterval
+PASS  copy_large_list.CopyLargeList
+PASS  copy_large_list.AddPropertyWithLargeListTest
+FAIL  copy_large_serial.CopyLargeSerial — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LBracket
+FAIL  copy_large_serial.ExportLargeSerial — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LBracket
+PASS  copy_long_string.LongStringError
+PASS  copy_long_string.LongStringPKError
+FAIL  copy_long_string_multiple_files.CopyLongStringMultipleFilesTest — dataset load failed: IO exception: /Users/dai/code/koko/dataset/long-string-multiple-files/vperson*.csv: No such file or directory (os error 2)
+SKIP  copy_map_with_duplicate_key.CopyDuplicateMapKey (-SKIP)
+FAIL  copy_map_with_duplicate_key.CopyDuplicateKeyError — statement #2 `COPY person FROM '${KOKO_ROOT_DIRECTORY}/dataset/copy-test/map-copy-error/duplic…`: expected error `Copy exception: Error in file /Users/dai/code/koko/dataset/copy-test/map-copy-error/duplicate-map-key.csv on line 2: Conversion exception: Map does not allow duplicate keys. Line/record containing the error: '3,"{dan=52,carol=42,dan=53}"'`, got `Conversion exception: Map does not allow duplicate keys.`
+PASS  copy_multi_boolean.OmitUseDefaultBoolean
+PASS  copy_multi_boolean.CopyUseSpaceAsAssignmentOperator
+PASS  copy_multi_boolean.CopyUseTruewithDifferentCases
+PASS  copy_multi_boolean.CopyUse1AsTrue
+FAIL  copy_multi_boolean.CopyUse0AsFalse — statement #2 `copy person6 from '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson_less_col.csv' …`: expected error `Copy exception: Error in file /Users/dai/code/koko/dataset/tinysnb/vPerson_less_col.csv on line 1: Conversion exception: Cast failed. Could not convert "id" to INT64. Line/record containing the error: 'id...'`, but statement succeeded
+FAIL  copy_multi_boolean.CopyUseFaLsEwithdifferentCases — statement #2 `copy person7 from '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson_less_col.csv' …`: expected error `Copy exception: Error in file /Users/dai/code/koko/dataset/tinysnb/vPerson_less_col.csv on line 1: Conversion exception: Cast failed. Could not convert "id" to INT64. Line/record containing the error: 'id...'`, but statement succeeded
+FAIL  copy_multi_boolean.NewKeyWordDELIMITER — statement #2 `copy person8 from '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson_less_col.csv' …`: expected error `Copy exception: Error in file /Users/dai/code/koko/dataset/tinysnb/vPerson_less_col.csv on line 1: expected 3 values per row, but got 1. Line/record containing the error: 'id,fname,Gender'`, got `Runtime exception: Table person8 expects 3 columns but line 1 of the CSV has 1.`
+FAIL  copy_multi_boolean.HybridTABandSpace — statement #2 `copy person9 from '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson_less_col.csv' …`: expected error `Copy exception: Error in file /Users/dai/code/koko/dataset/tinysnb/vPerson_less_col.csv on line 1: expected 3 values per row, but got 1. Line/record containing the error: 'id,fname,Gender'`, got `Runtime exception: Table person9 expects 3 columns but line 1 of the CSV has 1.`
+PASS  copy_multi_boolean.HybridQuotesSigns
+FAIL  copy_multiple_files.CopyMultipleFilesTest — statement #1 `COPY person FROM ["${KOKO_ROOT_DIRECTORY}/dataset/copy-multiple-files-test/vPers…`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LBracket
+FAIL  copy_multiple_files.CopyFilesWithWildcardPattern — statement #1 `COPY person FROM "${KOKO_ROOT_DIRECTORY}/dataset/copy-multiple-files-test/vPerso…`: expected success, got error: IO exception: /Users/dai/code/koko/dataset/copy-multiple-files-test/vPerson?.csv: No such file or directory (os error 2)
+FAIL  copy_multiple_files.CopyFilesWithWrongPath — statement #1 `COPY person FROM ["1.csv", "${KOKO_ROOT_DIRECTORY}/dataset/copy-multiple-files-t…`: expected error `Binder exception: No file found that matches the pattern: 1.csv.`, got `Parser exception: expected a quoted file path after COPY ... FROM, found LBracket`
+FAIL  copy_multiple_files.CopyFilesWithSearchPath — statement #2 `COPY person FROM ["vPerson*.csv"]`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LBracket
+FAIL  copy_multiple_files.CopyFilesWithHomeDir — statement #1 `COPY person FROM "${KOKO_ROOT_DIRECTORY}/dataset/copy-multiple-files-test/vPerso…`: expected success, got error: IO exception: /Users/dai/code/koko/dataset/copy-multiple-files-test/vPerson?.csv: No such file or directory (os error 2)
+PASS  copy_nested.NodePropertyIntColumnWithList
+PASS  copy_nested.NodePropertyStringColumnWithListReload
+PASS  copy_nested.RelPropertyColumnWithList
+PASS  copy_nested.RelPropertyColumnWithListReload
+PASS  copy_nested.NodePropertyIntColumnWithList
+PASS  copy_nested.NodePropertyStringColumnWithListReload
+FAIL  copy_nested.NodeStruct — statement #1 `MATCH (o:organisation) RETURN o.state`: row mismatch: expected `{revenue: 152, location: ["vanco,uver north area"], stock: {price: [15,78,671], volume: 432}}`, got `{revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}`
+FAIL  copy_nested.NodeStructReload — statement #1 `MATCH (o:organisation) RETURN o.state`: row mismatch: expected `{revenue: 152, location: ["vanco,uver north area"], stock: {price: [15,78,671], volume: 432}}`, got `{revenue: 152, location: ['vanco,uver north area'], stock: {price: [15,78,671], volume: 432}}`
+PASS  copy_node_csv.CopyNodeTest
+FAIL  copy_node_parquet.CopyNodeTest — dataset load failed: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  copy_node_parquet.IgnoreErrorsTest — dataset load failed: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  copy_npy_large.CopyLargeNpyTest — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  copy_npy_one_dimensional.CopyOneDimensionalNpyTest — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  copy_npy_one_dimensional.CopyOneDimensionalNpyTestIgnoreErrors — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  copy_npy_one_dimensional.CopyOneDimensionalNpyTestInvalidOption — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  copy_npy_three_dimensional.CopyThreeDimensionalNpyTest — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  copy_npy_two_dimensional.CopyTwoDimensionalNpyTest — dataset load failed: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+PASS  copy_over_large_string.OverLargeStringProp
+PASS  copy_over_large_string.OverLargeStringPK
+FAIL  copy_parquet.CopyParquet — statement #2 `COPY test1 FROM "${KOKO_ROOT_DIRECTORY}/dataset/parquet/issue3481.parquet"`: expected success, got error: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  copy_partial_column.RelPartialColumnsTest — statement #4 `COPY sees() FROM (LOAD FROM "${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/eKnows.csv" …`: expected success, got error: Parser exception: expected keyword FROM but found LParen
+FAIL  copy_partial_column.NodePartialColumnsTest — statement #2 `COPY tableOfTypes2 (id, int64Column, doubleColumn, booleanColumn, dateColumn, ti…`: expected success, got error: Parser exception: expected keyword FROM but found LParen
+PASS  copy_pk_basic.CopyInt64PK
+PASS  copy_pk_basic.CopyStringPK
+FAIL  copy_pk_basic.CopyBlobPK — statement #4 `COPY person FROM "${KOKO_ROOT_DIRECTORY}/dataset/primary-key-tests/vPerson.csv"`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+PASS  copy_pk_basic.CopyMixedStringAndIntPK
+PASS  copy_pk_basic.CopyInt8PK
+PASS  copy_pk_basic.CopyInt16PK
+PASS  copy_pk_basic.CopyInt32PK
+PASS  copy_pk_basic.CopyUInt8PK
+PASS  copy_pk_basic.CopyUInt16PK
+PASS  copy_pk_basic.CopyUInt32PK
+PASS  copy_pk_basic.CopyUInt64PK
+PASS  copy_pk_basic.CopyInt128PK
+PASS  copy_pk_basic.CopyUInt128PK
+FAIL  copy_pk_basic.CopyDoublePK — statement #4 `COPY person FROM "${KOKO_ROOT_DIRECTORY}/dataset/primary-key-tests/vPerson.csv"`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+FAIL  copy_pk_basic.CopyFloatPK — statement #4 `COPY person FROM "${KOKO_ROOT_DIRECTORY}/dataset/primary-key-tests/vPerson.csv"`: expected success, got error: Runtime exception: Unsupported primary key type in this phase.
+parse error in /Users/dai/code/koko/test/test_files/copy/copy_pk_duplicate.test: invalid result count `error(regex)`
+PASS  copy_pk_long_string.CopyLongStringPK
+SKIP  copy_pk_long_string_parquet.CopyPLongStringPKParquet (dataset `CSV_TO_PARQUET(long-string-pk-tests)` is not available)
+PASS  copy_pk_serial.CopySerialPK
+PASS  copy_pk_serial.CopyZeroColumnsSerial
+SKIP  copy_rel_stats.CopyRelStatistics (-SKIP)
+FAIL  copy_snap_amazon0601_csv.CopySNAPAmazon0601CSV — dataset load failed: Binder exception: Copy csv option value must be a single character with an optional escape character.
+FAIL  copy_snap_amazon0601_parquet.CopySNAPAmazon0601Parquet — dataset load failed: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+PASS  copy_snap_twitter_csv.CopySNAPTwitterCSV
+FAIL  copy_snap_twitter_parquet.CopySNAPTwitterParquet — dataset load failed: Binder exception: Cannot load from file type parquet. If this file type is part of a koko extension please load the extension then try again.
+FAIL  copy_special_char.CopySpecialChars — statement #1 `MATCH (p:person) RETURN p.randomString`: row mismatch: expected `this is a #plain# string`, got `this is a ##plain## #string`
+PASS  copy_timestamp.NodePropertyColumnWithTimestamp
+FAIL  copy_to_big_results.CopyBigResults — statement #1 `COPY (MATCH (r:tableOfTypes) RETURN r.*) TO '${DATABASE_PATH}/out.csv'`: expected success, got error: Parser exception: expected an identifier, found LParen
+FAIL  copy_to_csv.TinySnbCopyToCSV — statement #1 `COPY (MATCH (p:person) RETURN [id(p)] as PID, p.*) TO "${DATABASE_PATH}/tinysnb_…`: expected success, got error: Parser exception: expected an identifier, found LParen
+SKIP  copy_to_csv.CopyToInvalidCase (-SKIP_IN_MEM)
+FAIL  copy_to_parquet.TinySnbCopyToParquet — statement #1 `COPY (MATCH (p:person) return p.*) to '${DATABASE_PATH}/tinysnb.parquet'`: expected success, got error: Parser exception: expected an identifier, found LParen
+FAIL  copy_with_skip_lines.LoadWithSkippedLines — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson.csv' (skip=2) RETURN *`: expected 3 row(s), got 4: ["2|Bob|2|true|false|30|5.1|1900-01-01|2008-11-03 13:25:30.000526-02:00|10 years 5 months 13 hours 24 us|[12,8]|[Bobby]|[[8,9],[9,10]]|[98,42,93,88]|0.99|{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12}", "3|Carol|1|false|true|45|5.0|1940-06-22|1911-08-20 02:32:21|48 hours 24 minutes 11 seconds|[4,5]|[Carmen,Fred]|[[8,10]]|[91,75,21,95]|1.00|a0eebc999c0b4ef8bb6d6bb9bd380a13", "5|Dan|2|false|true|20|4.8|1950-7-23|2031-11-30 12:25:30Z|10 years 5 months 13 hours 24 us|[1,9]|[Wolfeschlegelstein,Daniel]|[[7,4],[8,8],[9]]|[76,88,99,89]|1.30|a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a14", "7|Elizabeth|1|false|true|20|4.7|1980-10-26|1976-12-23 11:21:42|48 hours 24 minutes 11 seconds|[2]|[Ein]|[[6],[7],[8]]|[96,59,65,88]|1.463|{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a15}"]
+FAIL  copy_with_skip_lines.CopyFromWithSkippedLines — statement #2 `COPY person FROM '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson.csv' (skip=3)`: row mismatch: expected `2 tuples have been copied to the person table.`, got `5 tuples have been copied to table.`
+FAIL  copy_with_skip_lines.CopyFromInvalidSkipNum — statement #1 `LOAD FROM '${KOKO_ROOT_DIRECTORY}/dataset/tinysnb/vPerson.csv' (skip=2.5) RETURN…`: expected error `Binder exception: The type of csv parsing option SKIP must be a INT64.`, got `Parser exception: expected a string/int/bool/list CSV option value, found Float(2.5)`
+SKIP  export_import_db.ExportDBWithDropColumn (-SKIP_IN_MEM)
+SKIP  export_import_db.ExportDBWithDropAndAddColumn (-SKIP_IN_MEM)
+SKIP  export_import_db.ExportDBDropMultipleColumns (-SKIP_IN_MEM)
+SKIP  export_import_db.ExportDBAddColThenInsert (-SKIP_IN_MEM)
+SKIP  export_import_db.ExportDBDropThenAddDifferentType (-SKIP_IN_MEM)
+parse error in /Users/dai/code/koko/test/test_files/copy/export_import_db.test: invalid result count `error(regex)`
+FAIL  import_legacy_relgroup_db.ImportDBWithLegacyRelGroup — statement #1 `IMPORT DATABASE "${KOKO_ROOT_DIRECTORY}/dataset/import_db_legacy_relgroup"`: expected success, got error: Parser exception: expected a MATCH, CREATE, or RETURN clause but found Ident("IMPORT")
+SKIP  mismatch_from_to.MismatchFromToType (dataset `EMPTY` is not available)
+PASS  multi_copy_node.CopyLargeInt
+FAIL  multi_copy_node.CopyLargeIntRandom — statement #2 `match (t:test) return count(*)`: row mismatch: expected `200000`, got `0`
+FAIL  multi_copy_node.CopyLargeIntRandomSeeded — statement #2 `match (t:test) return count(*)`: row mismatch: expected `200000`, got `0`
+PASS  multi_copy_worst_case_split.CopyWorstCaseSplit
+FAIL  segmentation.CopySegmentTest — statement #2 `COPY nums from (UNWIND range(1, 64000) as num RETURN num)`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  segmentation.SingleCopyMultiSegmentTest — statement #2 `COPY nums from (UNWIND range(1, 131072) as num RETURN num)`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  segmentation.CopyRelSegmentTest — statement #3 `COPY nums from (UNWIND range(1, 120000) as num RETURN num)`: expected success, got error: Parser exception: expected a quoted file path after COPY ... FROM, found LParen
+FAIL  spill_to_disk.DisableSpillToDisk — statement #5 `COPY follows FROM "${KOKO_ROOT_DIRECTORY}/dataset/snap/twitter/csv/twitter-edges…`: expected error `Buffer manager exception: Unable to allocate memory! The buffer pool is full and no memory could be freed!`, but statement succeeded
+
+43 passed, 10 skipped, 52 failed

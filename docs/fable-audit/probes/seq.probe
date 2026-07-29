@@ -1,0 +1,12 @@
+CREATE SEQUENCE s;
+BEGIN TRANSACTION;
+RETURN nextval('s') AS v;
+ROLLBACK;
+RETURN nextval('s') AS v;
+CREATE SEQUENCE t;
+CREATE NODE TABLE N(id INT64, PRIMARY KEY(id));
+CREATE (:N {id: 1});
+CREATE (:N {id: 2});
+CREATE (:N {id: 3});
+MATCH (n:N) WHERE n.id = 2 RETURN nextval('t') AS v;
+RETURN currval('t') AS v;

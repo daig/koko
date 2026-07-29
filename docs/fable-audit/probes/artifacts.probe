@@ -1,0 +1,13 @@
+CREATE NODE TABLE P(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE K(FROM P TO P);
+CREATE (:P {id: 0});
+CREATE (:P {id: 1});
+CREATE (:P {id: 2});
+MATCH (a:P {id:0}), (b:P {id:1}) CREATE (a)-[:K]->(b);
+MATCH (a:P {id:0}), (b:P {id:2}) CREATE (a)-[:K]->(b);
+MATCH (a:P)-[:K]->(b:P) WHERE a.id = 0 RETURN count(DISTINCT a.id) AS c;
+CREATE NODE TABLE N(id INT64, val STRING, PRIMARY KEY(id));
+CREATE (:N {id: 2, val: 'v2'});
+MATCH (n:N) WHERE n.id = 2.0 RETURN n.val;
+MATCH (n:N) WHERE n.id = 2.5 RETURN n.val;
+RETURN 2 = 2.0 AS eq;

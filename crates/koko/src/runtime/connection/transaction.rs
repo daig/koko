@@ -1,14 +1,13 @@
 //! Explicit transaction lifecycle, writer admission, rollback, and panic recovery.
 
-use super::{
-    ACTIVE_TRANSACTION_MSG, Connection, PreparedStatement, READ_ONLY_WRITE_MSG, SINGLE_WRITER_MSG,
-};
+use super::{ACTIVE_TRANSACTION_MSG, Connection, READ_ONLY_WRITE_MSG, SINGLE_WRITER_MSG};
 use crate::runtime::context::mvcc_write;
 use crate::runtime::database::{DatabaseState, WriterLease};
 use crate::runtime::graph::{GraphData, GraphState};
-use crate::{Error, MemoryTracker, QueryResult, Result, TableId, Value};
+use crate::transaction::Transaction;
+use crate::{Error, QueryResult, Result};
 use koko_catalog::Catalog;
-use koko_common::Ts;
+use koko_common::{MemoryTracker, TableId, Ts};
 use koko_storage::{SharedStorage, StorageWriteHandle};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,121 +45,35 @@ impl WriteOperationContext<'_> {
     }
 }
 
-/// An RAII handle to an explicit transaction, returned by
-/// [`Connection::transaction`] / [`Connection::transaction_read_only`].
-///
-/// Statements run through the guard ([`query`](Self::query) /
-/// [`prepare`](Self::prepare)) or through the underlying [`Connection`] both see
-/// the transaction. Call [`commit`](Self::commit) to publish the writes;
-/// **dropping the guard without committing rolls the transaction back** (the safe
-/// `rusqlite` idiom), as does [`rollback`](Self::rollback).
-///
-/// ```
-/// # use koko::Database;
-/// # fn main() -> koko::Result<()> {
-/// let db = Database::in_memory();
-/// let conn = db.connect();
-/// conn.query("CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))")?;
-/// let tx = conn.transaction()?;
-/// tx.query("CREATE (:P {id: 1})")?;
-/// tx.commit()?; // without this, the drop would roll back
-/// # Ok(())
-/// # }
-/// ```
-pub struct Transaction<'conn> {
-    conn: &'conn Connection,
-    /// Set once `commit`/`rollback` has run, so `Drop` doesn't roll back again.
-    finished: bool,
-}
-
-impl<'conn> Transaction<'conn> {
-    /// Run a statement inside this transaction (delegates to the connection).
-    pub fn query(&self, cypher: &str) -> Result<QueryResult> {
-        self.conn.query(cypher)
-    }
-
-    /// Run a parameterized statement inside this transaction.
-    pub fn query_with_params(&self, cypher: &str, params: &[(&str, Value)]) -> Result<QueryResult> {
-        self.conn.query_with_params(cypher, params)
-    }
-
-    /// Prepare a statement on this transaction's connection. The returned handle is
-    /// tied to the connection (not this guard), and runs within the transaction
-    /// while it stays active.
-    pub fn prepare(&self, cypher: &str) -> Result<PreparedStatement<'conn>> {
-        self.conn.prepare(cypher)
-    }
-
-    /// Commit the transaction, publishing its writes to all connections.
-    pub fn commit(mut self) -> Result<()> {
-        self.conn
-            .handle_transaction_op(koko_parser::ast::TxnOp::Commit)?;
-        self.finished = true;
-        Ok(())
-    }
-
-    /// Roll the transaction back, discarding its writes. Equivalent to dropping the
-    /// guard, but lets you observe any error.
-    pub fn rollback(mut self) -> Result<()> {
-        self.conn
-            .handle_transaction_op(koko_parser::ast::TxnOp::Rollback)?;
-        self.finished = true;
-        Ok(())
-    }
-}
-
-impl std::fmt::Debug for Transaction<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Transaction")
-            .field("finished", &self.finished)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Drop for Transaction<'_> {
-    fn drop(&mut self) {
-        if !self.finished {
-            // Best-effort rollback. If a statement error already aborted the
-            // transaction, this ROLLBACK is a no-op that errors with "No active
-            // transaction" — deliberately ignored here.
-            let _ = self
-                .conn
-                .handle_transaction_op(koko_parser::ast::TxnOp::Rollback);
-        }
-    }
-}
-
 impl Connection {
-    /// Begin an explicit **read-write** transaction, returning an RAII
-    /// [`Transaction`] guard. Statements run via the guard (or via this connection
-    /// directly) see their own uncommitted writes in isolation; `tx.commit()`
-    /// publishes them and **dropping the guard without committing rolls back** (the
-    /// safe `rusqlite` idiom). Errors if another connection already holds the
-    /// single write-transaction slot.
-    pub fn transaction(&self) -> Result<Transaction<'_>> {
+    /// Begin an explicit read-write transaction.
+    ///
+    /// The guard exclusively borrows this connection until commit, rollback,
+    /// or drop:
+    ///
+    /// ```compile_fail
+    /// # use koko::Database;
+    /// let database = Database::new();
+    /// let mut connection = database.connect();
+    /// let transaction = connection.transaction().unwrap();
+    /// connection.execute("RETURN 1").unwrap();
+    /// drop(transaction);
+    /// ```
+    pub fn transaction(&mut self) -> Result<Transaction<'_>> {
         self.handle_transaction_op(koko_parser::ast::TxnOp::Begin { read_only: false })?;
-        Ok(Transaction {
-            conn: self,
-            finished: false,
-        })
+        Ok(Transaction::new(self))
     }
 
-    /// Begin an explicit **read-only** transaction (an RAII [`Transaction`] guard).
-    /// Reads run against committed state; an attempted write is rejected. Dropping
-    /// the guard ends the transaction (a read-only transaction has nothing to roll
-    /// back). Read-only transactions don't take the single-writer slot.
-    pub fn transaction_read_only(&self) -> Result<Transaction<'_>> {
+    /// Begin an explicit read-only transaction.
+    pub fn read_transaction(&mut self) -> Result<Transaction<'_>> {
         self.handle_transaction_op(koko_parser::ast::TxnOp::Begin { read_only: true })?;
-        Ok(Transaction {
-            conn: self,
-            finished: false,
-        })
+        Ok(Transaction::new(self))
     }
 
     /// Run a transaction-control op (`BEGIN`/`COMMIT`/`ROLLBACK`), taking the lock
     /// the same way a query would. The RAII [`Transaction`] handle drives `BEGIN`
     /// and `COMMIT`/`ROLLBACK` through here.
-    pub(super) fn handle_transaction_op(&self, op: koko_parser::ast::TxnOp) -> Result<QueryResult> {
+    pub(crate) fn handle_transaction_op(&self, op: koko_parser::ast::TxnOp) -> Result<QueryResult> {
         let _execution = self
             .execution
             .lock()
@@ -207,14 +120,16 @@ impl Connection {
             transaction
                 .snapshot
                 .storage
+                .write()
                 .rollback_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
             transaction.snapshot.release_catalog_writes(writer_id);
         } else if let Some(lease) = lease {
             let graph_data = lease.graph.snapshot();
-            graph_data.storage.rollback_to(
-                mvcc_write(graph_data.storage.current_commit_ts(), lease.writer_id),
-                0,
-            );
+            let read_ts = graph_data.storage.read().current_commit_ts();
+            graph_data
+                .storage
+                .write()
+                .rollback_to(mvcc_write(read_ts, lease.writer_id), 0);
             graph_data.release_catalog_writes(lease.writer_id);
         }
     }
@@ -238,6 +153,7 @@ impl Connection {
             transaction
                 .snapshot
                 .storage
+                .write()
                 .rollback_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
             transaction.snapshot.release_catalog_writes(writer_id);
             database.active_writers.remove(&self.id);
@@ -306,7 +222,7 @@ impl Connection {
             };
             let writer = transaction.writer_id.expect("read-only rejected above");
             let write = mvcc_write(transaction.read_ts, writer);
-            let mark = transaction.snapshot.storage.undo_mark();
+            let mark = transaction.snapshot.storage.read().undo_mark();
             let result = {
                 let mut context = WriteOperationContext {
                     graph: &mut transaction.snapshot,
@@ -314,7 +230,11 @@ impl Connection {
                 apply(&mut context, write, prepared)
             };
             if result.is_err() {
-                transaction.snapshot.storage.rollback_to(write, mark);
+                transaction
+                    .snapshot
+                    .storage
+                    .write()
+                    .rollback_to(write, mark);
             }
             return result.map(Some);
         }
@@ -332,9 +252,9 @@ impl Connection {
             return Ok(None);
         };
         let writer = self.acquire_writer(&mut database, &graph)?;
-        let read_ts = graph_data.storage.current_commit_ts();
+        let read_ts = graph_data.storage.read().current_commit_ts();
         let write = mvcc_write(read_ts, writer);
-        let mark = graph_data.storage.undo_mark();
+        let mark = graph_data.storage.read().undo_mark();
         drop(database);
         let result = {
             let mut context = WriteOperationContext {
@@ -343,9 +263,9 @@ impl Connection {
             apply(&mut context, write, prepared)
         };
         if result.is_ok() {
-            graph_data.storage.commit_to(write, mark);
+            graph_data.storage.write().commit_to(write, mark);
         } else {
-            graph_data.storage.rollback_to(write, mark);
+            graph_data.storage.write().rollback_to(write, mark);
         }
         graph_data.release_catalog_writes(writer);
         self.release_writer();
@@ -402,7 +322,7 @@ impl Connection {
                 let graph = Self::selected_graph(database, &mut connection)?;
                 let mut snapshot = graph.snapshot();
                 let storage = Arc::clone(&snapshot.storage);
-                let read_ts = storage.current_commit_ts();
+                let read_ts = storage.read().current_commit_ts();
                 let writer_id = if read_only {
                     None
                 } else {
@@ -412,7 +332,7 @@ impl Connection {
                     snapshot.catalog = Arc::new((*snapshot.catalog).clone());
                     snapshot.macros = Arc::new((*snapshot.macros).clone());
                 }
-                let mark = writer_id.map_or(0, |_| storage.undo_mark());
+                let mark = writer_id.map_or(0, |_| storage.read().undo_mark());
                 let rel_base = snapshot.rel_table_bases();
                 let catalog_version = snapshot.catalog_version;
                 connection.txn = Some(TxnState {
@@ -448,7 +368,7 @@ impl Connection {
                     if transaction.catalog_dirty
                         && committed.catalog_version != transaction.catalog_version
                     {
-                        transaction.snapshot.storage.rollback_to(
+                        transaction.snapshot.storage.write().rollback_to(
                             mvcc_write(transaction.read_ts, writer_id),
                             transaction.mark,
                         );
@@ -461,6 +381,7 @@ impl Connection {
                     transaction
                         .snapshot
                         .storage
+                        .write()
                         .commit_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
                     if transaction.catalog_dirty {
                         committed.catalog = Arc::clone(&transaction.snapshot.catalog);
@@ -486,6 +407,7 @@ impl Connection {
                     transaction
                         .snapshot
                         .storage
+                        .write()
                         .rollback_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
                     transaction.snapshot.release_catalog_writes(writer_id);
                     database.active_writers.remove(&self.id);

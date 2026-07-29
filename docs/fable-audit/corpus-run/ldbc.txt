@@ -1,0 +1,6 @@
+FAIL  basic.LDBCBasic — statement #2 `MATCH p=(:Post)-[:containerOf]-(:Forum) WITH CAST(struct_extract(rels(p)[1],'_sr…`: row mismatch: expected `1`, got ``
+PASS  interactive_complex.LDBCInteractiveComplex
+PASS  interactive_short.LDBCInteractiveShort
+SKIP  interactive_short_parquet.LDBCInteractiveShortParquet (dataset `CSV_TO_PARQUET(ldbc-sf01)` is not available)
+
+2 passed, 1 skipped, 1 failed

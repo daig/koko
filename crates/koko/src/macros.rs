@@ -416,29 +416,30 @@ fn substitute(e: &mut Expr, map: &HashMap<&str, &Expr>) {
     }
 }
 
-/// Build a `&[(&str, Value)]` parameter list from `name => value` pairs, for
-/// [`crate::Connection::query_with_params`] / [`crate::PreparedStatement::execute`]. Values are
-/// converted through [`crate::Value`]'s `From` impls, so bare Rust scalars work
-/// (`30`, `"Alice"`, `true`, `1.5`):
+/// Build an owned parameter array from `name => value` pairs.
+///
+/// Values convert through [`crate::Value`]'s `From` implementations, so bare
+/// Rust scalars work:
 ///
 /// ```
 /// use koko::{Database, params};
 /// # fn main() -> koko::Result<()> {
-/// let db = Database::in_memory();
-/// let conn = db.connect();
-/// conn.query("CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))")?;
-/// let stmt = conn.prepare("MATCH (p:P) WHERE p.age >= $min RETURN p.name")?;
-/// let r = stmt.execute(params!{ "min" => 30 })?;
-/// # let _ = r;
+/// let database = Database::new();
+/// let connection = database.connect();
+/// connection.execute("CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))")?;
+/// let mut statement =
+///     connection.prepare("MATCH (p:P) WHERE p.age >= $min RETURN p.name")?;
+/// let result = statement.execute_with(params! { "min" => 30 })?;
+/// # let _ = result;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// The expansion borrows a temporary array, so pass it directly to the call (the
-/// `rusqlite` idiom) rather than binding it to a `let`.
 #[macro_export]
 macro_rules! params {
-    ($($name:expr => $value:expr),* $(,)?) => {
-        &[$(($name, $crate::Value::from($value))),*][..]
+    () => {
+        [] as [$crate::Parameter; 0]
+    };
+    ($($name:expr => $value:expr),+ $(,)?) => {
+        [$($crate::Parameter::new($name, $value)),+]
     };
 }

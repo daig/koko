@@ -2,7 +2,4 @@
 **/*.rs.bk
 Cargo.lock.orig
 .DS_Store
-.docs/
-AGENTS.md
-ROADMAP.md
-fable-audit.md
+docs/fable-audit/product_probes/

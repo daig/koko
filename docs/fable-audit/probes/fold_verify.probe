@@ -1,0 +1,7 @@
+CREATE NODE TABLE Q(qid INT64, PRIMARY KEY(qid));
+CREATE NODE TABLE P(id INT64, PRIMARY KEY(id));
+CREATE (:Q {qid: 1});
+CREATE (:Q {qid: 2});
+MATCH (n:Q) UNWIND [1,1] AS i MERGE (p:P {id:i}) RETURN n.qid;
+UNWIND [1,2] AS x RETURN sum(x) ORDER BY greatest(1, 2);
+RETURN greatest(1, 2);

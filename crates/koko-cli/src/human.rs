@@ -2,7 +2,9 @@
 
 use crate::bootstrap::Format;
 use crate::presentation::PresentationError;
-use koko::{CellRef, CellValueRef, LogicalType, PlanNode, QueryResult, ResultTypeContext};
+use koko::result::{Cell, CellValue, PlanNode, ResultTypeContext};
+use koko::value::{format_date, format_decimal, format_interval, format_timestamp, format_uuid};
+use koko::{LogicalType, QueryResult};
 use std::io::Write;
 use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::UnicodeWidthStr as _;
@@ -32,27 +34,28 @@ pub fn write_result(
 }
 
 pub fn cell_text(
-    cell: CellRef<'_>,
+    cell: Cell<'_>,
     _context: &ResultTypeContext,
     null_display: &str,
 ) -> Result<String, PresentationError> {
     let value = match cell.value() {
-        CellValueRef::Null => null_display.to_string(),
-        CellValueRef::Bool(value) => value.to_string(),
-        CellValueRef::Int { value, .. } => value.to_string(),
-        CellValueRef::UInt128(value) => value.to_string(),
-        CellValueRef::Decimal { value, scale, .. } => koko::format_decimal(value, scale),
-        CellValueRef::Double(value) => format!("{value:.6}"),
-        CellValueRef::Float(value) => format!("{value:.6}"),
-        CellValueRef::String("") => "''".to_string(),
-        CellValueRef::String(value) => escape_controls(value),
-        CellValueRef::Date(value) => koko::format_date(value),
-        CellValueRef::Timestamp(value) => koko::format_timestamp(value),
-        CellValueRef::TimestampTz(value) => format!("{}+00", koko::format_timestamp(value)),
-        CellValueRef::Interval(value) => koko::format_interval(&value),
-        CellValueRef::Uuid(value) => koko::format_uuid(value),
-        CellValueRef::InternalId(value) => value.to_string(),
-        CellValueRef::Generic(value) => escape_controls(&value.to_result_string()),
+        CellValue::Null => null_display.to_string(),
+        CellValue::Bool(value) => value.to_string(),
+        CellValue::Int { value, .. } => value.to_string(),
+        CellValue::UInt128(value) => value.to_string(),
+        CellValue::Decimal { value, scale, .. } => format_decimal(value, scale),
+        CellValue::Double(value) => format!("{value:.6}"),
+        CellValue::Float(value) => format!("{value:.6}"),
+        CellValue::String("") => "''".to_string(),
+        CellValue::String(value) => escape_controls(value),
+        CellValue::Date(value) => format_date(value),
+        CellValue::Timestamp(value) => format_timestamp(value),
+        CellValue::TimestampTz(value) => format!("{}+00", format_timestamp(value)),
+        CellValue::Interval(value) => format_interval(&value),
+        CellValue::Uuid(value) => format_uuid(value),
+        CellValue::InternalId(value) => value.to_string(),
+        CellValue::Generic(value) => escape_controls(&value.to_result_string()),
+        _ => escape_controls(&cell.to_owned().to_result_string()),
     };
     Ok(value)
 }
@@ -62,8 +65,8 @@ fn write_table(
     result: &QueryResult,
     options: &HumanOptions,
 ) -> Result<usize, PresentationError> {
-    let column_count = result.schema().len();
-    let total_rows = result.num_rows();
+    let column_count = result.columns().len();
+    let total_rows = result.len();
     if column_count == 0 {
         return Ok(0);
     }
@@ -117,7 +120,7 @@ fn write_table(
         writer,
         &columns,
         &widths,
-        |column| result.schema()[column].name().to_string(),
+        |column| result.columns()[column].name().to_string(),
         |_| false,
         box_style,
     )?;
@@ -125,7 +128,7 @@ fn write_table(
         writer,
         &columns,
         &widths,
-        |column| result.schema()[column].logical_type().to_string(),
+        |column| result.columns()[column].logical_type().to_string(),
         |_| false,
         box_style,
     )?;
@@ -165,7 +168,7 @@ fn write_table(
                 )
                 .unwrap_or_else(|error| format!("<render error: {error}>"))
             },
-            |column| is_numeric(result.schema()[column].logical_type()),
+            |column| is_numeric(result.columns()[column].logical_type()),
             box_style,
         )?;
     }
@@ -187,15 +190,15 @@ fn write_markdown(
     options: &HumanOptions,
 ) -> Result<usize, PresentationError> {
     writer.write_all(b"|")?;
-    for column in result.schema() {
+    for column in result.columns() {
         write!(writer, " {} |", markdown_escape(column.name()))?;
     }
     writer.write_all(b"\n|")?;
-    for _ in result.schema() {
+    for _ in result.columns() {
         writer.write_all(b" --- |")?;
     }
     writer.write_all(b"\n")?;
-    let total_rows = result.num_rows();
+    let total_rows = result.len();
     for (row_index, row) in result.rows().enumerate() {
         if !display_row(row_index, total_rows, options.row_limit) {
             continue;
@@ -219,7 +222,7 @@ fn write_line(
     result: &QueryResult,
     options: &HumanOptions,
 ) -> Result<usize, PresentationError> {
-    let total_rows = result.num_rows();
+    let total_rows = result.len();
     for (row_index, row) in result.rows().enumerate() {
         if !display_row(row_index, total_rows, options.row_limit) {
             continue;
@@ -230,7 +233,7 @@ fn write_line(
                 result.type_context(),
                 &options.null_display,
             )?;
-            writeln!(writer, "{} = {value}", result.schema()[column].name())?;
+            writeln!(writer, "{} = {value}", result.columns()[column].name())?;
         }
     }
     Ok(displayed_count(total_rows, options.row_limit))
@@ -276,15 +279,15 @@ fn measure_widths(
     options: &HumanOptions,
     columns: &[Option<usize>],
 ) -> Result<Vec<usize>, PresentationError> {
-    let total_rows = result.num_rows();
+    let total_rows = result.len();
     let mut widths = columns
         .iter()
         .map(|column| {
             column.map_or(1, |column| {
-                result.schema()[column]
+                result.columns()[column]
                     .name()
                     .width()
-                    .max(result.schema()[column].logical_type().to_string().width())
+                    .max(result.columns()[column].logical_type().to_string().width())
                     .max(1)
             })
         })

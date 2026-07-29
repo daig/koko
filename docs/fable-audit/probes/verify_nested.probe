@@ -1,0 +1,5 @@
+RETURN CAST('["a","b"]' AS STRING[])
+RETURN size(CAST('["a","b"]' AS STRING[]))
+RETURN CAST("['a','b']" AS STRING[])
+RETURN CAST('[a,b]' AS STRING[])
+RETURN CAST('[ a , b ]' AS STRING[])

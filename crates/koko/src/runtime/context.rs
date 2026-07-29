@@ -2,10 +2,10 @@
 
 use super::graph::GraphState;
 use crate::macros::MacroRegistry;
-use crate::{DatabaseConfig, Error, LogicalType, MemoryTracker, Result, TableId, Value};
-use koko_binder::SessionConfig;
+use crate::{DatabaseConfig, Error, LogicalType, Result, Value};
+use koko_binder::config::SessionConfig;
 use koko_catalog::Catalog;
-use koko_common::{ReadView, Ts};
+use koko_common::{MemoryTracker, ReadView, TableId, Ts};
 use koko_storage::{SharedStorage, StorageReadHandle, StorageWriteHandle};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ pub(super) struct QueryContext {
     pub(super) base_dir: PathBuf,
     pub(super) warnings: koko_common::warnings::WarningSink,
     pub(super) random: koko_function::oracle_hash::RandomState,
-    pub(super) scalar_udfs: Arc<HashMap<String, Arc<koko_common::ScalarUdf>>>,
+    pub(super) scalar_udfs: Arc<HashMap<String, Arc<koko_common::RegisteredScalarFunction>>>,
     pub(super) setting_update: Option<(String, Value)>,
     pub(super) show_table_rows: Option<Vec<Vec<Value>>>,
     pub(super) compilation_time: Duration,
@@ -80,8 +80,8 @@ impl QueryContext {
             .clamp(1, usize::MAX as i128) as usize
     }
 
-    pub(super) fn query_control(&self) -> koko_processor::QueryControl<'_> {
-        koko_processor::QueryControl::new(&self.interrupt_epoch, self.captured_epoch, self.deadline)
+    pub(super) fn query_control(&self) -> koko_common::QueryControl<'_> {
+        koko_common::QueryControl::new(&self.interrupt_epoch, self.captured_epoch, self.deadline)
     }
 }
 

@@ -1,0 +1,15 @@
+// union functions
+RETURN union_value(x:=1) AS a
+RETURN typeof(union_value(x:=1)) AS a
+RETURN union_value(x:='hello') AS a
+RETURN union_tag(union_value(x:=1)) AS a
+RETURN union_tag(union_value(myfield:=42)) AS a
+RETURN union_extract(union_value(x:=1), 'x') AS a
+RETURN union_extract(union_value(x:=1), 'y') AS a
+RETURN union_extract(union_value(myfield:=42), 'myfield') AS a
+RETURN union_value(a:=1.5) AS a
+RETURN typeof(union_value(a:=1.5)) AS a
+RETURN union_value(a:=true) AS a
+RETURN union_tag(union_value(a:=true)) AS a
+RETURN union_extract(union_value(a:=[1,2,3]), 'a') AS a
+RETURN union_value(a:=null) AS a

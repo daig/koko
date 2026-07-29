@@ -1,0 +1,73 @@
+# WHERE comparison, boolean, arithmetic, and NULL predicates.
+-DATASET CSV empty
+
+--
+
+-CASE Filters
+-STATEMENT CREATE NODE TABLE N(id INT64, v INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:N {id: 1, v: 10})
+---- ok
+-STATEMENT CREATE (:N {id: 2, v: 20})
+---- ok
+-STATEMENT CREATE (:N {id: 3, v: 30})
+---- ok
+-STATEMENT MATCH (n:N) WHERE n.v >= 20 RETURN n.id
+---- 2
+2
+3
+-STATEMENT MATCH (n:N) WHERE n.v > 10 AND n.v < 30 RETURN n.id
+---- 1
+2
+-STATEMENT MATCH (n:N) WHERE n.v = 10 OR n.v = 30 RETURN n.id
+---- 2
+1
+3
+-STATEMENT MATCH (n:N) WHERE NOT n.v = 20 RETURN n.id
+---- 2
+1
+3
+-STATEMENT MATCH (n:N) WHERE n.v <> 20 RETURN n.id
+---- 2
+1
+3
+-STATEMENT MATCH (n:N) WHERE n.v % 20 = 0 RETURN n.id
+---- 1
+2
+
+-CASE Arithmetic
+-STATEMENT CREATE NODE TABLE N(id INT64, v INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:N {id: 1, v: 10})
+---- ok
+-STATEMENT CREATE (:N {id: 2, v: 20})
+---- ok
+-STATEMENT MATCH (n:N) RETURN n.id, n.v + 1, n.v * 2, n.v - 5
+---- 2
+1|11|20|5
+2|21|40|15
+-STATEMENT MATCH (n:N) RETURN n.v / 3
+---- 2
+3
+6
+-STATEMENT RETURN 1 + 2 * 3
+---- 1
+7
+-STATEMENT RETURN 7.0 / 2.0
+---- 1
+3.500000
+
+-CASE InlinePatternProperty
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'Alice', age: 35})
+---- ok
+-STATEMENT CREATE (:P {name: 'Bob', age: 35})
+---- ok
+-STATEMENT MATCH (p:P {age: 35}) RETURN p.name
+---- 2
+Alice
+Bob
+-STATEMENT MATCH (p:P {name: 'Alice'}) RETURN p.age
+---- 1
+35

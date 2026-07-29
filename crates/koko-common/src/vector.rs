@@ -1,11 +1,8 @@
 //! The vectorized data layer: `ValueVector` + `DataChunk`, with a bit-packed
 //! null mask and a selection vector.
 //!
-//! This is the currency every operator speaks and the highest-risk P0 design
-//! (per the roadmap), so it is built properly rather than as a `Vec<Value>`
-//! bag. The idiomatic-Rust redesign (see `docs/cpp-reference/03-exec-model.md`)
-//! replaces the C++ `uint8_t[]` + `reinterpret_cast` family with a *typed*
-//! [`ColumnData`] enum, so there is **zero `unsafe`** in this layer.
+//! This is the currency every operator speaks. A typed [`ColumnData`] enum
+//! replaces erased byte buffers and casts, so this layer requires no `unsafe`.
 //!
 //! Ownership differs from C++ on purpose: instead of every column holding a
 //! `shared_ptr<DataChunkState>`, the [`DataChunk`] owns the single selection

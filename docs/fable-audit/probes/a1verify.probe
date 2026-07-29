@@ -1,0 +1,11 @@
+RETURN to_int16(1.731) AS a;
+RETURN to_int64(2.5) AS b;
+RETURN to_int64(-2.5) AS c;
+RETURN CAST(1.731 AS INT32) AS d;
+RETURN [3,4] > [3,NULL] AS e;
+RETURN make_date(2011,1,32) AS f;
+RETURN floor(CAST('-9.5' AS DECIMAL(4,1))) AS g;
+CREATE NODE TABLE U(id INT64, v UINT64, PRIMARY KEY(id));
+CREATE (:U {id:1, v: 9223372036854775807});
+CREATE (:U {id:2, v: 6713});
+MATCH (u:U) RETURN sum(u.v) AS s;

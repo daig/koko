@@ -1,0 +1,4 @@
+PASS  lsqb_queries.LSQBTest
+SKIP  lsqb_queries_parquet.LSQBTestParquet (dataset `CSV_TO_PARQUET(lsqb-sf01)` is not available)
+
+1 passed, 1 skipped, 0 failed

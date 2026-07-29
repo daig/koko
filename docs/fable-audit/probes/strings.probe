@@ -1,0 +1,70 @@
+// ===== STARTS WITH =====
+RETURN 'hello' STARTS WITH 'he' AS x
+RETURN 'hello' STARTS WITH 'lo' AS x
+RETURN 'hello' STARTS WITH 'hello' AS x
+RETURN 'hello' STARTS WITH 'hello!' AS x
+RETURN 'hello' STARTS WITH '' AS x
+RETURN '' STARTS WITH '' AS x
+RETURN '' STARTS WITH 'a' AS x
+RETURN 'Hello' STARTS WITH 'hello' AS x
+RETURN 'hello' STARTS WITH NULL AS x
+RETURN NULL STARTS WITH 'a' AS x
+RETURN NULL STARTS WITH NULL AS x
+// ===== ENDS WITH =====
+RETURN 'hello' ENDS WITH 'lo' AS x
+RETURN 'hello' ENDS WITH 'he' AS x
+RETURN 'hello' ENDS WITH 'hello' AS x
+RETURN 'hello' ENDS WITH '' AS x
+RETURN 'hello' ENDS WITH NULL AS x
+RETURN NULL ENDS WITH 'a' AS x
+// ===== CONTAINS =====
+RETURN 'hello' CONTAINS 'ell' AS x
+RETURN 'hello' CONTAINS 'xyz' AS x
+RETURN 'hello' CONTAINS 'hello' AS x
+RETURN 'hello' CONTAINS '' AS x
+RETURN '' CONTAINS '' AS x
+RETURN '' CONTAINS 'a' AS x
+RETURN 'hello' CONTAINS 'HELLO' AS x
+RETURN 'hello' CONTAINS NULL AS x
+RETURN NULL CONTAINS 'a' AS x
+// ===== unicode =====
+RETURN 'héllo' STARTS WITH 'hé' AS x
+RETURN 'héllo' CONTAINS 'll' AS x
+RETURN 'héllo' ENDS WITH 'llo' AS x
+RETURN '日本語' CONTAINS '本' AS x
+RETURN '日本語' STARTS WITH '日' AS x
+RETURN 'café' ENDS WITH 'é' AS x
+RETURN 'naïve' CONTAINS 'ï' AS x
+// ===== regex =~ =====
+RETURN 'hello' =~ 'h.*o' AS x
+RETURN 'hello' =~ 'H.*' AS x
+RETURN 'hello' =~ '.*' AS x
+RETURN 'hello' =~ 'hello' AS x
+RETURN 'hello' =~ 'ell' AS x
+RETURN 'hello' =~ '.ell.' AS x
+RETURN 'hello' =~ '.*ell.*' AS x
+RETURN 'hello' =~ '^hello$' AS x
+RETURN 'hello' =~ '^h' AS x
+RETURN '' =~ '' AS x
+RETURN 'a' =~ '' AS x
+RETURN 'a.b' =~ 'a.b' AS x
+RETURN 'a.b' =~ 'a\.b' AS x
+RETURN 'axb' =~ 'a\.b' AS x
+RETURN 'abc123' =~ '[a-z]+[0-9]+' AS x
+RETURN 'ABC' =~ '(?i)abc' AS x
+RETURN 'HELLO' =~ '(?i)hello' AS x
+RETURN 'hello' =~ NULL AS x
+RETURN NULL =~ 'a' AS x
+RETURN 'hello' =~ '(' AS x
+RETURN 'hello' =~ '[' AS x
+RETURN 'hello' =~ 'h(e)llo' AS x
+RETURN 'aaa' =~ 'a{2,3}' AS x
+RETURN 'a' =~ 'a|b' AS x
+// ===== LIKE (if supported) =====
+RETURN 'hello' LIKE 'h%' AS x
+RETURN 'hello' LIKE 'h_llo' AS x
+RETURN 'hello' LIKE 'H%' AS x
+// ===== typeof =====
+RETURN typeof('hello' STARTS WITH 'he') AS x
+RETURN typeof('hello' =~ 'h.*') AS x
+RETURN typeof('hello' CONTAINS NULL) AS x

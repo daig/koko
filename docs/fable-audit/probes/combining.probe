@@ -1,0 +1,6 @@
+RETURN size('é')
+RETURN size('café')
+RETURN reverse('café')
+RETURN left('café', 4)
+RETURN substr('éx', 1, 1)
+RETURN upper('é')

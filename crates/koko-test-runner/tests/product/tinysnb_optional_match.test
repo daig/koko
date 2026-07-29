@@ -1,0 +1,64 @@
+-DATASET CSV tinysnb
+--
+-CASE OptionalMatch
+# A standalone OPTIONAL MATCH that matches nothing still yields one (NULL) row.
+-STATEMENT OPTIONAL MATCH (a:person) WHERE a.ID<0 RETURN COUNT(*)
+---- 1
+1
+-STATEMENT OPTIONAL MATCH (a:person) WHERE a.fName = 'a' RETURN a.age
+---- 1
+
+# Correlated optional extend — Hubert has no `knows` neighbor → NULL.
+-STATEMENT MATCH (a:person) WHERE a.fName='Elizabeth' OR a.fName='Hubert Blaine Wolfeschlegelsteinhausenbergerdorff' OPTIONAL MATCH (a)-[:knows]->(b:person) RETURN a.fName, b.fName
+---- 3
+Elizabeth|Farooq
+Elizabeth|Greg
+Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|
+# The WHERE inside OPTIONAL MATCH filters before the NULL decision (all 8 persons
+# returned; only Elizabeth has a Farooq neighbor).
+-STATEMENT MATCH (a:person) OPTIONAL MATCH (a)-[:knows]->(b:person) WHERE b.fName='Farooq' RETURN a.fName, b.fName
+---- 8
+Alice|
+Bob|
+Carol|
+Dan|
+Elizabeth|Farooq
+Farooq|
+Greg|
+Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|
+# Optional extend onto another node table; unmatched → NULL property.
+-STATEMENT MATCH (a:person) OPTIONAL MATCH (a)-[:studyAt]->(b:organisation) RETURN a.fName, b.name
+---- 8
+Alice|ABFsUni
+Bob|ABFsUni
+Carol|
+Dan|
+Elizabeth|
+Farooq|ABFsUni
+Greg|
+Hubert Blaine Wolfeschlegelsteinhausenbergerdorff|
+# Every input row is preserved (count = number of persons).
+-STATEMENT MATCH (a:person) OPTIONAL MATCH (a)-[:workAt]->(b:organisation) RETURN COUNT(*)
+---- 1
+8
+
+-CASE OptionalMatchChains
+# A 2-hop chain entirely inside one OPTIONAL keeps rows where the chain breaks.
+-STATEMENT MATCH (a:person) OPTIONAL MATCH (a)-[:knows]->(b:person)-[:knows]->(c:person) RETURN COUNT(*)
+---- 1
+40
+# Two chained OPTIONAL MATCHes — the second extends from a possibly-NULL node.
+-STATEMENT MATCH (a:person) OPTIONAL MATCH (a)-[:knows]->(b:person) OPTIONAL MATCH (b)-[:knows]->(c:person) RETURN COUNT(*)
+---- 1
+41
+# A multi-pattern OPTIONAL MATCH (two patterns sharing the new variable c).
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) OPTIONAL MATCH (a)-[:studyAt]->(c:organisation), (b)-[:studyAt]->(c) RETURN COUNT(*)
+---- 1
+14
+# Chained correlated optionals: the second references the (possibly-NULL) first.
+-STATEMENT MATCH (a:person) WHERE a.ID < 6 OPTIONAL MATCH (b:person) WHERE b.ID = a.ID + 2 OPTIONAL MATCH (c:person) WHERE c.ID = b.ID + a.ID RETURN a.ID, b.ID, c.ID
+---- 4
+0|2|2
+2||
+3|5|8
+5|7|

@@ -1,0 +1,75 @@
+# Global and grouped aggregates, DISTINCT, and NULL semantics.
+-DATASET CSV empty
+
+--
+
+-CASE GlobalAggregates
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, dept STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'a', age: 30, dept: 'eng'})
+---- ok
+-STATEMENT CREATE (:P {name: 'b', age: 40, dept: 'eng'})
+---- ok
+-STATEMENT CREATE (:P {name: 'c', age: 50, dept: 'sales'})
+---- ok
+-STATEMENT CREATE (:P {name: 'd', dept: 'sales'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN count(*), count(p.age), sum(p.age), min(p.age), max(p.age)
+---- 1
+4|3|120|30|50
+-STATEMENT MATCH (p:P) RETURN avg(p.age)
+---- 1
+40.000000
+-STATEMENT MATCH (p:P) RETURN sum(p.age) + 2.5
+---- 1
+122.500000
+
+-CASE EmptyAggregate
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT MATCH (p:P) RETURN count(*), sum(p.age), collect(p.age), size(collect(p.age))
+---- 1
+0||[]|0
+-STATEMENT CREATE (:P {name: 'missing'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN collect(p.age), collect(DISTINCT p.age), size(collect(p.age))
+---- 1
+[]|[]|0
+
+-CASE GroupBy
+-STATEMENT CREATE NODE TABLE P(name STRING, age INT64, dept STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'a', age: 30, dept: 'eng'})
+---- ok
+-STATEMENT CREATE (:P {name: 'b', age: 40, dept: 'eng'})
+---- ok
+-STATEMENT CREATE (:P {name: 'c', age: 50, dept: 'sales'})
+---- ok
+-STATEMENT CREATE (:P {name: 'd', dept: 'sales'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN p.dept, count(*) AS c
+---- 2
+eng|2
+sales|2
+-STATEMENT MATCH (p:P) RETURN p.dept, sum(p.age) AS total ORDER BY total
+-CHECK_ORDER
+---- 2
+sales|50
+eng|70
+
+-CASE Distinct
+-STATEMENT CREATE NODE TABLE P(name STRING, dept STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:P {name: 'a', dept: 'x'})
+---- ok
+-STATEMENT CREATE (:P {name: 'b', dept: 'x'})
+---- ok
+-STATEMENT CREATE (:P {name: 'c', dept: 'y'})
+---- ok
+-STATEMENT MATCH (p:P) RETURN DISTINCT p.dept
+---- 2
+x
+y
+-STATEMENT MATCH (p:P) RETURN count(DISTINCT p.dept)
+---- 1
+2

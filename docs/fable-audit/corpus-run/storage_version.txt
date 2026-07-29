@@ -1,0 +1,3 @@
+FAIL  storage_version.StorageVersionFunctionAndUpgrade — statement #1 `CALL storage_version() RETURN *`: expected rows, got error: Not implemented exception: CALL storage_version(...) table functions are not supported in this phase
+
+0 passed, 0 skipped, 1 failed

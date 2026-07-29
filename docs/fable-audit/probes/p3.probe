@@ -1,0 +1,11 @@
+// raw stored location values (wrap in list to expose quoting)
+MATCH (o:organisation) RETURN o.state.location
+// element access - raw string
+MATCH (o:organisation) WHERE o.ID=4 RETURN o.state.location[1]
+// synthetic: does quote style depend on content? build structs
+RETURN string({a: ['has,comma']})
+RETURN string({a: ["has,comma"]})
+RETURN string({a: ['plain']})
+RETURN string(['toronto','montr,eal'])
+RETURN string(['vanco,uver north area'])
+RETURN cast('["x,y"]', 'STRING[]')

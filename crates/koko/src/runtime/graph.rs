@@ -1,10 +1,10 @@
 //! Graph identity, published graph state, and registry ownership.
 
 use super::context::mvcc_write;
+use crate::DatabaseConfig;
 use crate::macros::MacroRegistry;
-use crate::{DatabaseConfig, MemoryTracker};
 use koko_catalog::Catalog;
-use koko_common::{START_TX_ID, Ts};
+use koko_common::{MemoryTracker, START_TX_ID, Ts};
 use koko_storage::{CommitClock, InMemStorage, SharedStorage};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -63,27 +63,27 @@ impl GraphState {
             let read_ts = storage.current_commit_ts();
             let write = mvcc_write(read_ts, START_TX_ID);
             let node = catalog
-                .node_table(tables.nodes)
+                .node_table(tables.nodes())
                 .expect("ANY node table was just created");
             let node_types = node
-                .columns
+                .columns()
                 .iter()
-                .map(|column| column.ty.clone())
+                .map(|column| column.logical_type().clone())
                 .collect::<Vec<_>>();
-            storage.create_node_table(write, tables.nodes, &node_types, node.primary_key);
+            storage.create_node_table(write, tables.nodes(), &node_types, node.primary_key_index());
             let rel = catalog
-                .rel_table(tables.edges)
+                .rel_table(tables.edges())
                 .expect("ANY relationship table was just created");
             let rel_types = rel
-                .columns
+                .columns()
                 .iter()
-                .map(|column| column.ty.clone())
+                .map(|column| column.logical_type().clone())
                 .collect::<Vec<_>>();
             storage.create_rel_table(
                 write,
-                tables.edges,
-                tables.nodes,
-                tables.nodes,
+                tables.edges(),
+                tables.nodes(),
+                tables.nodes(),
                 &rel_types,
                 "_edges",
                 koko_common::RelMultiplicity::default(),

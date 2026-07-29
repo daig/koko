@@ -1,0 +1,72 @@
+# Optimizer contract: projection/property pruning and extend carry-column liveness.
+# Every query has unread wide properties that the optimized plan may omit, while the
+# listed predicate/order/aggregate/whole-value dependencies must remain populated.
+-DATASET CSV empty
+
+--
+
+-CASE ProjectionPruningContracts
+-STATEMENT CREATE NODE TABLE N(id INT64, selected STRING, predicate INT64, sort_key INT64, metric INT64, spare STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM N TO N, weight INT64, rank INT64, spare STRING)
+---- ok
+-STATEMENT CREATE (:N {id: 1, selected: 'A', predicate: 1, sort_key: 30, metric: 10, spare: 'u'})
+---- ok
+-STATEMENT CREATE (:N {id: 2, selected: 'B', predicate: 0, sort_key: 20, metric: 20, spare: 'v'})
+---- ok
+-STATEMENT CREATE (:N {id: 3, selected: 'C', predicate: 1, sort_key: 10, metric: 30, spare: 'w'})
+---- ok
+-STATEMENT MATCH (a:N {id:1}), (b:N {id:2}) CREATE (a)-[:R {weight:5, rank:2, spare:'r12'}]->(b)
+---- ok
+-STATEMENT MATCH (a:N {id:1}), (b:N {id:3}) CREATE (a)-[:R {weight:7, rank:1, spare:'r13'}]->(b)
+---- ok
+-STATEMENT MATCH (a:N {id:2}), (b:N {id:3}) CREATE (a)-[:R {weight:5, rank:3, spare:'r23'}]->(b)
+---- ok
+
+# Scan properties needed only by WHERE and ORDER BY must survive pruning; metric and
+# spare are unread here.
+-STATEMENT MATCH (n:N) WHERE n.predicate = 1 RETURN n.selected ORDER BY n.sort_key
+-CHECK_ORDER
+---- 2
+C
+A
+# Aggregate-only properties remain live.
+-STATEMENT MATCH (n:N) RETURN sum(n.metric)
+---- 1
+60
+# Extend liveness spans the input node, relationship predicate/order columns, and the
+# target node while dropping every spare column.
+-STATEMENT MATCH (a:N)-[r:R]->(b:N) WHERE r.weight = 5 RETURN a.selected, b.selected ORDER BY r.rank
+-CHECK_ORDER
+---- 2
+A|B
+B|C
+# An unread relationship/endpoint suffix may be pruned and factorized, but its row
+# multiplicity remains observable.
+-STATEMENT MATCH (a:N)-[:R]->(b:N) RETURN a.selected, count(*) ORDER BY a.selected
+-CHECK_ORDER
+---- 2
+A|2
+B|1
+# A property read only inside an OPTIONAL pattern is live across the correlation.
+-STATEMENT MATCH (a:N) OPTIONAL MATCH (a)-[r:R]->(b:N) WHERE r.weight > a.predicate RETURN a.selected, count(b) ORDER BY a.selected
+-CHECK_ORDER
+---- 3
+A|2
+B|1
+C|0
+# The same liveness contract applies to a lifted COUNT subquery.
+-STATEMENT MATCH (a:N) RETURN a.selected, COUNT { MATCH (a)-[r:R]->(b:N) WHERE r.weight > a.predicate } AS c ORDER BY a.selected
+-CHECK_ORDER
+---- 3
+A|2
+B|1
+C|0
+# Whole nodes materialized through WITH/collect/UNWIND retain all properties needed
+# by downstream accessors.
+-STATEMENT MATCH (n:N) WITH collect(n) AS nodes UNWIND nodes AS x RETURN x.selected ORDER BY x.sort_key
+-CHECK_ORDER
+---- 3
+C
+B
+A

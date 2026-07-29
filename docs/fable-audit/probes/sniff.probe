@@ -1,0 +1,2 @@
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/csv-sniffing-test/int.csv" RETURN *
+#ORDER# LOAD FROM "/Users/dai/code/koko/dataset/csv-sniffing-test/real.csv" RETURN *

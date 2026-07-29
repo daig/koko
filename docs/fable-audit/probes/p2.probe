@@ -1,0 +1,9 @@
+// labels() returns scalar string in Koko?
+MATCH (a) RETURN DISTINCT labels(a)
+MATCH (a) RETURN DISTINCT label(a)
+// typeof labels
+MATCH (a:person) WHERE a.ID=0 RETURN typeof(labels(a))
+// string() of nested list with strings
+MATCH (o:organisation) RETURN string(o.state)
+// make_date range
+RETURN make_date(2011,1,32)

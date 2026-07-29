@@ -6,13 +6,14 @@
 //! load a CSV dataset (schema.cypher + copy.cypher) before reading stdin.
 
 use koko::Database;
+use koko::test_support::load_csv_dataset;
 use std::io::{BufRead, Write};
 
 fn main() {
-    let db = Database::in_memory();
+    let db = Database::new();
     let conn = db.connect();
     if let Ok(dir) = std::env::var("KOKO_LOAD_DATASET") {
-        if let Err(e) = conn.load_csv_dataset(std::path::Path::new(&dir)) {
+        if let Err(e) = load_csv_dataset(&conn, std::path::Path::new(&dir)) {
             eprintln!("dataset load failed: {e}");
             std::process::exit(2);
         }
@@ -28,11 +29,9 @@ fn main() {
         if stmt.is_empty() || stmt.starts_with("//") {
             continue;
         }
-        match conn.query(stmt) {
-            Ok(res) => {
-                for row in res.to_result_strings() {
-                    let _ = writeln!(out, "{row}");
-                }
+        match conn.execute(stmt) {
+            Ok(result) => {
+                let _ = write!(out, "{result}");
             }
             Err(e) => {
                 let _ = writeln!(out, "Error: {e}");

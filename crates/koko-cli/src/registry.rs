@@ -1,6 +1,7 @@
 //! Sole declarative registries for process options and live meta commands.
 
 use clap::{Arg, ArgAction, Command, ValueHint};
+use koko::tooling::version;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OptionId {
@@ -868,7 +869,7 @@ pub fn option_spec(id: OptionId) -> &'static OptionSpec {
 /// Construct Clap exclusively from [`OPTION_REGISTRY`].
 pub fn clap_command() -> Command {
     let mut command = Command::new("koko")
-        .version(koko::version())
+        .version(version())
         .disable_help_flag(true)
         .disable_version_flag(true)
         .about("Interactive and batch terminal client for the in-memory Koko graph database")

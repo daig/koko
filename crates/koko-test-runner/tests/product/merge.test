@@ -1,0 +1,176 @@
+# Hermetic MERGE fixtures (P2-B): match-or-create for nodes and rels.
+-DATASET CSV empty
+
+--
+
+-CASE Merge
+
+-STATEMENT CREATE NODE TABLE P(id INT64, name STRING, n INT64, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P, w INT64);
+---- ok
+-STATEMENT CREATE (:P {id:1, name:'a'}), (:P {id:2, name:'b'});
+---- ok
+
+# MERGE matches an existing node — no new node, returns the matched binding.
+-STATEMENT MERGE (p:P {id:1}) RETURN p.id, p.name
+---- 1
+1|a
+-STATEMENT MATCH (p:P) RETURN COUNT(*)
+---- 1
+2
+
+# MERGE creates a missing node (inline props become the insert values).
+-STATEMENT MERGE (p:P {id:3, name:'c'}) RETURN p.id, p.name
+---- 1
+3|c
+-STATEMENT MATCH (p:P) RETURN COUNT(*)
+---- 1
+3
+
+# ON MATCH SET fires on a hit; ON CREATE SET on a miss.
+-STATEMENT MERGE (p:P {id:1}) ON MATCH SET p.n = 100 ON CREATE SET p.n = 200
+---- ok
+-STATEMENT MATCH (p:P {id:1}) RETURN p.n
+---- 1
+100
+-STATEMENT MERGE (p:P {id:4}) ON MATCH SET p.n = 100 ON CREATE SET p.n = 200
+---- ok
+-STATEMENT MATCH (p:P {id:4}) RETURN p.n
+---- 1
+200
+
+# Per-row sequential: the first row creates id 5, the next two match it.
+-STATEMENT UNWIND [5,5,5] AS x MERGE (p:P {id:5}) RETURN p.id
+---- 3
+5
+5
+5
+-STATEMENT MATCH (p:P) RETURN COUNT(*)
+---- 1
+5
+
+# MERGE a relationship between bound endpoints; the rel is projectable.
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:2}) MERGE (a)-[r:K {w:7}]->(b) RETURN r.w
+---- 1
+7
+-STATEMENT MATCH (:P)-[r:K]->(:P) RETURN COUNT(*)
+---- 1
+1
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:2}) MERGE (a)-[r:K {w:7}]->(b) ON MATCH SET r.w = 9 RETURN r.w
+---- 1
+9
+-STATEMENT MATCH (:P)-[r:K]->(:P) RETURN COUNT(*)
+---- 1
+1
+
+# MERGE a whole path: create both endpoints and the rel when none exist.
+-STATEMENT MERGE (a:P {id:10})-[r:K]->(b:P {id:11}) RETURN a.id, b.id
+---- 1
+10|11
+-STATEMENT MATCH (a:P {id:10})-[:K]->(b:P) RETURN b.id
+---- 1
+11
+
+# A MERGE that creates a duplicate primary key surfaces the uniqueness error.
+-STATEMENT MERGE (p:P {id:1, name:'z'})
+---- error
+Runtime exception: Found duplicated primary key value 1, which violates the uniqueness constraint of the primary key column.
+# Multi-element MERGE: comma-separated patterns join into one combined match and
+# are all created on a miss, under a single existence.
+-CASE MultiElementMergeNodes
+-STATEMENT CREATE NODE TABLE A(id INT64, v INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT UNWIND [5, 5, 7] AS x MERGE (a:A {id: x}), (b:B {id: x}) ON MATCH SET a.v = x + 100
+---- ok
+-STATEMENT MATCH (a:A) RETURN a.id, a.v ORDER BY a.id
+---- 2
+5|105
+7|
+-STATEMENT MATCH (b:B) RETURN b.id ORDER BY b.id
+---- 2
+5
+7
+
+# Two rel patterns in one MERGE between bound endpoints: both created on a miss.
+-CASE MultiElementMergeRels
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R1(FROM A TO A)
+---- ok
+-STATEMENT CREATE REL TABLE R2(FROM A TO A)
+---- ok
+-STATEMENT CREATE (:A {id: 5})
+---- ok
+-STATEMENT CREATE (:A {id: 7})
+---- ok
+-STATEMENT MATCH (a:A {id: 5}), (b:A {id: 7}) MERGE (a)-[:R1]->(b), (a)-[:R2]->(b)
+---- ok
+-STATEMENT MATCH (a:A)-[:R1]->(b:A) RETURN a.id, b.id
+---- 1
+5|7
+-STATEMENT MATCH (a:A)-[:R2]->(b:A) RETURN a.id, b.id
+---- 1
+5|7
+
+# MERGE match-key semantics. A node MERGE re-finds a node created earlier in the
+# same statement by KEY even after ON CREATE/ON MATCH SET mutates a matched inline
+# property (here `id`), instead of re-creating it (a duplicate-PK error).
+-CASE MergeMatchKeyOnMutatedProp
+-STATEMENT CREATE NODE TABLE school(name STRING, id INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT UNWIND [1, 5, 5, 1, 3] AS x MERGE (a:school {name: cast(x AS STRING), id: x}) ON MATCH SET a.id = x + 20 ON CREATE SET a.id = x + 10 RETURN a.id
+---- 5
+11
+15
+25
+21
+13
+-STATEMENT MATCH (s:school) RETURN s.id ORDER BY s.id
+---- 3
+13
+21
+25
+
+# The merge key includes already-bound endpoint ids, so a rel MERGE whose only
+# inline prop is a literal still creates one rel per distinct endpoint pair.
+-CASE MergeRelKeyIncludesEndpoints
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM N TO N, c STRING)
+---- ok
+-STATEMENT CREATE (:N {id: 1})
+---- ok
+-STATEMENT CREATE (:N {id: 2})
+---- ok
+-STATEMENT CREATE (:N {id: 3})
+---- ok
+-STATEMENT MATCH (a:N {id: 1}), (b:N) WHERE b.id > 1 MERGE (a)-[e:R {c: 'h'}]->(b)
+---- ok
+-STATEMENT MATCH (a:N)-[e:R]->(b:N) RETURN a.id, b.id ORDER BY b.id
+---- 2
+1|2
+1|3
+
+# ON MATCH updates every duplicate relationship match.
+-CASE MergeOnMatchBindsAllMatches
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM N TO N, v INT64)
+---- ok
+-STATEMENT CREATE (:N {id: 1})
+---- ok
+-STATEMENT CREATE (:N {id: 2})
+---- ok
+-STATEMENT MATCH (a:N {id: 1}), (b:N {id: 2}) CREATE (a)-[:R {v: 5}]->(b)
+---- ok
+-STATEMENT MATCH (a:N {id: 1}), (b:N {id: 2}) CREATE (a)-[:R {v: 5}]->(b)
+---- ok
+-STATEMENT MATCH (a:N {id: 1}), (b:N {id: 2}) MERGE (a)-[e:R {v: 5}]->(b) ON MATCH SET e.v = 99
+---- ok
+-STATEMENT MATCH (a:N)-[e:R]->(b:N) RETURN e.v ORDER BY e.v
+---- 2
+99
+99

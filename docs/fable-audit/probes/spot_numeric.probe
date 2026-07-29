@@ -1,0 +1,27 @@
+RETURN 9223372036854775807 + 1
+RETURN 9223372036854775807 * 2
+RETURN abs(-9223372036854775808)
+RETURN 5 / 0
+RETURN 5 % 0
+RETURN 1.0 / 0.0
+RETURN -7 % 3
+RETURN 7 % -3
+RETURN round(0.5)
+RETURN round(1.5)
+RETURN round(2.5)
+RETURN round(-0.5)
+RETURN round(2.675, 2)
+RETURN sqrt(-1)
+RETURN ln(0)
+RETURN ln(-1)
+RETURN 0.0 ^ 0.0
+RETURN factorial(21)
+RETURN cbrt(-8)
+RETURN to_double('inf')
+RETURN to_double('nan')
+RETURN sign(-0.0)
+RETURN -0.0
+RETURN to_int8(300)
+RETURN to_int64(3.9)
+RETURN to_uint8(-1)
+RETURN to_int64('abc')

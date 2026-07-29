@@ -1,0 +1,79 @@
+fixture	category	dataset	cases	contract
+accessors.test	language	empty	1	Graph entity label, labels, and internal-ID accessors work for labeled and polymorphic matches.
+aggregate.test	types-functions	empty	4	Global and grouped aggregates preserve DISTINCT, NULL, empty-input, result-type, and arithmetic semantics.
+all_properties.test	language	empty	1	Node and relationship all-property projection expands schema-order properties without losing adjacent expressions.
+alter_rel_group.test	schema-writes	empty	3	Relationship-group endpoint-pair ALTER operations validate table kind, report stable errors, and gate later relationship creation.
+assign_coercion.test	types-functions	empty	1	CREATE property assignment applies supported integer-width, unsigned, and floating coercions.
+behavior_decisions.test	decisions	empty	7	Focused regressions enforce current intentional Koko decisions and inherited compatibility fixes without reproducing reference crashes or wrong values.
+cast_int.test	types-functions	empty	5	Integer-width casts, arithmetic, negation, modulo, overflow, and cast syntax preserve typed semantics.
+cast_messages.test	types-functions	empty	7	Integer, string, float, UUID, BLOB, nested-NULL, and date/timestamp casts preserve exact success and categorized failure behavior.
+cast_messages2.test	types-functions	empty	6	Numeric-string, boolean, UINT128, UUID, and decimal casts preserve accepted forms, range checks, result types, and exact diagnostics.
+collect_node.test	types-functions	mini	10	Containers retain complete node and relationship values; collect handles DISTINCT, NULL, UNWIND, and identity without ID inflation.
+comment.test	schema-writes	empty	4	Table comments can be set, overwritten, diagnosed, and observed through catalog introspection.
+cost_optimizer.test	execution	empty	1	Statistics-based join anchoring chooses selective scans without changing query results.
+create_match.test	schema-writes	empty	6	Node creation, primary-key enforcement, NULL properties, whole-node rendering, RETURN star, and multi-create execute end to end.
+csv_loader.test	loading	mini	5	Bundled CSV datasets load typed nodes and relationships with PK endpoint resolution, filtering, aggregation, and traversal.
+ctas.test	schema-writes	empty	7	Node and relationship CTAS publish inferred schema and rows atomically while enforcing PK and duplicate-table rules.
+ddl.test	schema-writes	empty	23	Node/relationship table creation, namespace checks, endpoint validation, drop dependencies, and ALTER property/table operations preserve catalog invariants.
+decimal.test	types-functions	empty	6	Decimal casts, rounding, formatting, precision/scale propagation, arithmetic, overflow, absolute value, and comparison remain exact.
+decorrelated_join.test	execution	empty	1	Lifted correlated EXISTS, COUNT, and OPTIONAL plans preserve activation, NULL extension, multiplicity, and nested correlation.
+defaults.test	schema-writes	empty	11	Constant, computed, nextval, and serial defaults behave correctly on CREATE and ALTER backfill with sequence ownership and errors.
+dml.test	schema-writes	empty	8	SET, DELETE, DETACH DELETE, relationship creation, write composition, transaction visibility, and empty-database behavior remain safe.
+extend.test	language	empty	3	Directed and reverse relationship expansion, relationship values, relationship creation, and two-hop paths execute correctly.
+factorization.test	execution	empty	1	Fan-out factorization preserves logical aggregate multiplicity without materializing unused suffix values.
+filter.test	language	empty	3	WHERE evaluates comparison, boolean, arithmetic, NULL, and inline-pattern-property predicates correctly.
+fn_case.test	language	tinysnb	2	Simple and searched CASE expressions preserve NULL matching, branch coercion, and row-dependent evaluation.
+fn_collect.test	types-functions	tinysnb	1	Collect aggregates preserve input order, DISTINCT behavior, nested values, and empty-list results over zero non-NULL values.
+fn_date.test	types-functions	tinysnb	2	Date naming/parts, timestamp construction, epoch conversion, truncation, and interval constructors operate over typed stored values.
+fn_lambda.test	language	tinysnb	3	List lambda transform/filter/reduce, list comprehensions, nested shadowing, and outer-row capture preserve lexical scope and typed results.
+fn_list.test	types-functions	tinysnb	3	Range, list membership, position, slicing, indexing, and nested stored-list access preserve list semantics.
+fn_math.test	types-functions	empty	3	Math, trigonometric, logarithmic, NULL utility, variadic numeric extrema, type inspection, and cast aliases preserve values and formatting.
+fn_regexp.test	types-functions	empty	2	Regular-expression full/partial match, extraction, splitting, replacement, and literal replacement edge cases remain stable.
+fn_string.test	types-functions	tinysnb	2	Unicode-aware string case, reverse, size, trim, prefix/suffix, substring, indexing, slicing, padding, and edit-distance functions remain stable.
+fn_struct_map.test	types-functions	empty	2	Struct literals/field access and map construction/extraction preserve ordered nested values and key lookup.
+fn_temporal_arith.test	types-functions	tinysnb	5	Date, timestamp, and interval arithmetic, division, construction, parts, and month/day boundary behavior remain exact.
+function_edge_cases.test	types-functions	tinysnb	6	List signatures/errors, array aliases, common-type coercion, UINT64 overflow, and nested string casts preserve their Koko contracts.
+function_semantics.test	types-functions	tinysnb	7	Numeric, string, list, date, map, and CASE functions preserve typed behavior over literals and a bundled typed graph dataset.
+hash_join.test	execution	empty	1	Both-side value equality lowers to a hash join while preserving NULL and residual-predicate semantics.
+identifier_primary_keys.test	regressions	empty	1	Quoted identifiers, inline primary keys, UUID primary keys, and in-case comment parsing remain accepted together.
+index_scan.test	execution	empty	3	Primary-key equality and disconnected-filter pushdown use correct point lookups for integer and string keys.
+introspection.test	schema-writes	empty	13	Sequence, table, macro, and table-info introspection publish filterable, ordered, transaction-coherent schemas and overload rows.
+list_comprehension.test	language	empty	4	Koko list comprehensions implement optional filtering/projection, NULL input, outer capture, lexical shadowing, and scope/type validation.
+macro.test	schema-writes	empty	6	Scalar macro definition, default/positional expansion, nesting, property arguments, visibility, drop, and transaction publication remain correct.
+merge.test	schema-writes	empty	6	MERGE matches or creates nodes and relationships with endpoint-aware keys, multi-element composition, mutation visibility, and all-match updates.
+multi_pair_rel.test	schema-writes	empty	1	A relationship table routes creation and matching across every declared endpoint-table pair.
+nested.test	types-functions	mini	1	CSV loading and querying preserve nested LIST column values and NULLs.
+nested_recast.test	types-functions	empty	3	UNION, MAP, and STRUCT values recast recursively across numeric and string child types while preserving field order and NULLs.
+nested_unsigned_cast.test	types-functions	empty	1	Casts to nested unsigned lists preserve empty lists, NULL lists, NULL elements, and large values.
+node_polymorphism.test	language	empty	1	Unlabeled and multi-label node patterns preserve runtime table identity, shared-property access, ordering, and aggregation.
+optimizer_barriers.test	execution	empty	3	Sequence effects, NULL extension, subqueries, value materialization, and writes block unsafe pushdown, pruning, and factorization.
+optimizer_pruning.test	execution	empty	1	Projection pruning retains every property needed by filters, ordering, joins, graph values, and later query parts while removing dead columns.
+optional_match.test	language	empty	2	OPTIONAL MATCH preserves left rows, NULL-extends unmatched variables, and composes through WITH.
+optional_selfloop.test	language	empty	1	Optional polymorphic self-loop matching never narrows the outer node scan and NULL-extends missing edges.
+order_cross.test	language	empty	2	ORDER BY, SKIP, LIMIT, and disconnected cross products preserve defined ordering and cardinality.
+parallel.test	execution	empty	3	Morsel parallel scans, projections, aggregates, ordering, limits, and extensions equal serial results across vector boundaries.
+parameters.test	language	empty	2	Runner-supplied Cypher parameters persist within a case, bind with values, and report missing parameters.
+polymorphic_regressions.test	regressions	empty	2	Former crash and runtime-table-mapping defects remain fixed for unlabeled hints and polymorphic WITH values.
+rel_group_members.test	schema-writes	empty	2	Relationship-group physical members retain per-pair identity, reverse routing, and group-wide drop behavior.
+rel_multiplicity.test	schema-writes	empty	4	ONE_ONE, MANY_ONE, ONE_MANY, and MANY_MANY relationship constraints enforce incoming/outgoing cardinality atomically.
+rel_polymorphism.test	language	empty	1	Unlabeled and multi-type relationship patterns route across candidate tables with endpoint narrowing and runtime identity.
+return_star_scope.test	language	empty	1	RETURN star and WITH star expand only variables currently in scope.
+scalars.test	types-functions	empty	8	FLOAT, UUID, BLOB, typed columns, and variadic numeric greatest/least preserve values, coercion, NULL, ties, arity, and errors.
+sequence.test	schema-writes	empty	17	Sequence namespaces, bounds, cycling, nextval/currval, serial ownership, explicit transactions, recovery, and drop collisions remain correct.
+serial.test	schema-writes	empty	1	SERIAL columns allocate independent monotonically increasing defaults when values are omitted.
+subquery.test	language	empty	2	EXISTS and COUNT subqueries preserve correlation, nesting, result cardinality, and explicit unsupported boundaries.
+temporal.test	types-functions	empty	4	DATE, TIMESTAMP, and INTERVAL construction, casts, comparison, storage, and ordering remain typed and exact.
+timestamp_precision.test	types-functions	empty	3	TIMESTAMP, NS, MS, SEC, and TZ casts normalize offsets, compare by instant, and render at the declared precision.
+tinysnb_optional_match.test	language	tinysnb	2	OPTIONAL MATCH over a bundled typed graph preserves global NULL rows, correlated chains, predicates, aggregates, and row multiplicity.
+tinysnb_subquery.test	language	tinysnb	2	Correlated EXISTS and COUNT subqueries over a bundled graph preserve predicate and projection cardinality.
+tinysnb_types.test	loading	tinysnb	3	The bundled TinySNB schema loads broad scalar/nested types and supports aggregate, date-filter, and timestamp-order queries.
+tinysnb_union.test	language	tinysnb	2	UNION and UNION ALL over a bundled graph preserve duplicates, DISTINCT, chains, NULLs, columns, and validation diagnostics.
+tinysnb_with.test	language	tinysnb	4	WITH over a bundled graph preserves scalar/aggregate pipelines, cross products, UNWIND composition, node carry, ordering, and limits.
+transaction.test	transactions	empty	7	Explicit read-write/read-only transactions preserve visibility, commit, rollback, DDL rollback, nested-BEGIN failure, and invalid completion errors.
+type_regressions.test	regressions	empty	6	Adversarial regressions preserve aggregate widening/type rejection, CREATE coercion, and signed-zero grouping.
+uint128.test	types-functions	empty	4	UINT128 literals, casts, arithmetic, overflow, absolute value, and cross-integer comparisons preserve full width.
+union.test	language	empty	2	UNION and UNION ALL preserve set/bag semantics, chaining, schema compatibility, and stable binder errors.
+unwind.test	language	tinysnb	4	UNWIND preserves literal, aggregate, function-produced, nested, NULL, and MATCH-composed list cardinality over a bundled graph.
+user_defined_types.test	schema-writes	empty	5	User-defined aliases compose through primitive, struct, list, nested, alias-of-alias, column, and cast positions with duplicate checks.
+var_length.test	language	empty	1	Variable-length and recursive paths preserve bounds, direction, modes, shortest variants, path values, and per-step filtering/projection.
+with.test	language	empty	5	WITH preserves scalar, aggregate, node, and relationship values across query parts with ordering, limits, scope, and validation.

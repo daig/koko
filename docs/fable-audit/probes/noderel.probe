@@ -1,0 +1,33 @@
+// ===== node equality =====
+MATCH (a:person) WHERE a = a RETURN count(*) AS c
+MATCH (a:person), (b:person) WHERE a = b RETURN count(*) AS c
+MATCH (a:person), (b:person) WHERE a <> b RETURN count(*) AS c
+MATCH (a:person), (b:person) WHERE a = b AND a.fName = 'Alice' RETURN count(*) AS c
+MATCH (a:person) RETURN DISTINCT (a = a) AS c
+MATCH (a:person), (o:organisation) WHERE a = o RETURN count(*) AS c
+MATCH (a:person) RETURN count(CASE WHEN a IS NULL THEN 1 END) AS c
+MATCH (a:person) RETURN count(CASE WHEN a IS NOT NULL THEN 1 END) AS c
+// ===== rel equality =====
+MATCH ()-[e:knows]->() RETURN count(*) AS c
+MATCH ()-[e1:knows]->(), ()-[e2:knows]->() WHERE e1 = e2 RETURN count(*) AS c
+MATCH (a)-[e:knows]->(b) WHERE e = e RETURN count(*) AS c
+MATCH ()-[e1:knows]->(), ()-[e2:knows]->() WHERE e1 <> e2 RETURN count(*) AS c
+// ===== node/property IS NULL =====
+MATCH (a:person) RETURN count(CASE WHEN a.age IS NULL THEN 1 END) AS c
+MATCH (a:person) WHERE a.fName = 'Alice' RETURN a.age IS NULL AS c
+// ===== unary minus on properties =====
+#ORDER# MATCH (a:person) RETURN -a.age AS x ORDER BY x
+#ORDER# MATCH (a:person) RETURN a.age * -1 AS x ORDER BY x
+MATCH (a:person) WHERE -a.age < -30 RETURN count(*) AS c
+MATCH (a:person) WHERE a.age > -1 RETURN count(*) AS c
+#ORDER# MATCH (a:person) RETURN -a.eyeSight AS x ORDER BY x
+// ===== arithmetic on properties =====
+#ORDER# MATCH (a:person) RETURN a.age + 1 AS x ORDER BY x
+#ORDER# MATCH (a:person) RETURN a.age % 10 AS x ORDER BY x
+#ORDER# MATCH (a:person) RETURN a.age / 10 AS x ORDER BY x
+MATCH (a:person) RETURN sum(a.age * 2) AS c
+#ORDER# MATCH (a:person) RETURN a.eyeSight * 2 AS x ORDER BY x
+// ===== property comparison =====
+MATCH (a:person) WHERE a.age = a.age RETURN count(*) AS c
+MATCH (a:person) WHERE a.age > a.gender RETURN count(*) AS c
+#ORDER# MATCH (a:person) RETURN a.fName + '!' AS x ORDER BY x

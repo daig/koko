@@ -21,6 +21,7 @@ pub mod worker;
 
 use app_output::OutputManager;
 use bootstrap::{BootstrapAction, BootstrapError, InputMode};
+use koko::tooling::TransactionMode;
 use platform::RealProcess;
 use runner::{SessionState, SourceRunner};
 use std::ffi::OsString;
@@ -154,7 +155,7 @@ fn activate_inner(plan: bootstrap::BootstrapPlan) -> Result<ExitDecision, (ExitD
     if state
         .worker
         .session_snapshot()
-        .is_ok_and(|session| session.transaction() != koko::TransactionMode::None)
+        .is_ok_and(|session| session.transaction() != TransactionMode::None)
     {
         let _ = output.diagnostic("Batch input ended with an active transaction; rolling it back.");
         rollback_if_active(&state);
@@ -172,7 +173,7 @@ fn rollback_if_active(state: &SessionState) {
     if state
         .worker
         .session_snapshot()
-        .is_ok_and(|session| session.transaction() != koko::TransactionMode::None)
+        .is_ok_and(|session| session.transaction() != TransactionMode::None)
     {
         let _ = state
             .worker

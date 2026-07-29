@@ -1,0 +1,4 @@
+WITH {a: 1, b: 2} AS m RETURN m.a
+WITH {a: {b: 2}} AS m RETURN m.a.b
+RETURN {x: 10}.x AS v
+MATCH (a:organisation) WHERE a.ID=4 RETURN a.state.revenue

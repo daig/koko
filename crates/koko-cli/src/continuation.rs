@@ -1,6 +1,6 @@
 //! Interactive trailing-backslash continuation normalization.
 
-use koko::{SourceSpan, TokenKind, analyze_cypher};
+use koko::tooling::{SourceSpan, TokenKind, analyze_cypher};
 use std::borrow::Cow;
 
 /// Normalize editor-only continuation markers and report whether the final physical line requests
@@ -63,7 +63,7 @@ fn line_is_meta_command(input: &str, offset: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use koko::SyntaxStatus;
+    use koko::tooling::SyntaxStatus;
 
     #[test]
     fn removes_code_markers_but_retains_physical_newlines() {

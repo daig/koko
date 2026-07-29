@@ -1,0 +1,52 @@
+// cross-type equality
+RETURN 1 = 1.0
+RETURN 1 = 1.5
+RETURN 1.0 = 1
+RETURN CAST(1 AS INT8) = 1
+RETURN CAST(1 AS INT8) = CAST(1 AS INT64)
+RETURN 1 = CAST(1 AS DECIMAL(4,2))
+RETURN CAST(1 AS UINT8) = 1
+RETURN 1.0 = CAST(1 AS FLOAT)
+// cross-type less-than
+RETURN 1 < 1.5
+RETURN 2 < 1.5
+RETURN 1 < CAST(2 AS INT8)
+RETURN CAST(1.5 AS FLOAT) < 2
+RETURN 1.5 < 2
+// null comparisons -> null (renders empty); wrap in list to distinguish
+RETURN [1 = NULL]
+RETURN [NULL = NULL]
+RETURN [1 < NULL]
+RETURN [NULL IS NULL]
+RETURN 1 = NULL IS NULL
+// -0.0 vs 0.0
+RETURN 0.0 = -0.0
+RETURN [0.0 < -0.0]
+RETURN 1.0/0.0
+RETURN -1.0/0.0
+// nan
+RETURN [CAST('nan' AS DOUBLE) = CAST('nan' AS DOUBLE)]
+RETURN [CAST('nan' AS DOUBLE) < 1.0]
+RETURN [1.0 < CAST('nan' AS DOUBLE)]
+// boolean comparison
+RETURN true = true
+RETURN [true < false]
+RETURN [false < true]
+// string collation
+RETURN ['a' < 'B']
+RETURN ['a' < 'b']
+RETURN ['A' < 'a']
+RETURN ['Z' < 'a']
+RETURN ['apple' < 'apple2']
+// list comparison
+RETURN [[1,2] = [1,2]]
+RETURN [[1,2] < [1,3]]
+RETURN [[1] < [1,2]]
+RETURN [[1,2] < [1]]
+// ORDER BY null positioning
+#ORDER# UNWIND [3,1,null,2] AS x RETURN x ORDER BY x
+#ORDER# UNWIND [3,1,null,2] AS x RETURN x ORDER BY x DESC
+#ORDER# UNWIND [3,1,null,2] AS x RETURN x ORDER BY x ASC
+#ORDER# UNWIND ['b','a',null,'c'] AS x RETURN x ORDER BY x
+#ORDER# UNWIND [1.5, 1.0, 2.5] AS x RETURN x ORDER BY x
+#ORDER# UNWIND [true,false,null] AS x RETURN x ORDER BY x

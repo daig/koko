@@ -7,14 +7,15 @@ use super::context::{
 use super::database::DatabaseState;
 use super::graph::{GraphId, GraphRegistry, GraphState, MAIN_GRAPH_ID};
 use crate::copy::{CopyOperationContext, run_copy};
+use crate::diagnostics::{FailureKind, InterruptReason, failure_kind};
+use crate::execution::{Outcome, Parameter};
+use crate::function::ScalarFunction;
 use crate::interchange;
-use crate::result;
-use crate::{
-    Error, FailureKind, InterruptReason, LogicalType, QueryResult, Result, ScalarUdfNullPolicy,
-    StatementOutcome, Value, analyze_cypher,
-};
-use koko_binder::{BoundStatement, bind_statement};
+use crate::tooling::analyze_cypher;
+use crate::{Error, QueryResult, Result, Value};
+use koko_binder::bind_statement;
 use koko_common::ReadView;
+use koko_ir::bound::BoundStatement;
 use koko_parser::parse_statement;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -29,12 +30,13 @@ pub(crate) const ACTIVE_TRANSACTION_MSG: &str = "Connection already has an activ
                                       transactions, please open other connections.";
 
 fn scalar_function_name_is_reserved(name: &str) -> bool {
-    koko_function::is_scalar(name)
-        || koko_function::AggOp::from_name(name).is_some()
-        || matches!(
-            name.to_ascii_lowercase().as_str(),
-            "cast" | "nextval" | "currval" | "cost"
+    matches!(
+        koko_function::resolve_builtin(name).map(|descriptor| descriptor.function),
+        Some(
+            koko_function::BuiltinFunction::Scalar(_)
+                | koko_function::BuiltinFunction::Aggregate(_)
         )
+    )
 }
 
 mod execution;
@@ -50,13 +52,9 @@ mod prepared;
 
 mod transaction;
 
-pub use transaction::Transaction;
 use transaction::TxnState;
 
-pub use prepared::{
-    ParameterMetadata, PreparedStatement, PreparedStatementType, PreparedWriteMetadata,
-    QueryParameter,
-};
+pub(crate) use prepared::Metadata as PreparedStatementMetadata;
 
 /// A per-`Database` connection identifier (used for the default single-writer slot).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,8 +75,8 @@ impl InterruptHandle {
 }
 
 #[derive(Default)]
-struct ScalarUdfRegistry {
-    entries: Arc<HashMap<String, Arc<koko_common::ScalarUdf>>>,
+struct ScalarFunctionRegistry {
+    entries: Arc<HashMap<String, Arc<koko_common::RegisteredScalarFunction>>>,
     generation: u64,
 }
 
@@ -95,16 +93,16 @@ struct ConnectionState {
 }
 
 impl ConnectionState {
-    fn new(max_workers: Option<usize>) -> Self {
+    fn new(max_threads: Option<usize>) -> Self {
         let mut settings = koko_common::settings::SessionSettings::with_environment_defaults();
-        let constrained_workers = max_workers.filter(|max_workers| {
+        let constrained_workers = max_threads.filter(|max_threads| {
             settings
                 .current("threads")
                 .as_int128()
-                .is_some_and(|workers| workers > *max_workers as i128)
+                .is_some_and(|workers| workers > *max_threads as i128)
         });
-        if let Some(max_workers) = constrained_workers {
-            settings.set("threads", Value::Int64(max_workers as i64));
+        if let Some(max_threads) = constrained_workers {
+            settings.set("threads", Value::Int64(max_threads as i64));
         }
         Self {
             txn: None,
@@ -126,7 +124,7 @@ impl ConnectionState {
         &mut self,
         parameters: HashMap<String, Value>,
         view: ReadView,
-        scalar_udfs: Arc<HashMap<String, Arc<koko_common::ScalarUdf>>>,
+        scalar_udfs: Arc<HashMap<String, Arc<koko_common::RegisteredScalarFunction>>>,
         control: &StatementControl,
     ) -> QueryContext {
         let query_id = self.next_query_id;
@@ -175,7 +173,7 @@ pub struct Connection {
     /// Serializes calls issued through one connection. Different connections do
     /// not share this mutex and can execute concurrently.
     execution: Mutex<()>,
-    scalar_udfs: RwLock<ScalarUdfRegistry>,
+    scalar_udfs: RwLock<ScalarFunctionRegistry>,
     state: Mutex<ConnectionState>,
 }
 
@@ -184,7 +182,7 @@ impl Connection {
         id: ConnId,
         inner: Arc<Mutex<DatabaseState>>,
         schema_gate: Arc<RwLock<()>>,
-        max_workers: Option<usize>,
+        max_threads: Option<usize>,
     ) -> Self {
         Self {
             id,
@@ -192,32 +190,23 @@ impl Connection {
             schema_gate,
             interrupt_epoch: Arc::new(AtomicU64::new(0)),
             execution: Mutex::new(()),
-            scalar_udfs: RwLock::new(ScalarUdfRegistry::default()),
-            state: Mutex::new(ConnectionState::new(max_workers)),
+            scalar_udfs: RwLock::new(ScalarFunctionRegistry::default()),
+            state: Mutex::new(ConnectionState::new(max_threads)),
         }
     }
 
     /// Parse, bind, plan, and execute a single Cypher statement.
-    pub fn query(&self, cypher: &str) -> Result<QueryResult> {
-        self.query_with_params(cypher, &[])
+    pub fn execute(&self, cypher: &str) -> Result<QueryResult> {
+        self.execute_with(cypher, std::iter::empty())
     }
     /// Register one safe Rust scalar function on this connection.
     ///
     /// Names are case-insensitive. Registration never replaces a builtin,
     /// macro, or existing connection-local function. Queries and prepared
     /// statements bind an immutable `Arc` snapshot of the resolved callback.
-    pub fn register_scalar_function<F>(
-        &self,
-        name: impl Into<String>,
-        parameter_types: Vec<LogicalType>,
-        result_type: LogicalType,
-        null_policy: ScalarUdfNullPolicy,
-        callback: F,
-    ) -> Result<()>
-    where
-        F: Fn(&[Value]) -> Result<Value> + Send + Sync + 'static,
-    {
-        let name = name.into();
+    pub fn register_scalar_function(&self, function: ScalarFunction) -> Result<()> {
+        let function = function.into_inner();
+        let name = function.name.clone();
         let mut chars = name.chars();
         if !chars
             .next()
@@ -260,22 +249,12 @@ impl Connection {
                 "Scalar function {name} is already registered on this connection."
             )));
         }
-        Arc::make_mut(&mut registry.entries).insert(
-            key,
-            Arc::new(koko_common::ScalarUdf::new(
-                name,
-                parameter_types,
-                result_type,
-                null_policy,
-                callback,
-            )),
-        );
+        Arc::make_mut(&mut registry.entries).insert(key, Arc::new(function));
         registry.generation = registry.generation.saturating_add(1);
         Ok(())
     }
-
     /// Remove a connection-local scalar function. Returns whether one existed.
-    pub fn remove_scalar_function(&self, name: &str) -> Result<bool> {
+    pub fn unregister_scalar_function(&self, name: &str) -> Result<bool> {
         let key = name.to_ascii_lowercase();
         let mut registry = self
             .scalar_udfs
@@ -288,7 +267,12 @@ impl Connection {
         Ok(removed)
     }
 
-    fn scalar_udf_snapshot(&self) -> (Arc<HashMap<String, Arc<koko_common::ScalarUdf>>>, u64) {
+    fn scalar_udf_snapshot(
+        &self,
+    ) -> (
+        Arc<HashMap<String, Arc<koko_common::RegisteredScalarFunction>>>,
+        u64,
+    ) {
         let registry = self
             .scalar_udfs
             .read()
@@ -313,11 +297,20 @@ impl Connection {
         self.interrupt_epoch.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Set this connection's per-statement timeout in milliseconds.
+    /// Set or disable this connection's per-statement timeout.
     ///
-    /// Zero disables the deadline. Positive values apply independently to each
-    /// subsequent statement and match the `CALL timeout=...` session setting.
-    pub fn set_query_timeout_ms(&self, timeout_ms: u64) -> Result<()> {
+    /// Timeout resolution is one millisecond; a positive sub-millisecond
+    /// duration rounds up. `None` disables the deadline.
+    pub fn set_query_timeout(&self, timeout: Option<Duration>) -> Result<()> {
+        let timeout_ms = match timeout {
+            Some(timeout) if timeout.is_zero() => {
+                return Err(Error::configuration(
+                    "Connection query timeout must be greater than zero.",
+                ));
+            }
+            Some(timeout) => timeout.as_millis().max(1).min(u64::MAX as u128) as u64,
+            None => 0,
+        };
         let _execution = self
             .execution
             .lock()
@@ -331,28 +324,8 @@ impl Connection {
         Ok(())
     }
 
-    /// Set this connection's per-statement timeout.
-    ///
-    /// Timeout resolution is one millisecond; a positive sub-millisecond
-    /// duration rounds up. Use [`Self::clear_query_timeout`] to disable it.
-    pub fn set_query_timeout(&self, timeout: Duration) -> Result<()> {
-        if timeout.is_zero() {
-            return Err(Error::configuration(
-                "Connection query timeout must be greater than zero.",
-            ));
-        }
-        let milliseconds = timeout.as_millis().max(1).min(u64::MAX as u128) as u64;
-        self.set_query_timeout_ms(milliseconds)
-    }
-
-    /// Disable this connection's per-statement timeout.
-    pub fn clear_query_timeout(&self) -> Result<()> {
-        self.set_query_timeout_ms(0)
-    }
-
-    /// Set this connection's maximum execution worker count without issuing a
-    /// Cypher statement. This mirrors the native client configuration path.
-    pub fn set_max_num_threads(&self, threads: usize) -> Result<()> {
+    /// Set this connection's maximum execution thread count.
+    pub fn set_max_threads(&self, threads: usize) -> Result<()> {
         let _execution = self
             .execution
             .lock()
@@ -362,16 +335,16 @@ impl Connection {
                 "Connection thread count must be greater than zero.",
             ));
         }
-        let max_workers = self
+        let max_threads = self
             .inner
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .config
-            .max_workers();
-        if max_workers.is_some_and(|limit| threads > limit) {
+            .max_threads();
+        if max_threads.is_some_and(|limit| threads > limit) {
             return Err(Error::configuration(format!(
-                "Connection thread count {threads} exceeds database max_workers {}.",
-                max_workers.expect("checked above")
+                "Connection thread count {threads} exceeds database max_threads {}.",
+                max_threads.expect("checked above")
             )));
         }
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
@@ -379,45 +352,37 @@ impl Connection {
         state.bump_revision();
         Ok(())
     }
-    /// Like [`query`](Self::query), with values for the statement's `$name`
-    /// parameters. An unbound parameter follows C++ semantics: its containing expression becomes
-    /// `NULL`, and a predicate containing it is omitted.
-    pub fn query_with_params(&self, cypher: &str, params: &[(&str, Value)]) -> Result<QueryResult> {
-        let parse_started = Instant::now();
-        let stmt = parse_statement(cypher)?;
-        self.execute_parsed(&stmt, params, parse_started.elapsed())
-    }
-
-    /// Execute with typed parameters without interpolating values into Cypher source.
-    pub fn query_with_typed_params(
+    /// Execute with owned typed parameters without interpolating Cypher source.
+    pub fn execute_with(
         &self,
         cypher: &str,
-        params: &[QueryParameter<'_>],
+        parameters: impl IntoIterator<Item = Parameter>,
     ) -> Result<QueryResult> {
         let parse_started = Instant::now();
-        let stmt = parse_statement(cypher)?;
-        let normalized = normalize_query_parameters(params)?;
-        let borrowed = normalized
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.clone()))
-            .collect::<Vec<_>>();
-        self.execute_parsed(&stmt, &borrowed, parse_started.elapsed())
+        let statement = parse_statement(cypher)?;
+        let parameters = normalize_query_parameters(parameters)?;
+        self.execute_parsed(&statement, parameters, parse_started.elapsed())
     }
 
     /// Execute one statement while preserving structural result, diagnostic,
     /// interruption, session, and internal-panic metadata.
-    pub fn execute_with_metadata(
+    pub fn execute_detailed(&self, cypher: &str) -> Outcome {
+        self.execute_detailed_with(cypher, std::iter::empty())
+    }
+
+    /// Detailed execution with one owned parameter set.
+    pub fn execute_detailed_with(
         &self,
         cypher: &str,
-        params: &[QueryParameter<'_>],
-    ) -> StatementOutcome {
+        parameters: impl IntoIterator<Item = Parameter>,
+    ) -> Outcome {
         let session_before = self.session_snapshot().ok();
         let parse_started = Instant::now();
         let statement = match parse_statement(cypher) {
             Ok(statement) => statement,
             Err(error) => {
                 let diagnostic = analyze_cypher(cypher, None).diagnostic().cloned();
-                return result::failure_outcome(
+                return Outcome::failed(
                     error,
                     FailureKind::Parser,
                     None,
@@ -427,11 +392,11 @@ impl Connection {
                 );
             }
         };
-        let normalized = match normalize_query_parameters(params) {
-            Ok(normalized) => normalized,
+        let parameters = match normalize_query_parameters(parameters) {
+            Ok(parameters) => parameters,
             Err(error) => {
-                let kind = result::failure_kind(&error);
-                return result::failure_outcome(
+                let kind = failure_kind(&error);
+                return Outcome::failed(
                     error,
                     kind,
                     None,
@@ -441,10 +406,6 @@ impl Connection {
                 );
             }
         };
-        let borrowed = normalized
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.clone()))
-            .collect::<Vec<_>>();
         let interrupt_epoch = self.interrupt_epoch.load(Ordering::Acquire);
         let timeout_enabled = self
             .state
@@ -454,12 +415,12 @@ impl Connection {
             .get("timeout")
             .and_then(Value::as_i64)
             .is_some_and(|timeout| timeout > 0);
-        match self.execute_parsed_catching(&statement, &borrowed, parse_started.elapsed()) {
+        match self.execute_parsed_catching(&statement, parameters, parse_started.elapsed()) {
             Ok(Ok(result)) => {
-                result::success_outcome(result, session_before, self.session_snapshot().ok())
+                Outcome::success(result, session_before, self.session_snapshot().ok())
             }
             Ok(Err(error)) => {
-                let kind = result::failure_kind(&error);
+                let kind = failure_kind(&error);
                 let interrupt_reason = (kind == FailureKind::Interrupt).then(|| {
                     if self.interrupt_epoch.load(Ordering::Acquire) != interrupt_epoch {
                         InterruptReason::Explicit
@@ -469,7 +430,7 @@ impl Connection {
                         InterruptReason::Explicit
                     }
                 });
-                result::failure_outcome(
+                Outcome::failed(
                     error,
                     kind,
                     interrupt_reason,
@@ -478,7 +439,7 @@ impl Connection {
                     self.session_snapshot().ok(),
                 )
             }
-            Err(detail) => result::failure_outcome(
+            Err(detail) => Outcome::failed(
                 Error::runtime(format!("Query execution panicked: {detail}")),
                 FailureKind::InternalPanic,
                 None,
@@ -535,7 +496,7 @@ impl Connection {
             let show_table_rows = database.show_table_rows(None);
             let graph_data = graph.snapshot();
             let storage = Arc::clone(&graph_data.storage);
-            let read_ts = storage.current_commit_ts();
+            let read_ts = storage.read().current_commit_ts();
             if writes {
                 let writer_id = self.acquire_writer(&mut database, &graph)?;
                 ConcurrentQuerySnapshot {
@@ -548,7 +509,7 @@ impl Connection {
                     memory: graph_data.memory.clone(),
                     read_ts,
                     writer_id: Some(writer_id),
-                    mark: graph_data.storage.undo_mark(),
+                    mark: graph_data.storage.read().undo_mark(),
                     rel_base: graph_data.rel_table_bases(),
                     sequence_before: Some(graph_data.catalog.sequence_state()),
                     show_table_rows,
@@ -601,9 +562,9 @@ impl Connection {
         if let Some(writer_id) = snapshot.writer_id {
             let write = mvcc_write(snapshot.read_ts, writer_id);
             if result.is_ok() {
-                snapshot.storage.commit_to(write, snapshot.mark);
+                snapshot.storage.write().commit_to(write, snapshot.mark);
             } else {
-                snapshot.storage.rollback_to(write, snapshot.mark);
+                snapshot.storage.write().rollback_to(write, snapshot.mark);
             }
             let sequence_changed = snapshot
                 .sequence_before
@@ -652,10 +613,10 @@ impl Connection {
     fn execute_parsed(
         &self,
         stmt: &koko_parser::ast::Statement,
-        params: &[(&str, Value)],
+        parameters: HashMap<String, Value>,
         initial_compilation_time: Duration,
     ) -> Result<QueryResult> {
-        match self.execute_parsed_catching(stmt, params, initial_compilation_time) {
+        match self.execute_parsed_catching(stmt, parameters, initial_compilation_time) {
             Ok(result) => result,
             Err(detail) => Err(Error::runtime(format!(
                 "Query execution panicked: {detail}"
@@ -666,7 +627,7 @@ impl Connection {
     fn execute_parsed_catching(
         &self,
         stmt: &koko_parser::ast::Statement,
-        params: &[(&str, Value)],
+        parameters: HashMap<String, Value>,
         initial_compilation_time: Duration,
     ) -> std::result::Result<Result<QueryResult>, String> {
         let _execution = self
@@ -675,7 +636,7 @@ impl Connection {
             .unwrap_or_else(|error| error.into_inner());
         let control = self.statement_control();
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.execute_parsed_inner(stmt, params, None, initial_compilation_time, &control)
+            self.execute_parsed_inner(stmt, parameters, None, initial_compilation_time, &control)
         })) {
             Ok(result) => Ok(result),
             Err(payload) => {
@@ -779,6 +740,7 @@ impl Connection {
                     transaction
                         .snapshot
                         .storage
+                        .write()
                         .rollback_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
                     transaction.snapshot.release_catalog_writes(writer_id);
                     database.active_writers.remove(&self.id);
@@ -967,8 +929,8 @@ impl Connection {
                 Arc::clone(&multi_writes),
             ));
             let mut data = graph.snapshot();
-            let read_ts = data.storage.current_commit_ts();
-            let mark = data.storage.undo_mark();
+            let read_ts = data.storage.read().current_commit_ts();
+            let mark = data.storage.read().undo_mark();
             let mut query = connection.query_context(
                 HashMap::new(),
                 mvcc_view(read_ts, Some(writer_id)),
@@ -979,11 +941,14 @@ impl Connection {
             let imported = apply_interchange_image(&mut data, graph_image, &mut query);
             if let Err(error) = imported {
                 data.storage
+                    .write()
                     .rollback_to(mvcc_write(read_ts, writer_id), mark);
                 data.release_catalog_writes(writer_id);
                 return Err(error);
             }
-            data.storage.commit_to(mvcc_write(read_ts, writer_id), mark);
+            data.storage
+                .write()
+                .commit_to(mvcc_write(read_ts, writer_id), mark);
             data.release_catalog_writes(writer_id);
             *graph.data.lock().unwrap_or_else(|error| error.into_inner()) = data;
             staged.push(graph);
@@ -1040,31 +1005,25 @@ impl Connection {
     }
 
     /// Bind, plan, and execute an already-parsed statement with its parameter
-    /// values, routing it through this connection's transaction state. Shared by
-    /// [`query_with_params`](Self::query_with_params) and
-    /// [`PreparedStatement::execute`] (which reuses an earlier parse).
+    /// values, routing it through this connection's transaction state.
     fn execute_parsed_inner(
         &self,
         stmt: &koko_parser::ast::Statement,
-        params: &[(&str, Value)],
+        parameters: HashMap<String, Value>,
         parameter_names: Option<&[String]>,
         initial_compilation_time: Duration,
         control: &StatementControl,
     ) -> Result<QueryResult> {
         let unexpected_parameter = parameter_names.and_then(|expected_params| {
-            params
-                .iter()
-                .find(|(name, _)| !expected_params.iter().any(|expected| expected == name))
+            parameters
+                .keys()
+                .find(|name| !expected_params.iter().any(|expected| expected == *name))
         });
-        if let Some((name, _)) = unexpected_parameter {
+        if let Some(name) = unexpected_parameter {
             return Err(Error::binder(format!(
                 "Unexpected query parameter ${name}."
             )));
         }
-        let parameters: HashMap<String, Value> = params
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.clone()))
-            .collect();
         let execution_started = Instant::now();
         if matches!(stmt, koko_parser::ast::Statement::ExportDatabase(_)) {
             return self.execute_database_export(
@@ -1194,6 +1153,7 @@ impl Connection {
                     transaction
                         .snapshot
                         .storage
+                        .write()
                         .rollback_to(mvcc_write(transaction.read_ts, writer_id), transaction.mark);
                     transaction.snapshot.release_catalog_writes(writer_id);
                     database.active_writers.remove(&self.id);
@@ -1210,13 +1170,13 @@ impl Connection {
         let graph = Self::selected_graph(&database, &mut connection)?;
         let show_table_rows = database.show_table_rows(None);
         let mut graph_data = graph.snapshot();
-        let read_ts = graph_data.storage.current_commit_ts();
+        let read_ts = graph_data.storage.read().current_commit_ts();
         let writer_id = if writes {
             Some(self.acquire_writer(&mut database, &graph)?)
         } else {
             None
         };
-        let mark = writer_id.map_or(0, |_| graph_data.storage.undo_mark());
+        let mark = writer_id.map_or(0, |_| graph_data.storage.read().undo_mark());
         let rel_base = if writes {
             graph_data.rel_table_bases()
         } else {
@@ -1244,9 +1204,9 @@ impl Connection {
         if let Some(writer_id) = writer_id {
             let write = mvcc_write(read_ts, writer_id);
             if result.is_ok() {
-                graph_data.storage.commit_to(write, mark);
+                graph_data.storage.write().commit_to(write, mark);
             } else {
-                graph_data.storage.rollback_to(write, mark);
+                graph_data.storage.write().rollback_to(write, mark);
             }
             let catalog_changed = statement_touches_catalog(stmt)
                 || graph_data.catalog.sequence_state() != sequence_before;
@@ -1282,14 +1242,14 @@ impl Connection {
     /// Load a CSV dataset directory (`schema.cypher` + `copy.cypher`), resolving
     /// `COPY` file paths relative to `dir`. This is how the `.test` corpus's
     /// `-DATASET CSV <name>` directive populates a fresh database.
-    pub fn load_csv_dataset(&self, dir: &Path) -> Result<()> {
+    pub(crate) fn load_csv_dataset(&self, dir: &Path) -> Result<()> {
         let schema = std::fs::read_to_string(dir.join("schema.cypher"))?;
         let storage_root = dir.to_string_lossy().replace('\'', "''");
         for stmt in interchange::split_statements(&schema) {
             let stmt = stmt
                 .replace("storage = '.'", &format!("storage = '{storage_root}'"))
                 .replace("storage='.'", &format!("storage='{storage_root}'"));
-            self.query(&stmt)?;
+            self.execute(&stmt)?;
         }
         let copy_path = dir.join("copy.cypher");
         if !copy_path.exists() {
@@ -1310,8 +1270,8 @@ impl Connection {
         let graph = Self::selected_graph(&database, &mut connection)?;
         let graph_data = graph.snapshot();
         let writer_id = self.acquire_writer(&mut database, &graph)?;
-        let mark = graph_data.storage.undo_mark();
-        let read_ts = graph_data.storage.current_commit_ts();
+        let mark = graph_data.storage.read().undo_mark();
+        let read_ts = graph_data.storage.read().current_commit_ts();
         let sequence_before = graph_data.catalog.sequence_state();
         drop(database);
         let result: Result<()> = (|| {
@@ -1361,7 +1321,7 @@ impl Connection {
         })();
         let write = mvcc_write(read_ts, writer_id);
         if result.is_ok() {
-            graph_data.storage.commit_to(write, mark);
+            graph_data.storage.write().commit_to(write, mark);
             if sequence_before != graph_data.catalog.sequence_state() {
                 graph
                     .data
@@ -1370,7 +1330,7 @@ impl Connection {
                     .catalog_version += 1;
             }
         } else {
-            graph_data.storage.rollback_to(write, mark);
+            graph_data.storage.write().rollback_to(write, mark);
         }
         graph_data.release_catalog_writes(writer_id);
         self.inner

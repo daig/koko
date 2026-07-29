@@ -1,68 +1,63 @@
 //! `koko` — the public, idiomatic Rust API for the Koko engine.
 //!
-//! This crate composes the per-layer crates into the `Database` / `Connection`
-//! / `QueryResult` surface. The result is **columnar** (the load-bearing model,
-//! per the roadmap's no-regression bar): [`QueryResult`] stores column buffers,
-//! and the owned-[`Row`] cursor is thin sugar over them. Results are
-//! materialized eagerly (matching the C++ engine); lazy streaming is a
-//! post-parity enhancement.
+//! Results are eagerly materialized in private columnar buffers. [`Row`] and
+//! the views in [`result`] borrow those buffers without copying.
 //!
 //! ```no_run
-//! use koko::Database;
-//! # fn main() -> koko::Result<()> {
-//! let db = Database::in_memory();
-//! let conn = db.connect();
-//! conn.query("CREATE NODE TABLE Person(name STRING, age INT64, PRIMARY KEY(name))")?;
-//! conn.query("CREATE (:Person {name: 'Alice', age: 35})")?;
-//! let r = conn.query("MATCH (p:Person) WHERE p.age > 30 RETURN p.name, p.age")?;
-//! for row in r.rows() {
-//!     println!("{} {}", row.get::<String>(0)?, row.get::<i64>(1)?);
+//! use koko::{Database, Result, params};
+//!
+//! fn main() -> Result<()> {
+//!     let database = Database::new();
+//!     let mut connection = database.connect();
+//!     connection.execute(
+//!         "CREATE NODE TABLE Person(id INT64, name STRING, PRIMARY KEY(id))",
+//!     )?;
+//!     connection.execute_with(
+//!         "CREATE (:Person {id: $id, name: $name})",
+//!         params! { "id" => 1, "name" => "Alice" },
+//!     )?;
+//!
+//!     let result = connection.execute_with(
+//!         "MATCH (p:Person) WHERE p.id >= $min RETURN p.name",
+//!         params! { "min" => 1 },
+//!     )?;
+//!     for row in &result {
+//!         println!("{}", row.get::<String>("name")?);
+//!     }
+//!
+//!     let transaction = connection.transaction()?;
+//!     transaction.execute("CREATE (:Person {id: 2, name: 'Bob'})")?;
+//!     transaction.commit()?;
+//!     Ok(())
 //! }
-//! # Ok(())
-//! # }
 //! ```
 
 mod arrow;
-mod config;
+pub mod config;
 mod copy;
+pub mod diagnostics;
+pub mod execution;
+pub mod function;
 mod interchange;
-mod result;
+mod macros;
+pub mod prepared;
+pub mod result;
 mod runtime;
-mod tooling;
+#[doc(hidden)]
+pub mod test_support;
+pub mod tooling;
+pub mod transaction;
+pub mod value;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::DatabaseConfig;
-pub use result::{
-    CellRef, CellValueRef, ColumnSchema, ColumnView, FailureKind, FromValue, GraphValueType,
-    InterruptReason, PlanNode, PlanPresentation, QueryResult, QueryResultKind, QuerySummary,
-    ResultTypeContext, Row, StatementDiagnostics, StatementFailure, StatementOutcome,
-    StatementWarning, TypedColumnView,
-};
-pub use runtime::{
-    Connection, Database, InterruptHandle, ParameterMetadata, PreparedStatement,
-    PreparedStatementType, PreparedWriteMetadata, QueryParameter, Transaction,
-};
-pub use tooling::{
-    CatalogSnapshot, CursorContext, CursorContextKind, EndpointDescriptor, FunctionDescriptor,
-    FunctionKind, GraphDescriptor, GraphIdentity, GraphKind, IndexDescriptor, MacroDescriptor,
-    NodeTableDescriptor, OutputClass, PropertyDescriptor, RelationshipTableDescriptor,
-    SessionSnapshot, SettingDescriptor, SourceSpan, StatementAnalysis, StatementClass,
-    SyntaxAnalysis, SyntaxDiagnostic, SyntaxStatus, TokenKind, TokenSpan, TransactionMode,
-    analyze_cypher, cypher_keywords, version,
-};
-
-mod macros;
-
-// Re-export the foundational public types.
-pub use koko_common::decimal::{format_decimal, parse_to_unscaled as parse_decimal};
-pub use koko_common::scalar::format_uuid;
-pub use koko_common::temporal::{
-    format_date, format_interval, format_timestamp, parse_date, parse_timestamp,
-};
-pub use koko_common::{
-    ColumnData, DataChunk, Error, IntKind, InternalId, Interval, JsonValue, LogicalType,
-    MemoryResource, MemoryTracker, MemoryUsage, NodeValue, Offset, RecursiveRelValue, RelValue,
-    Result, ScalarUdfNullPolicy, TableId, Value, ValueVector,
-};
+pub use execution::Parameter;
+pub use function::ScalarFunction;
+pub use koko_common::{Error, Result};
+pub use prepared::PreparedStatement;
+pub use result::{QueryResult, Row};
+pub use runtime::{Connection, Database, InterruptHandle};
+pub use transaction::Transaction;
+pub use value::{LogicalType, Value};

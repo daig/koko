@@ -1,0 +1,8 @@
+PASS  user_defined_types.UDT
+PASS  user_defined_types.InvalidUserDefinedType
+FAIL  user_defined_types.UDTPrimitiveType — statement #8 `LOAD FROM "${KOKO_ROOT_DIRECTORY}/dataset/udt/vMovies.csv" (header = true) RETUR…`: expected rows, got error: Binder exception: Variable height is not in scope.
+PASS  user_defined_types.Example
+PASS  user_defined_types.UDTInNestedType
+PASS  user_defined_types.UDTCastTest
+
+5 passed, 0 skipped, 1 failed

@@ -2,9 +2,9 @@
 
 use super::connection::{ConnId, Connection};
 use super::graph::{GraphId, GraphRegistry, GraphState, MAIN_GRAPH_ID};
-use crate::{DatabaseConfig, MemoryTracker, MemoryUsage, Result, Value};
+use crate::{DatabaseConfig, Value};
 use koko_catalog::Catalog;
-use koko_common::{START_TX_ID, Ts};
+use koko_common::{MemoryTracker, MemoryUsage, START_TX_ID, Ts};
 use koko_storage::CommitClock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -86,7 +86,7 @@ impl DatabaseState {
                 let table = catalog.node_table(id).expect("listed node table");
                 rows.push(vec![
                     Value::Int64(id.0 as i64),
-                    Value::String(table.name.clone()),
+                    Value::String(table.name().to_string()),
                     Value::String("NODE".to_string()),
                     Value::String(database_name.clone()),
                     Value::String(catalog.table_comment(id).to_string()),
@@ -95,8 +95,8 @@ impl DatabaseState {
             for id in catalog.rel_table_ids() {
                 let table = catalog.rel_table(id).expect("listed rel table");
                 rows.push(vec![
-                    Value::Int64((id.0 + table.pairs.len() as u64) as i64),
-                    Value::String(table.name.clone()),
+                    Value::Int64((id.0 + table.pairs().len() as u64) as i64),
+                    Value::String(table.name().to_string()),
                     Value::String("REL".to_string()),
                     Value::String(database_name.clone()),
                     Value::String(catalog.table_comment(id).to_string()),
@@ -145,12 +145,13 @@ impl Database {
     }
 
     /// Open a fresh in-memory database with unrestricted resource defaults.
-    pub fn in_memory() -> Database {
-        Self::from_config(DatabaseConfig::default())
+    pub fn new() -> Self {
+        Self::with_config(DatabaseConfig::default())
     }
+
     /// Open an in-memory database with validated resource limits.
-    pub fn in_memory_with_config(config: DatabaseConfig) -> Result<Database> {
-        Ok(Self::from_config(config))
+    pub fn with_config(config: DatabaseConfig) -> Self {
+        Self::from_config(config)
     }
 
     /// Return this database's current, peak, and configured tracked-memory counters.
@@ -160,17 +161,23 @@ impl Database {
 
     /// Open a connection. Connections are cheap; one per thread is the idiom.
     pub fn connect(&self) -> Connection {
-        let max_workers = self
+        let max_threads = self
             .inner
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .config
-            .max_workers();
+            .max_threads();
         Connection::new(
             ConnId(self.next_conn_id.fetch_add(1, Ordering::Relaxed)),
             Arc::clone(&self.inner),
             Arc::clone(&self.schema_gate),
-            max_workers,
+            max_threads,
         )
+    }
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        Self::new()
     }
 }

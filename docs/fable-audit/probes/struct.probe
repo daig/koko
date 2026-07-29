@@ -1,0 +1,24 @@
+// struct functions
+RETURN {a:1,b:2} AS a
+RETURN {b:2,a:1} AS a
+RETURN struct_pack(a:=1,b:=2) AS a
+RETURN struct_extract({a:1,b:2}, 'a') AS a
+RETURN struct_extract({a:1,b:2}, 'b') AS a
+RETURN {a:1,b:2}.a AS a
+RETURN {a:1,b:2}.b AS a
+RETURN struct_extract({a:1,b:2}, 'c') AS a
+RETURN {a:1,b:2}.c AS a
+RETURN {} AS a
+RETURN typeof({}) AS a
+RETURN typeof({a:1,b:2}) AS a
+RETURN {a:1,b:'x',c:true} AS a
+RETURN typeof({a:1,b:'x',c:true}) AS a
+RETURN {a:{b:1}} AS a
+RETURN {a:{b:1}}.a AS a
+RETURN {a:{b:1}}.a.b AS a
+RETURN {a:[1,2,3]} AS a
+RETURN {a:[1,2,3]}.a AS a
+RETURN struct_pack(x:=1) AS a
+RETURN {a:1,b:null} AS a
+RETURN struct_extract({a:1,b:null}, 'b') AS a
+RETURN {a:1}.a AS a

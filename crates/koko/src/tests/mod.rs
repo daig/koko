@@ -1,8 +1,12 @@
 //! Cross-module facade contracts with private crate access.
 
 use super::*;
+use crate::config::{MemoryResource, MemoryUsage};
+use crate::function::NullPolicy;
+use crate::prepared::{ParameterInfo, StatementKind};
+use crate::result::Column;
 use crate::runtime::{ACTIVE_TRANSACTION_MSG, READ_ONLY_WRITE_MSG};
-use koko_common::VECTOR_CAPACITY;
+use koko_common::{DataChunk, MemoryTracker, VECTOR_CAPACITY};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -23,7 +27,7 @@ impl QueryResult {
 
 /// Helper: a query's rendered rows, sorted for order-independent comparison.
 fn sorted_rows(c: &Connection, q: &str) -> Vec<String> {
-    let mut rows = c.query(q).unwrap().to_result_strings();
+    let mut rows = c.execute(q).unwrap().rendered_rows();
     rows.sort();
     rows
 }

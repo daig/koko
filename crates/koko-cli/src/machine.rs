@@ -2,9 +2,9 @@
 
 use crate::presentation::{PresentationError, StatementContext};
 use crate::value_codec;
-use koko::{
-    CellValueRef, FailureKind, PlanNode, QueryResult, QueryResultKind, StatementFailure, Value,
-};
+use koko::diagnostics::{Failure, FailureKind, InterruptReason};
+use koko::result::{CellValue, PlanNode, ResultKind};
+use koko::{QueryResult, Value};
 use std::io::Write;
 
 pub fn begin_json(writer: &mut impl Write) -> Result<(), PresentationError> {
@@ -15,7 +15,7 @@ pub fn begin_json(writer: &mut impl Write) -> Result<(), PresentationError> {
 pub fn finish_json(
     writer: &mut impl Write,
     complete: bool,
-    error: Option<(&StatementContext<'_>, &StatementFailure)>,
+    error: Option<(&StatementContext<'_>, &Failure)>,
 ) -> Result<(), PresentationError> {
     writer.write_all(b"],\"complete\":")?;
     writer.write_all(if complete { b"true" } else { b"false" })?;
@@ -48,7 +48,7 @@ pub fn write_jsonl_result(
     result: &QueryResult,
     timing: bool,
 ) -> Result<(), PresentationError> {
-    if result.result_kind() == QueryResultKind::Status {
+    if result.kind() == ResultKind::Status {
         return write_status_record(writer, statement, result, timing);
     }
     write_schema_record(writer, statement, result)?;
@@ -68,7 +68,7 @@ pub fn write_jsonl_result(
 pub fn write_jsonl_error(
     writer: &mut impl Write,
     statement: &StatementContext<'_>,
-    failure: &StatementFailure,
+    failure: &Failure,
 ) -> Result<(), PresentationError> {
     write_record_prefix(writer, statement, "error")?;
     writer.write_all(b",\"error\":")?;
@@ -89,7 +89,7 @@ pub fn write_delimited(
         return Err(PresentationError::InvalidNullToken(null_token.to_string()));
     }
     if header {
-        for (index, column) in result.schema().iter().enumerate() {
+        for (index, column) in result.columns().iter().enumerate() {
             separator_byte(writer, index, delimiter)?;
             write_delimited_text(
                 writer,
@@ -106,11 +106,11 @@ pub fn write_delimited(
             separator_byte(writer, column, delimiter)?;
             let cell = row.cell(column)?;
             match cell.value() {
-                CellValueRef::Null => writer.write_all(null_token.as_bytes())?,
-                CellValueRef::String(value) => {
+                CellValue::Null => writer.write_all(null_token.as_bytes())?,
+                CellValue::String(value) => {
                     write_delimited_text(writer, value, delimiter, null_token, delimiter == b'\t')?;
                 }
-                CellValueRef::Generic(Value::String(value)) => {
+                CellValue::Generic(Value::String(value)) => {
                     write_delimited_text(writer, value, delimiter, null_token, delimiter == b'\t')?;
                 }
                 _ => {
@@ -140,7 +140,7 @@ fn write_result_object(
     write_usize(writer, statement.number)?;
     write_source_fields(writer, statement)?;
     writer.write_all(b",\"columns\":[")?;
-    for (index, column) in result.schema().iter().enumerate() {
+    for (index, column) in result.columns().iter().enumerate() {
         separator(writer, index)?;
         writer.write_all(br#"{"name":"#)?;
         write_string(writer, column.name())?;
@@ -179,7 +179,7 @@ fn write_schema_record(
 ) -> Result<(), PresentationError> {
     write_record_prefix(writer, statement, "schema")?;
     writer.write_all(b",\"columns\":[")?;
-    for (index, column) in result.schema().iter().enumerate() {
+    for (index, column) in result.columns().iter().enumerate() {
         separator(writer, index)?;
         writer.write_all(br#"{"name":"#)?;
         write_string(writer, column.name())?;
@@ -249,23 +249,23 @@ fn write_summary_object(
     timing: bool,
 ) -> Result<(), PresentationError> {
     writer.write_all(br#"{"rows":"#)?;
-    write_usize(writer, result.num_rows())?;
+    write_usize(writer, result.len())?;
     if timing {
         let summary = result.summary();
         writer.write_all(b",\"compiling_ms\":")?;
-        write_f64(writer, summary.compiling_time_ms())?;
+        write_f64(writer, summary.compilation_time().as_secs_f64() * 1_000.0)?;
         writer.write_all(b",\"execution_ms\":")?;
-        write_f64(writer, summary.execution_time_ms())?;
+        write_f64(writer, summary.execution_time().as_secs_f64() * 1_000.0)?;
     }
     writer.write_all(b",\"warnings\":[")?;
-    for (index, warning) in result.statement_diagnostics().warnings().iter().enumerate() {
+    for (index, warning) in result.diagnostics().warnings().iter().enumerate() {
         separator(writer, index)?;
         writer.write_all(br#"{"message":"#)?;
         write_string(writer, warning.message())?;
         writer.write_all(b"}")?;
     }
     writer.write_all(b"],\"total_warning_count\":")?;
-    write_u64(writer, result.statement_diagnostics().total_warning_count())?;
+    write_u64(writer, result.diagnostics().total_warning_count())?;
     writer.write_all(b"}")?;
     Ok(())
 }
@@ -273,7 +273,7 @@ fn write_summary_object(
 fn write_error_object(
     writer: &mut impl Write,
     statement: &StatementContext<'_>,
-    failure: &StatementFailure,
+    failure: &Failure,
 ) -> Result<(), PresentationError> {
     writer.write_all(b"{")?;
     writer.write_all(br#""statement":"#)?;
@@ -285,10 +285,7 @@ fn write_error_object(
     Ok(())
 }
 
-fn write_failure(
-    writer: &mut impl Write,
-    failure: &StatementFailure,
-) -> Result<(), PresentationError> {
+fn write_failure(writer: &mut impl Write, failure: &Failure) -> Result<(), PresentationError> {
     writer.write_all(br#"{"kind":"#)?;
     write_string(writer, failure_kind(failure))?;
     writer.write_all(b",\"message\":")?;
@@ -302,7 +299,7 @@ fn write_failure(
     Ok(())
 }
 
-fn failure_kind(failure: &StatementFailure) -> &'static str {
+fn failure_kind(failure: &Failure) -> &'static str {
     match failure.kind() {
         FailureKind::Parser => "parser",
         FailureKind::Binder => "binder",
@@ -311,15 +308,14 @@ fn failure_kind(failure: &StatementFailure) -> &'static str {
         FailureKind::Runtime => "runtime",
         FailureKind::ImportExport => "import_export",
         FailureKind::Memory => "memory",
-        FailureKind::Interrupt
-            if failure.interrupt_reason() == Some(koko::InterruptReason::Deadline) =>
-        {
+        FailureKind::Interrupt if failure.interrupt_reason() == Some(InterruptReason::Deadline) => {
             "deadline"
         }
         FailureKind::Interrupt => "interrupt",
         FailureKind::Configuration => "configuration",
         FailureKind::Io => "io",
         FailureKind::InternalPanic => "internal",
+        _ => "engine",
     }
 }
 
@@ -451,5 +447,5 @@ fn write_f64(writer: &mut impl Write, value: f64) -> std::io::Result<()> {
 }
 
 pub fn is_row_producing(result: &QueryResult) -> bool {
-    result.result_kind() == QueryResultKind::Rows
+    result.kind() == ResultKind::Rows
 }

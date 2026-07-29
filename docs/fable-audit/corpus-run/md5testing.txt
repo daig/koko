@@ -1,0 +1,3 @@
+parse error in /Users/dai/code/koko/test/test_files/md5testing/md5.test: invalid result count `hash`
+
+0 passed, 0 skipped, 1 failed

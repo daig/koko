@@ -1,0 +1,6 @@
+// path predicates + operator-as-function-name calls
+MATCH p = (a:person)-[:knows]->(b:person) RETURN is_trail(p) LIMIT 1
+MATCH p = (a:person)-[:knows]->(b:person) RETURN is_acyclic(p) LIMIT 1
+RETURN equals(1, 1)
+RETURN greater_than(2, 1)
+RETURN not_equals(1, 2)

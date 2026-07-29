@@ -1,7 +1,8 @@
-use koko::{
-    Database, IntKind, InternalId, Interval, JsonValue, LogicalType, NodeValue, RecursiveRelValue,
-    RelValue, TableId, Value,
+use koko::result::ResultTypeContext;
+use koko::value::{
+    IntKind, InternalId, Interval, JsonValue, NodeValue, RecursiveRelValue, RelValue, TableId,
 };
+use koko::{Database, LogicalType, Value};
 use koko_cli::bootstrap::Format;
 use koko_cli::output::{CollisionPolicy, OutputError, OutputTransaction};
 use koko_cli::presentation::{
@@ -23,12 +24,10 @@ fn settings(format: Format) -> PresentationSettings {
 
 #[test]
 fn json_document_is_valid_typed_and_preserves_duplicate_columns() {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
-    let outcome = connection.execute_with_metadata(
-        "RETURN 9007199254740992 AS duplicate, 2 AS duplicate, NULL AS missing",
-        &[],
-    );
+    let outcome = connection
+        .execute_detailed("RETURN 9007199254740992 AS duplicate, 2 AS duplicate, NULL AS missing");
     let result = outcome.result().unwrap();
     let mut presenter = Presenter::begin(Vec::new(), Vec::new(), settings(Format::Json)).unwrap();
     presenter
@@ -52,9 +51,9 @@ fn json_document_is_valid_typed_and_preserves_duplicate_columns() {
 
 #[test]
 fn json_failure_closes_one_valid_incomplete_document() {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
-    let outcome = connection.execute_with_metadata("RETURN )", &[]);
+    let outcome = connection.execute_detailed("RETURN )");
     let failure = outcome.failure().unwrap();
     let mut presenter = Presenter::begin(Vec::new(), Vec::new(), settings(Format::Json)).unwrap();
     presenter
@@ -70,9 +69,9 @@ fn json_failure_closes_one_valid_incomplete_document() {
 
 #[test]
 fn json_lines_are_independently_valid_and_versioned() {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
-    let outcome = connection.execute_with_metadata("RETURN 1 AS answer UNION ALL RETURN 2", &[]);
+    let outcome = connection.execute_detailed("RETURN 1 AS answer UNION ALL RETURN 2");
     let mut presenter =
         Presenter::begin(Vec::new(), Vec::new(), settings(Format::JsonLines)).unwrap();
     presenter
@@ -96,15 +95,15 @@ fn json_lines_are_independently_valid_and_versioned() {
 
 #[test]
 fn csv_quotes_strings_and_withholds_ambiguous_multiple_results() {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
     let status = connection
-        .query("CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))")
+        .execute("CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))")
         .unwrap();
     let first = connection
-        .query("RETURN 'a,b' AS text, NULL AS missing")
+        .execute("RETURN 'a,b' AS text, NULL AS missing")
         .unwrap();
-    let second = connection.query("RETURN 2 AS answer").unwrap();
+    let second = connection.execute("RETURN 2 AS answer").unwrap();
     let mut presenter = Presenter::begin(Vec::new(), Vec::new(), settings(Format::Csv)).unwrap();
     presenter
         .present_result(&StatementContext::new(1, 1), &first)
@@ -166,7 +165,7 @@ fn typed_value_codec_preserves_order_and_lossless_scalars() {
         &mut encoded,
         &value,
         &logical_type,
-        &koko::ResultTypeContext::default(),
+        &ResultTypeContext::default(),
     )
     .unwrap();
     let text = std::str::from_utf8(&encoded).unwrap();
@@ -185,7 +184,7 @@ fn typed_value_codec_covers_machine_scalar_and_graph_classes() {
             &mut output,
             value,
             logical_type,
-            &koko::ResultTypeContext::default(),
+            &ResultTypeContext::default(),
         )
         .unwrap();
         serde_json::from_slice(&output).unwrap()
@@ -301,10 +300,10 @@ fn typed_value_codec_covers_machine_scalar_and_graph_classes() {
 
 #[test]
 fn human_box_uses_head_tail_rows_and_grapheme_safe_truncation() {
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
     let result = connection
-        .query("UNWIND range(1, 5) AS n RETURN n, '漢字évery-long' AS text")
+        .execute("UNWIND range(1, 5) AS n RETURN n, '漢字évery-long' AS text")
         .unwrap();
     let mut options = settings(Format::Box);
     options.row_limit = Some(2);
@@ -384,9 +383,9 @@ fn write_failures_propagate_without_partial_success() {
             Ok(())
         }
     }
-    let database = Database::in_memory();
+    let database = Database::new();
     let connection = database.connect();
-    let result = connection.query("RETURN 1 AS answer").unwrap();
+    let result = connection.execute("RETURN 1 AS answer").unwrap();
     let mut presenter =
         Presenter::begin(FailingWriter(64), Vec::new(), settings(Format::Json)).unwrap();
     let error = presenter

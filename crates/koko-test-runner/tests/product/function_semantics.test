@@ -1,0 +1,82 @@
+-DATASET CSV tinysnb
+--
+-CASE NumericFunctions
+-STATEMENT MATCH (a:organisation) RETURN sign(a.mark)
+---- 3
+1
+1
+1
+-STATEMENT MATCH (a:organisation) RETURN lgamma(a.orgCode)
+---- 3
+1552.770467
+5451.570283
+4706.038471
+-STATEMENT RETURN cast(4324.123, "FLOAT") * cast(4324.123, "FLOAT")
+---- 1
+18698040.000000
+
+-CASE StringConcatAndCast
+-STATEMENT RETURN 'a' + 'b' + 'c', string(10)
+---- 1
+abc|10
+-STATEMENT RETURN concat(concat('Birthdate: ', string(date('1980-10-26'))), ' test')
+---- 1
+Birthdate: 1980-10-26 test
+-STATEMENT MATCH (m:movies) RETURN initcap(m.name)
+---- 3
+Sóló cón tu párejâ
+The 😂😃🧘🏻‍♂️🌍🌦️🍞🚗 movie
+Roma
+
+-CASE StringIndexSlice
+-STATEMENT MATCH (o:organisation) RETURN o.name[2]
+---- 3
+B
+s
+E
+-STATEMENT MATCH (o:organisation) RETURN o.name[1..4]
+---- 3
+ABFs
+CsWo
+DEsW
+-STATEMENT RETURN string_split('Alice', ''), split_part('a,b,c', ',', 2)
+---- 1
+[A,l,i,c,e]|b
+
+-CASE ListFunctions
+-STATEMENT RETURN list_slice([1,2,3], 1, 2)
+---- 1
+[1,2]
+-STATEMENT RETURN list_sort([2,3,1,NULL,NULL])
+---- 1
+[,,1,2,3]
+-STATEMENT RETURN list_sort([2,3,1,5,NULL], 'DESC')
+---- 1
+[,5,3,2,1]
+
+-CASE DateFunctions
+-STATEMENT MATCH (p:person) WHERE p.ID = 0 RETURN date_part("yeAr", p.lastJobDuration), date_part("seConds", p.registerTime)
+---- 1
+3|30
+-STATEMENT RETURN to_timestamp(0), make_date(2020, 3, 15), century(date('1990-01-01'))
+---- 1
+1970-01-01 00:00:00|2020-03-15|20
+-STATEMENT RETURN duration('3 HOURS 22 MINUTES 66 seconds')
+---- 1
+03:23:06
+
+-CASE MapArityError
+-STATEMENT RETURN map([4],[3,2])
+---- error
+Runtime exception: Unaligned key list and value list.
+
+-CASE CaseTypeCoercion
+-STATEMENT RETURN CASE WHEN true THEN 1 WHEN false THEN 2.5 END
+---- 1
+1.000000
+-STATEMENT RETURN CASE 1 WHEN 1 THEN 5 WHEN 2 THEN 9.9 END
+---- 1
+5.000000
+-STATEMENT RETURN [1, 2.0], [1, 2, 3.5]
+---- 1
+[1.000000,2.000000]|[1.000000,2.000000,3.500000]

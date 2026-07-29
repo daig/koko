@@ -28,16 +28,16 @@
 //! pushed into a subtree iff every column it reads is produced by that subtree.
 
 use crate::cost::{StatsMap, plan_card};
-use crate::{
-    Extend, ExtendTarget, IndexScan, InputSlot, JoinKind, PartPlan, PathRel, PlanOp, QueryPlan,
-    RegularPlan, RowLayout, ScanNode, UnwindTarget, VarLengthExtend,
-};
-use koko_binder::{
-    BoundExpr, BoundPart, BoundProjection, BoundQuery, BoundRegularQuery, OrderKey, ProjItem, VarId,
-};
 use koko_catalog::Catalog;
 use koko_common::LogicalType;
-use koko_function::ScalarOp;
+use koko_function::{BuiltinScalar, ScalarOp};
+use koko_ir::bound::{
+    BoundExpr, BoundPart, BoundProjection, BoundQuery, BoundRegularQuery, OrderKey, ProjItem, VarId,
+};
+use koko_ir::plan::{
+    Extend, ExtendTarget, IndexScan, InputSlot, JoinKind, PartPlan, PathRel, PlanOp, QueryPlan,
+    RegularPlan, RowLayout, ScanNode, ScanTable, UnwindTarget, VarLengthExtend,
+};
 use std::collections::HashSet;
 
 /// Optimize every operand of a `UNION` plan in place.
@@ -235,7 +235,7 @@ fn annotate_extend_carry(
 }
 
 fn prune_plan_properties(op: &mut PlanOp, read: &HashSet<usize>) {
-    let prune_tables = |tables: &mut Vec<crate::ScanTable>| {
+    let prune_tables = |tables: &mut Vec<ScanTable>| {
         for table in tables {
             table
                 .prop_cols
@@ -818,8 +818,8 @@ impl FilterPushDown<'_> {
             let table = scan.tables[0].table;
             if let Some(nt) = self.catalog.node_table(table) {
                 let pk = nt.primary_key_column();
-                let pk_name = pk.name.clone();
-                let pk_ty = pk.ty.clone();
+                let pk_name = pk.name().to_string();
+                let pk_ty = pk.logical_type().clone();
                 let found = carried.iter().enumerate().find_map(|(i, p)| {
                     self.match_pk_eq(p, scan.var, &pk_name, &pk_ty)
                         .map(|v| (i, v))
@@ -902,7 +902,7 @@ impl FilterPushDown<'_> {
         let nt = self.catalog.node_table(table)?;
         let pk = nt.primary_key_column();
         preds.iter().enumerate().find_map(|(i, p)| {
-            self.match_pk_eq_in_cols(p, scan.var, &pk.name, &pk.ty, input_cols)
+            self.match_pk_eq_in_cols(p, scan.var, pk.name(), pk.logical_type(), input_cols)
                 .map(|v| (i, v))
         })
     }
@@ -1145,8 +1145,14 @@ fn collect_expr_cols(layout: &RowLayout, e: &BoundExpr, out: &mut HashSet<usize>
         }
         BoundExpr::ValueProperty { value, .. } => collect_expr_cols(layout, value, out),
         BoundExpr::Cast { expr, .. } => collect_expr_cols(layout, expr, out),
-        BoundExpr::Call { name, args, .. }
-            if matches!(name.as_str(), "id" | "offset" | "label" | "labels") && args.len() == 1 =>
+        BoundExpr::Call { function, args, .. }
+            if matches!(
+                function,
+                BuiltinScalar::Id
+                    | BuiltinScalar::Offset
+                    | BuiltinScalar::Label
+                    | BuiltinScalar::Labels
+            ) && args.len() == 1 =>
         {
             match &args[0] {
                 BoundExpr::NodeRef { var, .. } => {
@@ -1253,24 +1259,36 @@ fn combine_and(mut preds: Vec<BoundExpr>) -> Option<BoundExpr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PlanOp, plan};
-    use koko_binder::{BoundMatch, BoundPart, BoundQuery, BoundUnwind, PropInfo, VarInfo, VarKind};
+    use crate::plan;
+    use koko_catalog::{ColumnDefinition, NodeTableDefinition, RelTableDefinition};
+    use koko_common::RelStorageDirection;
     use koko_common::{TableId, Value};
+    use koko_ir::bound::{
+        BoundMatch, BoundPart, BoundQuery, BoundSet, BoundUnwind, BoundUpdate, PropInfo,
+        SequenceFn, SubqueryKind, VarInfo, VarKind,
+    };
+
+    fn empty_rel(name: &str, endpoints: Vec<(TableId, TableId)>) -> RelTableDefinition {
+        RelTableDefinition {
+            name: name.to_string(),
+            endpoint_pairs: endpoints,
+            columns: Vec::new(),
+            storage_direction: RelStorageDirection::default(),
+        }
+    }
 
     /// A catalog with one node table `N(id INT64 [pk], val STRING)`.
     fn catalog_with_n() -> (Catalog, TableId) {
         let mut cat = Catalog::new();
         let t = cat
-            .create_node_table(
-                "N",
-                vec![
-                    ("id".to_string(), LogicalType::Int64),
-                    ("val".to_string(), LogicalType::String),
+            .create_node_table(NodeTableDefinition {
+                name: "N".to_string(),
+                columns: vec![
+                    ColumnDefinition::plain("id", LogicalType::Int64),
+                    ColumnDefinition::plain("val", LogicalType::String),
                 ],
-                &[],
-                &[],
-                "id",
-            )
+                primary_key: "id".to_string(),
+            })
             .unwrap();
         (cat, t)
     }
@@ -1502,14 +1520,14 @@ mod tests {
 
     // --- Factorization (P3 step 6) marking tests ---
 
-    use koko_binder::{BoundProjection, ProjItem};
     use koko_function::AggOp;
+    use koko_ir::bound::{BoundProjection, ProjItem};
 
     /// A catalog with node table `N(id INT64 pk, val STRING)` and rel table
     /// `R(FROM N TO N)` (no rel properties).
     fn catalog_with_n_and_r() -> (Catalog, TableId, TableId) {
         let (mut cat, n) = catalog_with_n();
-        let r = cat.create_rel_table("R", &[(n, n)], vec![], &[]).unwrap();
+        let r = cat.create_rel_table(empty_rel("R", vec![(n, n)])).unwrap();
         (cat, n, r)
     }
 
@@ -1856,8 +1874,8 @@ mod tests {
         // Cost-based extend order (P3 step 10b L2) must rank the sparse edge cheaper, so
         // a cyclic/multi-path pattern follows it instead of exploding the product.
         let (mut cat, n) = catalog_with_n();
-        let sparse = cat.create_rel_table("SR", &[(n, n)], vec![], &[]).unwrap();
-        let dense = cat.create_rel_table("DR", &[(n, n)], vec![], &[]).unwrap();
+        let sparse = cat.create_rel_table(empty_rel("SR", vec![(n, n)])).unwrap();
+        let dense = cat.create_rel_table(empty_rel("DR", vec![(n, n)])).unwrap();
         let _ = &cat;
         let (a, b, c, e1, e2) = (VarId(0), VarId(1), VarId(2), VarId(3), VarId(4));
         let query = BoundQuery {
@@ -1878,6 +1896,709 @@ mod tests {
         assert!(
             f_sparse < f_dense,
             "sparse fan-out {f_sparse} should rank below dense {f_dense}"
+        );
+    }
+
+    fn catalog_with_property_rel() -> (Catalog, TableId, TableId) {
+        let (mut catalog, node) = catalog_with_n();
+        let rel = catalog
+            .create_rel_table(RelTableDefinition {
+                name: "R".to_string(),
+                endpoint_pairs: vec![(node, node)],
+                columns: vec![
+                    ColumnDefinition::plain("weight", LogicalType::Int64),
+                    ColumnDefinition::plain("spare", LogicalType::String),
+                ],
+                storage_direction: RelStorageDirection::default(),
+            })
+            .unwrap();
+        (catalog, node, rel)
+    }
+
+    fn property_rel_var(name: &str, table: TableId, src: VarId, dst: VarId) -> VarInfo {
+        let mut info = rel_var(name, table, src, dst);
+        info.properties = vec![
+            PropInfo {
+                name: "weight".to_string(),
+                column_id: 0,
+                ty: LogicalType::Int64,
+            },
+            PropInfo {
+                name: "spare".to_string(),
+                column_id: 1,
+                ty: LogicalType::String,
+            },
+        ];
+        info
+    }
+
+    fn optimized_extend_part(items: Vec<ProjItem>, updating: bool) -> PartPlan {
+        let (cat, n, r) = catalog_with_property_rel();
+        let (a, b, e) = (VarId(0), VarId(1), VarId(2));
+        let query = BoundQuery {
+            vars: vec![
+                node_var("a", n),
+                node_var("b", n),
+                property_rel_var("e", r, a, b),
+            ],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a, b],
+                    rel_vars: vec![e],
+                    ..Default::default()
+                },
+                updates: updating
+                    .then(|| BoundUpdate::Set(BoundSet { items: Vec::new() }))
+                    .into_iter()
+                    .collect(),
+                projection: Some(BoundProjection {
+                    distinct: false,
+                    items,
+                    order_by: vec![],
+                    skip: None,
+                    limit: None,
+                }),
+                ..Default::default()
+            }],
+        };
+        let stats = StatsMap::new();
+        let mut plan = plan(&query, &cat, &stats).unwrap();
+        optimize(&query, &mut plan, &cat, &stats);
+        plan.parts.pop().unwrap()
+    }
+
+    fn scalar_item(name: &str, expr: BoundExpr) -> ProjItem {
+        ProjItem::Scalar {
+            name: name.to_string(),
+            expr,
+        }
+    }
+
+    #[test]
+    fn projection_pruning_removes_every_unread_scan_and_extend_property() {
+        let part = optimized_extend_part(vec![scalar_item("count(*)", count_star())], false);
+        let PlanOp::Extend(extend) = part.root else {
+            panic!("expected Extend");
+        };
+        let PlanOp::ScanNode(scan) = extend.input.as_ref() else {
+            panic!("expected ScanNode below Extend");
+        };
+        assert!(
+            scan.tables.iter().all(|table| table.prop_cols.is_empty()),
+            "the head scan should gather no unread properties: {scan:?}"
+        );
+        let ExtendTarget::New { to_tables, .. } = &extend.target else {
+            panic!("expected an extend to a new endpoint");
+        };
+        assert!(
+            to_tables.iter().all(|table| table.prop_cols.is_empty()),
+            "the unread endpoint should gather no properties: {extend:?}"
+        );
+        assert!(
+            extend
+                .branches
+                .iter()
+                .all(|branch| branch.rel_prop_cols.is_empty()),
+            "the unread relationship should gather no properties: {extend:?}"
+        );
+        assert!(
+            extend.carry_cols.is_empty(),
+            "no head payload is live above the count-only extend: {extend:?}"
+        );
+    }
+
+    #[test]
+    fn projection_pruning_retains_only_live_endpoint_properties() {
+        let (a, b) = (VarId(0), VarId(1));
+        let part = optimized_extend_part(
+            vec![
+                scalar_item("a.val", prop(a, "val", LogicalType::String)),
+                scalar_item("b.val", prop(b, "val", LogicalType::String)),
+                scalar_item("count(*)", count_star()),
+            ],
+            false,
+        );
+        let PlanOp::Extend(extend) = part.root else {
+            panic!("expected Extend");
+        };
+        let PlanOp::ScanNode(scan) = extend.input.as_ref() else {
+            panic!("expected ScanNode below Extend");
+        };
+        let head = &scan.tables[0].prop_cols;
+        assert_eq!(
+            head.iter()
+                .map(|column| column.column_id)
+                .collect::<Vec<_>>(),
+            vec![1],
+            "only a.val should be gathered"
+        );
+        assert_eq!(
+            extend.carry_cols,
+            vec![head[0].col_index],
+            "only a.val should be copied through the extend"
+        );
+        let ExtendTarget::New { to_tables, .. } = &extend.target else {
+            panic!("expected an extend to a new endpoint");
+        };
+        assert_eq!(
+            to_tables[0]
+                .prop_cols
+                .iter()
+                .map(|column| column.column_id)
+                .collect::<Vec<_>>(),
+            vec![1],
+            "only b.val should be gathered"
+        );
+        assert!(
+            extend
+                .branches
+                .iter()
+                .all(|branch| branch.rel_prop_cols.is_empty()),
+            "unread relationship properties should still be pruned"
+        );
+        assert!(
+            !extend.factorize,
+            "reading the introduced endpoint must block factorization"
+        );
+    }
+
+    #[test]
+    fn projection_pruning_retains_only_the_live_relationship_property() {
+        let rel = VarId(2);
+        let part = optimized_extend_part(
+            vec![
+                scalar_item("e.weight", prop(rel, "weight", LogicalType::Int64)),
+                scalar_item("count(*)", count_star()),
+            ],
+            false,
+        );
+        let PlanOp::Extend(extend) = part.root else {
+            panic!("expected Extend");
+        };
+        assert_eq!(
+            extend.branches[0]
+                .rel_prop_cols
+                .iter()
+                .map(|column| column.column_id)
+                .collect::<Vec<_>>(),
+            vec![0],
+            "weight is live while spare is pruned"
+        );
+        let ExtendTarget::New { to_tables, .. } = &extend.target else {
+            panic!("expected an extend to a new endpoint");
+        };
+        assert!(
+            to_tables[0].prop_cols.is_empty(),
+            "the unread endpoint properties remain pruned"
+        );
+        assert!(
+            !extend.factorize,
+            "reading a relationship property requires real fan-out rows"
+        );
+    }
+
+    #[test]
+    fn updating_parts_disable_pruning_and_factorization() {
+        let part = optimized_extend_part(vec![scalar_item("count(*)", count_star())], true);
+        let PlanOp::Extend(extend) = part.root else {
+            panic!("expected Extend");
+        };
+        let PlanOp::ScanNode(scan) = extend.input.as_ref() else {
+            panic!("expected ScanNode below Extend");
+        };
+        assert_eq!(
+            scan.tables[0].prop_cols.len(),
+            2,
+            "updating parts retain the complete head row"
+        );
+        let ExtendTarget::New { to_tables, .. } = &extend.target else {
+            panic!("expected an extend to a new endpoint");
+        };
+        assert_eq!(
+            extend.branches[0].rel_prop_cols.len(),
+            2,
+            "updating parts retain the complete relationship row"
+        );
+        assert_eq!(
+            to_tables[0].prop_cols.len(),
+            2,
+            "updating parts retain the complete endpoint row"
+        );
+        assert!(
+            !extend.factorize,
+            "an updating part must receive one physical row per match"
+        );
+    }
+
+    #[test]
+    fn missing_projection_disables_pruning_and_factorization() {
+        let (cat, n, r) = catalog_with_property_rel();
+        let (a, b, e) = (VarId(0), VarId(1), VarId(2));
+        let query = BoundQuery {
+            vars: vec![
+                node_var("a", n),
+                node_var("b", n),
+                property_rel_var("e", r, a, b),
+            ],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a, b],
+                    rel_vars: vec![e],
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        };
+        let stats = StatsMap::new();
+        let mut query_plan = plan(&query, &cat, &stats).unwrap();
+        optimize(&query, &mut query_plan, &cat, &stats);
+        let PlanOp::Extend(extend) = query_plan.parts.pop().unwrap().root else {
+            panic!("expected Extend");
+        };
+        let PlanOp::ScanNode(scan) = extend.input.as_ref() else {
+            panic!("expected ScanNode below Extend");
+        };
+        assert_eq!(scan.tables[0].prop_cols.len(), 2);
+        assert_eq!(extend.branches[0].rel_prop_cols.len(), 2);
+        let ExtendTarget::New { to_tables, .. } = &extend.target else {
+            panic!("expected an extend to a new endpoint");
+        };
+        assert_eq!(to_tables[0].prop_cols.len(), 2);
+        assert!(!extend.factorize);
+    }
+
+    #[test]
+    fn multi_table_scan_is_not_rewritten_as_a_single_table_index_lookup() {
+        let (mut cat, first) = catalog_with_n();
+        let second = cat
+            .create_node_table(NodeTableDefinition {
+                name: "M".to_string(),
+                columns: vec![
+                    ColumnDefinition::plain("id", LogicalType::Int64),
+                    ColumnDefinition::plain("val", LogicalType::String),
+                ],
+                primary_key: "id".to_string(),
+            })
+            .unwrap();
+        let a = VarId(0);
+        let mut polymorphic = node_var("a", first);
+        if let VarKind::Node { tables, label } = &mut polymorphic.kind {
+            *tables = vec![first, second];
+            label.clear();
+        }
+        let root = optimized_root(
+            &cat,
+            vec![polymorphic],
+            vec![a],
+            cmp(a, ScalarOp::Eq, Value::Int64(1)),
+        );
+        let PlanOp::Filter { input, .. } = root else {
+            panic!("a multi-table scan must keep its filter");
+        };
+        let PlanOp::ScanNode(scan) = *input else {
+            panic!("expected Filter(ScanNode)");
+        };
+        assert_eq!(scan.tables.len(), 2);
+    }
+
+    fn two_scan_plan() -> (Catalog, BoundQuery, QueryPlan, VarId, VarId) {
+        let (cat, table) = catalog_with_n();
+        let (a, b) = (VarId(0), VarId(1));
+        let query = BoundQuery {
+            vars: vec![node_var("a", table), node_var("b", table)],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a, b],
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        };
+        let plan = plan(&query, &cat, &StatsMap::new()).unwrap();
+        (cat, query, plan, a, b)
+    }
+
+    #[test]
+    fn optional_and_subquery_boundaries_push_only_outer_predicates() {
+        for optional in [true, false] {
+            let (cat, query, mut plan, a, b) = two_scan_plan();
+            let part = &mut plan.parts[0];
+            let PlanOp::CrossProduct { left, right, .. } =
+                std::mem::replace(&mut part.root, PlanOp::SingleRow)
+            else {
+                panic!("expected two independent scans");
+            };
+            let boundary = if optional {
+                PlanOp::Optional {
+                    input: left,
+                    pattern: right,
+                    new_cols: Vec::new(),
+                }
+            } else {
+                PlanOp::Subquery {
+                    input: left,
+                    pattern: right,
+                    result_col: part.layout.allocate(LogicalType::Bool),
+                    kind: SubqueryKind::Exists,
+                }
+            };
+            part.root = PlanOp::Filter {
+                input: Box::new(boundary),
+                predicate: BoundExpr::Scalar {
+                    op: ScalarOp::And,
+                    args: vec![
+                        cmp(a, ScalarOp::Eq, Value::Int64(1)),
+                        cmp(b, ScalarOp::Eq, Value::Int64(2)),
+                    ],
+                    ty: LogicalType::Bool,
+                },
+            };
+            optimize(&query, &mut plan, &cat, &StatsMap::new());
+            let PlanOp::Filter { input, .. } = plan.parts.pop().unwrap().root else {
+                panic!("the predicate on the introduced node must remain above the boundary");
+            };
+            let outer = match *input {
+                PlanOp::Optional { input, pattern, .. }
+                | PlanOp::Subquery { input, pattern, .. } => {
+                    assert!(
+                        matches!(*pattern, PlanOp::ScanNode(_)),
+                        "the correlated pattern must remain independent"
+                    );
+                    input
+                }
+                other => panic!("expected the correlation boundary, got {other:?}"),
+            };
+            assert!(
+                matches!(*outer, PlanOp::IndexScan(_)),
+                "the outer-only predicate should sink to its scan"
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_and_value_materialization_are_filter_pushdown_barriers() {
+        let (cat, table) = catalog_with_n();
+        let a = VarId(0);
+        let query = BoundQuery {
+            vars: vec![node_var("a", table)],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a],
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        };
+        for sequence in [true, false] {
+            let mut plan = plan(&query, &cat, &StatsMap::new()).unwrap();
+            let part = &mut plan.parts[0];
+            let scan = std::mem::replace(&mut part.root, PlanOp::SingleRow);
+            let boundary = if sequence {
+                PlanOp::SequenceCall {
+                    input: Box::new(scan),
+                    func: SequenceFn::NextVal,
+                    name: "s".to_string(),
+                    result_col: part.layout.add_sequence_column(LogicalType::Int64),
+                }
+            } else {
+                let node_type = LogicalType::Node(table);
+                let (id_col, value_col) = part
+                    .layout
+                    .add_value_column(a, node_type)
+                    .expect("the node has no value column yet");
+                PlanOp::MaterializeValues {
+                    input: Box::new(scan),
+                    items: vec![koko_ir::plan::MaterializeItem {
+                        id_col,
+                        value_col,
+                        is_node: true,
+                    }],
+                }
+            };
+            part.root = PlanOp::Filter {
+                input: Box::new(boundary),
+                predicate: cmp(a, ScalarOp::Eq, Value::Int64(1)),
+            };
+            optimize(&query, &mut plan, &cat, &StatsMap::new());
+            let PlanOp::Filter { input, .. } = plan.parts.pop().unwrap().root else {
+                panic!("the filter must remain above the opaque boundary");
+            };
+            match *input {
+                PlanOp::SequenceCall { input, .. } | PlanOp::MaterializeValues { input, .. } => {
+                    assert!(
+                        matches!(*input, PlanOp::ScanNode(_)),
+                        "the PK predicate must not cross the boundary"
+                    )
+                }
+                other => panic!("expected an opaque boundary, got {other:?}"),
+            }
+        }
+    }
+
+    fn reset_factorization(op: &mut PlanOp) {
+        match op {
+            PlanOp::Extend(extend) => extend.factorize = false,
+            other => panic!("expected an Extend, got {other:?}"),
+        }
+    }
+
+    fn factorization_flags(op: &PlanOp, output: &mut Vec<bool>) {
+        match op {
+            PlanOp::Extend(extend) => {
+                output.push(extend.factorize);
+                factorization_flags(&extend.input, output);
+            }
+            PlanOp::VarLengthExtend(extend) => {
+                output.push(extend.factorize);
+                factorization_flags(&extend.input, output);
+            }
+            PlanOp::ProjectPath(path) => factorization_flags(&path.input, output),
+            PlanOp::Filter { input, .. }
+            | PlanOp::Unwind { input, .. }
+            | PlanOp::SequenceCall { input, .. }
+            | PlanOp::MaterializeValues { input, .. } => factorization_flags(input, output),
+            PlanOp::CrossProduct { left, right, .. }
+            | PlanOp::HashJoin {
+                probe: left,
+                build: right,
+                ..
+            }
+            | PlanOp::Optional {
+                input: left,
+                pattern: right,
+                ..
+            }
+            | PlanOp::Subquery {
+                input: left,
+                pattern: right,
+                ..
+            } => {
+                factorization_flags(left, output);
+                factorization_flags(right, output);
+            }
+            PlanOp::IndexScan(scan) => {
+                if let Some(input) = &scan.input {
+                    factorization_flags(input, output);
+                }
+            }
+            PlanOp::SingleRow
+            | PlanOp::InputScan
+            | PlanOp::ScanNode(_)
+            | PlanOp::ScanTableFunc { .. }
+            | PlanOp::LoadScan { .. } => {}
+        }
+    }
+
+    fn marked_factorization(root: PlanOp) -> Vec<bool> {
+        let bound = BoundPart {
+            projection: Some(BoundProjection {
+                distinct: false,
+                items: vec![scalar_item("count(*)", count_star())],
+                order_by: Vec::new(),
+                skip: None,
+                limit: None,
+            }),
+            ..Default::default()
+        };
+        let mut part = PartPlan {
+            root,
+            layout: RowLayout::default(),
+            inputs: Vec::new(),
+            update_ops: Vec::new(),
+        };
+        mark_factorization(&bound, &mut part);
+        let mut flags = Vec::new();
+        factorization_flags(&part.root, &mut flags);
+        flags
+    }
+
+    fn fresh_unfactorized_extend() -> PlanOp {
+        let mut root = optimized_extend_root(vec![scalar_item("count(*)", count_star())]);
+        reset_factorization(&mut root);
+        root
+    }
+
+    #[test]
+    fn factorization_crosses_only_multiplicity_preserving_boundaries() {
+        let true_predicate = BoundExpr::Literal(Value::Bool(true));
+        assert_eq!(
+            marked_factorization(PlanOp::Filter {
+                input: Box::new(fresh_unfactorized_extend()),
+                predicate: true_predicate,
+            }),
+            vec![true],
+            "Filter preserves multiplicity"
+        );
+        assert_eq!(
+            marked_factorization(PlanOp::HashJoin {
+                probe: Box::new(fresh_unfactorized_extend()),
+                build: Box::new(PlanOp::SingleRow),
+                probe_cols: (0, 0),
+                build_cols: (0, 0),
+                keys: Vec::new(),
+                kind: JoinKind::Mark {
+                    mark_col: 99,
+                    kind: SubqueryKind::Exists,
+                },
+            }),
+            vec![true],
+            "a Mark join preserves one row per probe row"
+        );
+
+        let blockers = vec![
+            PlanOp::Unwind {
+                input: Box::new(fresh_unfactorized_extend()),
+                list: BoundExpr::List {
+                    elems: vec![BoundExpr::Literal(Value::Int64(1))],
+                    ty: LogicalType::List(Box::new(LogicalType::Int64)),
+                },
+                target: UnwindTarget::Scalar { col: 99 },
+            },
+            PlanOp::SequenceCall {
+                input: Box::new(fresh_unfactorized_extend()),
+                func: SequenceFn::NextVal,
+                name: "s".to_string(),
+                result_col: 99,
+            },
+            PlanOp::MaterializeValues {
+                input: Box::new(fresh_unfactorized_extend()),
+                items: Vec::new(),
+            },
+            PlanOp::ProjectPath(Box::new(koko_ir::plan::ProjectPath {
+                input: Box::new(fresh_unfactorized_extend()),
+                path_col: 99,
+                head: VarId(0),
+                segments: Vec::new(),
+            })),
+            PlanOp::Optional {
+                input: Box::new(fresh_unfactorized_extend()),
+                pattern: Box::new(PlanOp::SingleRow),
+                new_cols: Vec::new(),
+            },
+            PlanOp::Subquery {
+                input: Box::new(fresh_unfactorized_extend()),
+                pattern: Box::new(PlanOp::SingleRow),
+                result_col: 99,
+                kind: SubqueryKind::Exists,
+            },
+            PlanOp::CrossProduct {
+                left: Box::new(fresh_unfactorized_extend()),
+                left_width: 0,
+                right: Box::new(PlanOp::SingleRow),
+                right_width: 0,
+            },
+            PlanOp::HashJoin {
+                probe: Box::new(fresh_unfactorized_extend()),
+                build: Box::new(PlanOp::SingleRow),
+                probe_cols: (0, 0),
+                build_cols: (0, 0),
+                keys: Vec::new(),
+                kind: JoinKind::Inner,
+            },
+            PlanOp::HashJoin {
+                probe: Box::new(fresh_unfactorized_extend()),
+                build: Box::new(PlanOp::SingleRow),
+                probe_cols: (0, 0),
+                build_cols: (0, 0),
+                keys: Vec::new(),
+                kind: JoinKind::Left,
+            },
+        ];
+        for blocker in blockers {
+            assert_eq!(
+                marked_factorization(blocker),
+                vec![false],
+                "fan-out or opaque boundaries must block multiplicity"
+            );
+        }
+    }
+
+    #[test]
+    fn planner_uses_the_lowest_fanout_extend_first() {
+        let (mut cat, n) = catalog_with_n();
+        let sparse = cat.create_rel_table(empty_rel("SR", vec![(n, n)])).unwrap();
+        let dense = cat.create_rel_table(empty_rel("DR", vec![(n, n)])).unwrap();
+        let (a, b, c, sparse_rel, dense_rel) = (VarId(0), VarId(1), VarId(2), VarId(3), VarId(4));
+        let query = BoundQuery {
+            vars: vec![
+                node_var("a", n),
+                node_var("b", n),
+                node_var("c", n),
+                rel_var("sparse", sparse, a, b),
+                rel_var("dense", dense, a, c),
+            ],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a, b, c],
+                    rel_vars: vec![dense_rel, sparse_rel],
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        };
+        let mut stats = stats_for_n(n, 100);
+        stats.insert(sparse, rel_stats(50));
+        stats.insert(dense, rel_stats(1000));
+        let mut query_plan = plan(&query, &cat, &stats).unwrap();
+        let PlanOp::Extend(outer) = query_plan.parts.pop().unwrap().root else {
+            panic!("expected the second extend");
+        };
+        let PlanOp::Extend(inner) = outer.input.as_ref() else {
+            panic!("expected the first extend below it");
+        };
+        assert_eq!(
+            inner.branches[0].rel_table, sparse,
+            "the sparse relationship must be extended before the declaration-first dense one"
+        );
+        assert_eq!(outer.branches[0].rel_table, dense);
+    }
+
+    #[test]
+    fn recursive_relationship_keeps_declaration_order_anchor() {
+        let (cat, n, r) = catalog_with_n_and_r();
+        let (a, b, e) = (VarId(0), VarId(1), VarId(2));
+        let mut recursive = rel_var("e", r, a, b);
+        let VarKind::Rel {
+            recursive: recursive_spec,
+            ..
+        } = &mut recursive.kind
+        else {
+            unreachable!()
+        };
+        *recursive_spec = Some(Box::new(koko_ir::bound::RecursiveSpec {
+            lower: 1,
+            upper: 2,
+            mode: koko_ir::bound::RecursiveMode::All,
+            semantic: koko_ir::bound::PathSemantic::Walk,
+            filter: None,
+            weight: None,
+        }));
+        let query = BoundQuery {
+            vars: vec![node_var("a", n), node_var("b", n), recursive],
+            parts: vec![BoundPart {
+                match_: BoundMatch {
+                    node_vars: vec![a, b],
+                    rel_vars: vec![e],
+                    ..Default::default()
+                },
+                where_predicate: Some(cmp(b, ScalarOp::Eq, Value::Int64(7))),
+                ..Default::default()
+            }],
+        };
+        let stats = stats_for_n(n, 100);
+        let mut query_plan = plan(&query, &cat, &stats).unwrap();
+        let PlanOp::Filter { input, .. } = query_plan.parts.pop().unwrap().root else {
+            panic!("the introduced endpoint predicate remains above the recursive extend");
+        };
+        let PlanOp::VarLengthExtend(extend) = *input else {
+            panic!("expected VariableLengthExtend");
+        };
+        let PlanOp::ScanNode(scan) = extend.input.as_ref() else {
+            panic!("expected the declaration-first anchor scan");
+        };
+        assert_eq!(
+            scan.var, a,
+            "recursive path direction is order-sensitive, so selective b must not become the anchor"
         );
     }
 }

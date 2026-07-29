@@ -1,0 +1,25 @@
+// core list ops
+RETURN list_concat([1,2],[3,4]) AS a
+RETURN list_cat([1,2],[3,4]) AS a
+RETURN list_append([1,2],3) AS a
+RETURN list_prepend([2,3],1) AS a
+RETURN list_contains([1,2,3],2) AS a
+RETURN list_contains([1,2,3],5) AS a
+RETURN list_position([1,2,3],2) AS a
+RETURN list_position([1,2,3],5) AS a
+RETURN list_indexof([1,2,3],2) AS a
+RETURN list_indexof([1,2,3],5) AS a
+RETURN list_reverse([1,2,3]) AS a
+RETURN list_distinct([1,1,2,3,3]) AS a
+RETURN list_unique([1,1,2,3,3]) AS a
+RETURN list_any_value([1,2,3]) AS a
+RETURN list_any_value([null,2,3]) AS a
+RETURN list_any_value([null,null]) AS a
+RETURN list_concat([1,2],null) AS a
+RETURN list_append([1,2], null) AS a
+RETURN list_prepend(null, [1,2]) AS a
+RETURN list_contains([1,2,3],null) AS a
+RETURN list_position([1,null,3],null) AS a
+RETURN size(list_concat([1,2],[3,4])) AS a
+RETURN list_concat(['a'],['b','c']) AS a
+RETURN list_reverse(['a','b','c']) AS a

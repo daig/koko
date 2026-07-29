@@ -1,0 +1,133 @@
+# Focused Koko behavior decisions; their stable decision IDs live in ROADMAP.md §4.
+-DATASET CSV empty
+
+--
+
+# Numeric casts reject explicit plus signs and unsigned leading-zero forms while
+# accepting whitespace, negative leading zeros, and decimal leading zeros.
+-CASE NumericStringStrictness
+-STATEMENT RETURN CAST('+5' AS INT64)
+---- error
+Conversion exception: Cast failed. Could not convert "+5" to INT64.
+-STATEMENT RETURN CAST('007' AS INT64)
+---- error
+Conversion exception: Cast failed. Could not convert "007" to INT64.
+-STATEMENT RETURN CAST('-007' AS INT64)
+---- 1
+-7
+-STATEMENT RETURN CAST(' 5 ' AS INT64)
+---- 1
+5
+-STATEMENT RETURN CAST('+5.5' AS DOUBLE)
+---- error
+Conversion exception: Cast failed. +5.5 is not in DOUBLE range.
+-STATEMENT RETURN CAST('007.5' AS DOUBLE)
+---- error
+Conversion exception: Cast failed. 007.5 is not in DOUBLE range.
+-STATEMENT RETURN CAST('-007.5' AS DOUBLE)
+---- 1
+-7.500000
+-STATEMENT RETURN CAST('007' AS UINT128)
+---- error
+Conversion exception: Cast failed. Could not convert "007" to UINT128.
+-STATEMENT RETURN CAST('007' AS DECIMAL(10,2))
+---- 1
+7.00
+-STATEMENT RETURN CAST('+5' AS DECIMAL(10,2))
+---- error
+Conversion exception: Cast failed. +5 is not in DECIMAL(10, 2) range.
+-STATEMENT RETURN CAST('0' AS INT64)
+---- 1
+0
+-STATEMENT RETURN CAST('0.5' AS DOUBLE)
+---- 1
+0.500000
+
+# Recursive relationship per-step lambdas reject nested subqueries at bind time.
+-CASE SubqueryInRecursiveLambda
+-STATEMENT CREATE NODE TABLE User(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE Follows(FROM User TO User)
+---- ok
+-STATEMENT MATCH (a:User)-[e:Follows* (r,n | WHERE EXISTS {MATCH (:City)})]->(b:User) RETURN COUNT(*)
+---- error
+Binder exception: EXISTS/COUNT subqueries and sequence functions are not supported in a recursive relationship's per-step filter.
+-STATEMENT MATCH (a:User)-[e:Follows* (r,n | WHERE COUNT {MATCH (:City)} > 0)]->(b:User) RETURN COUNT(*)
+---- error
+Binder exception: EXISTS/COUNT subqueries and sequence functions are not supported in a recursive relationship's per-step filter.
+
+# Floating equality probes against integer primary keys follow scalar equality.
+-CASE PkFloatProbe
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 2})
+---- ok
+-STATEMENT MATCH (p:P) WHERE p.id = 2.0 RETURN p.id
+---- 1
+2
+
+# Inputs that crash or abort the historical reference must answer safely in Koko.
+-CASE ReferenceCrashInputs
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE K(FROM P TO P)
+---- ok
+-STATEMENT CREATE (:P {id: 1}), (:P {id: 2})
+---- ok
+-STATEMENT MATCH (a:P {id:1}), (b:P {id:2}) CREATE (a)-[:K]->(b)
+---- ok
+-STATEMENT MATCH p=(a:P)-[:K*1..2]->(b:P) RETURN label(rels(p)[1])
+---- 1
+K
+-STATEMENT RETURN list_sum(NULL)
+---- 1
+
+-STATEMENT RETURN list_position([1,null,3], null)
+---- 1
+
+-STATEMENT RETURN repeat('ab', -1)
+---- 1
+
+# `week` is a recognized interval part and returns zero when no whole week remains.
+-STATEMENT RETURN date_part('week', INTERVAL('3 years 2 days'))
+---- 1
+0
+
+# `array_extract` uses the string coercion overload for a list argument.
+-CASE ArrayExtractStringCoercion
+-STATEMENT RETURN array_extract([10,20,30], 2)
+---- 1
+1
+
+# Factorial overflow is reported rather than wrapped.
+-CASE Factorial21
+-STATEMENT RETURN factorial(21)
+---- error
+Overflow exception: Factorial result is out of INT64 range.
+-STATEMENT RETURN factorial(20)
+---- 1
+2432902008176640000
+
+# Koko scalar extensions remain accepted as product behavior.
+-CASE KokoScalarExtensions
+-STATEMENT RETURN substr('hello', 2)
+---- 1
+ello
+-STATEMENT RETURN round(1.234)
+---- 1
+1.000000
+-STATEMENT RETURN exp(1)
+---- 1
+2.718282
+-STATEMENT RETURN power(2, 3)
+---- 1
+8.000000
+-STATEMENT RETURN date(timestamp('2020-01-02 03:04:05'))
+---- 1
+2020-01-02
+# Unsupported date-part specifiers return a stable conversion error.
+-STATEMENT RETURN date_part('dow', date('2026-07-02'))
+---- error
+Conversion exception: Unrecognized interval specifier string: dow.

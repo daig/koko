@@ -1,0 +1,287 @@
+# Node and relationship DDL plus binder and catalog validation.
+-DATASET CSV empty
+
+--
+
+-CASE CreateTables
+-STATEMENT CREATE NODE TABLE Person(name STRING, age INT64, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City, since INT64)
+---- ok
+-STATEMENT MATCH (p:Person) RETURN count(*)
+---- 1
+0
+
+-CASE TableDoesNotExist
+-STATEMENT MATCH (p:Ghost) RETURN p.name
+---- error
+Binder exception: Table Ghost does not exist.
+
+-CASE DuplicateTable
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- error
+Binder exception: T already exists in catalog.
+
+-CASE DuplicateRelTable
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B)
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B)
+---- error
+Binder exception: R already exists in catalog.
+
+-CASE DuplicateRelGroup
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B, FROM B TO A)
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B, FROM B TO A)
+---- error
+Binder exception: R already exists in catalog.
+
+-CASE DuplicateCrossNamespace
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE A(FROM A TO B)
+---- error
+Binder exception: A already exists in catalog.
+
+-CASE DuplicateTableEndpointErrorFirst
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE knows(FROM A TO B)
+---- ok
+-STATEMENT CREATE REL TABLE knows(FROM Nope TO Nope)
+---- error
+Binder exception: Table Nope does not exist.
+
+-CASE PrimaryKeyNotAColumn
+-STATEMENT CREATE NODE TABLE Bad(id INT64, PRIMARY KEY(missing))
+---- error
+Binder exception: Primary key missing does not match any of the predefined node properties.
+
+-CASE RelEndpointMissing
+-STATEMENT CREATE REL TABLE Bad(FROM Nope TO Nope, x INT64)
+---- error
+Binder exception: Table Nope does not exist.
+
+-CASE IfNotExists
+-STATEMENT CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE IF NOT EXISTS T(id INT64, PRIMARY KEY(id))
+---- ok
+
+-CASE DropTableNodeAndRel
+-STATEMENT CREATE NODE TABLE Person(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE REL TABLE LivesIn(FROM Person TO City, since INT64)
+---- ok
+-STATEMENT DROP TABLE LivesIn
+---- 1
+Table LivesIn has been dropped.
+-STATEMENT MATCH ()-[e:LivesIn]->() RETURN count(*)
+---- error
+Binder exception: Table LivesIn does not exist.
+-STATEMENT DROP TABLE City
+---- 1
+Table City has been dropped.
+-STATEMENT MATCH (c:City) RETURN count(*)
+---- error
+Binder exception: Table City does not exist.
+
+-CASE DropTableMissing
+-STATEMENT DROP TABLE Ghost
+---- error
+Binder exception: Table Ghost does not exist.
+
+-CASE DropTableIfExistsMissing
+-STATEMENT DROP TABLE IF EXISTS Ghost
+---- 1
+Table Ghost does not exist.
+
+-CASE DropNodeReferencedByRel
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B)
+---- ok
+-STATEMENT DROP TABLE A
+---- error
+Binder exception: Cannot delete node table A because it is referenced by relationship table R.
+-STATEMENT DROP TABLE R
+---- 1
+Table R has been dropped.
+-STATEMENT DROP TABLE A
+---- 1
+Table A has been dropped.
+
+-CASE DropThenRecreate
+-STATEMENT CREATE NODE TABLE Animal(name STRING, PRIMARY KEY(name))
+---- ok
+-STATEMENT CREATE (:Animal {name: 'Rex'})
+---- ok
+-STATEMENT DROP TABLE Animal
+---- 1
+Table Animal has been dropped.
+-STATEMENT CREATE NODE TABLE Animal(species STRING, PRIMARY KEY(species))
+---- ok
+-STATEMENT MATCH (a:Animal) RETURN count(*)
+---- 1
+0
+
+-CASE AlterAddPropertyDefaultAndNull
+-STATEMENT CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:P {id: 1})
+---- ok
+-STATEMENT CREATE (:P {id: 2})
+---- ok
+-STATEMENT ALTER TABLE P ADD score INT64 DEFAULT 7
+---- 1
+Property score added to table P.
+-STATEMENT MATCH (p:P) RETURN p.id, p.score ORDER BY p.id
+---- 2
+1|7
+2|7
+-STATEMENT ALTER TABLE P ADD note STRING
+---- 1
+Property note added to table P.
+-STATEMENT MATCH (p:P) RETURN count(p.note)
+---- 1
+0
+-STATEMENT CREATE (:P {id: 3, score: 99, note: 'hi'})
+---- ok
+-STATEMENT MATCH (p:P) WHERE p.id = 3 RETURN p.score, p.note
+---- 1
+99|hi
+
+-CASE AlterAddConflict
+-STATEMENT CREATE NODE TABLE T(id INT64, age INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT ALTER TABLE T ADD age INT64
+---- error
+Runtime exception: T table already has property age.
+-STATEMENT ALTER TABLE T ADD IF NOT EXISTS age INT64
+---- 1
+T table already has property age.
+
+-CASE AlterDropProperty
+-STATEMENT CREATE NODE TABLE T(id INT64, b INT64, c STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, b: 10, c: 'x'})
+---- ok
+-STATEMENT ALTER TABLE T DROP b
+---- 1
+Property b has been dropped from table T.
+-STATEMENT MATCH (t:T) RETURN t.id, t.c
+---- 1
+1|x
+-STATEMENT MATCH (t:T) RETURN t.b
+---- error
+Binder exception: Cannot find property b for t.
+
+-CASE AlterDropMissingAndPk
+-STATEMENT CREATE NODE TABLE T(id INT64, x INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT ALTER TABLE T DROP ghost
+---- error
+Runtime exception: T table does not have property ghost.
+-STATEMENT ALTER TABLE T DROP IF EXISTS ghost
+---- 1
+T table does not have property ghost.
+-STATEMENT ALTER TABLE T DROP id
+---- error
+Binder exception: Cannot drop property id in table T because it is used as primary key.
+
+-CASE AlterDropColumnBeforePk
+-STATEMENT CREATE NODE TABLE Q(a INT64, id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Q {a: 1, id: 100})
+---- ok
+-STATEMENT ALTER TABLE Q DROP a
+---- 1
+Property a has been dropped from table Q.
+-STATEMENT CREATE (:Q {id: 101})
+---- ok
+-STATEMENT MATCH (q:Q) RETURN q.id ORDER BY q.id
+---- 2
+100
+101
+
+-CASE AlterRenameProperty
+-STATEMENT CREATE NODE TABLE T(id INT64, fname STRING, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:T {id: 1, fname: 'Ann'})
+---- ok
+-STATEMENT ALTER TABLE T RENAME fname TO name
+---- 1
+Property fname renamed to name.
+-STATEMENT MATCH (t:T) RETURN t.name
+---- 1
+Ann
+-STATEMENT MATCH (t:T) RETURN t.fname
+---- error
+Binder exception: Cannot find property fname for t.
+-STATEMENT ALTER TABLE T RENAME missing TO other
+---- error
+Runtime exception: T table does not have property missing.
+
+-CASE AlterRenameTable
+-STATEMENT CREATE NODE TABLE Student(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:Student {id: 1})
+---- ok
+-STATEMENT ALTER TABLE Student RENAME TO Pupil
+---- 1
+Table Student renamed to Pupil.
+-STATEMENT MATCH (p:Pupil) RETURN count(*)
+---- 1
+1
+-STATEMENT MATCH (s:Student) RETURN count(*)
+---- error
+Binder exception: Table Student does not exist.
+
+-CASE AlterRelTableProperty
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE R(FROM A TO B, since INT64)
+---- ok
+-STATEMENT CREATE (:A {id: 1})
+---- ok
+-STATEMENT CREATE (:B {id: 2})
+---- ok
+-STATEMENT MATCH (a:A), (b:B) WHERE a.id = 1 AND b.id = 2 CREATE (a)-[:R {since: 2020}]->(b)
+---- ok
+-STATEMENT ALTER TABLE R ADD weight INT64 DEFAULT 5
+---- 1
+Property weight added to table R.
+-STATEMENT MATCH (:A)-[r:R]->(:B) RETURN r.since, r.weight
+---- 1
+2020|5
+-STATEMENT ALTER TABLE R RENAME since TO yr
+---- 1
+Property since renamed to yr.
+-STATEMENT ALTER TABLE R DROP yr
+---- 1
+Property yr has been dropped from table R.
+-STATEMENT MATCH (:A)-[r:R]->(:B) RETURN r.weight
+---- 1
+5

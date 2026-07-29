@@ -797,16 +797,15 @@ fn build_union_array(members: &[(String, LogicalType)], values: &[Value]) -> Res
 }
 
 impl QueryResult {
-    /// Convert this result to native Rust Arrow batches, one [`RecordBatch`] per
-    /// existing [`DataChunk`]. An empty result produces one zero-row batch so its
-    /// exact schema remains available to downstream writers. No row matrix is
+    /// Convert this result to native Rust Arrow batches, one record batch per
+    /// internal vector batch. An empty result produces one zero-row batch so its
     /// materialized; each bounded result column is converted once and Arrow fields
     /// carry `koko.logical_type`. Graph entities, paths, internal ids, and
     /// unresolved columns return an explicit unsupported-type error rather than
     /// being stringified.
     pub fn to_arrow_record_batches(&self) -> Result<Vec<RecordBatch>> {
         let fields = self
-            .schema()
+            .columns()
             .iter()
             .map(|column| field_for(column.name(), column.logical_type(), true).map(Arc::new))
             .collect::<Result<Vec<_>>>()?;
@@ -818,7 +817,7 @@ impl QueryResult {
             .iter()
             .map(|batch| {
                 let arrays = self
-                    .schema()
+                    .columns()
                     .iter()
                     .enumerate()
                     .map(|(index, column)| {
@@ -854,21 +853,21 @@ impl ImportTarget {
             Some(TableKind::Rel) => {
                 let rel = catalog.rel_table(id).expect("catalog kind is rel").clone();
                 let from = rel
-                    .pairs
+                    .pairs()
                     .iter()
-                    .map(|(id, _)| {
+                    .map(|pair| {
                         catalog
-                            .node_table(*id)
+                            .node_table(pair.from)
                             .expect("relationship endpoint exists")
                             .clone()
                     })
                     .collect();
                 let to = rel
-                    .pairs
+                    .pairs()
                     .iter()
-                    .map(|(_, id)| {
+                    .map(|pair| {
                         catalog
-                            .node_table(*id)
+                            .node_table(pair.to)
                             .expect("relationship endpoint exists")
                             .clone()
                     })
@@ -882,36 +881,40 @@ impl ImportTarget {
     fn expected(&self) -> Result<Vec<(&str, &LogicalType, bool)>> {
         match self {
             ImportTarget::Node(table) => Ok(table
-                .columns
+                .columns()
                 .iter()
                 .enumerate()
                 .map(|(index, column)| {
-                    (column.name.as_str(), &column.ty, index == table.primary_key)
+                    (
+                        column.name(),
+                        column.logical_type(),
+                        index == table.primary_key_index(),
+                    )
                 })
                 .collect()),
             ImportTarget::Rel(table, from, to) => {
-                let first_from = &from[0].columns[from[0].primary_key].ty;
-                let first_to = &to[0].columns[to[0].primary_key].ty;
+                let first_from = from[0].primary_key_column().logical_type();
+                let first_to = to[0].primary_key_column().logical_type();
                 if from
                     .iter()
-                    .any(|node| &node.columns[node.primary_key].ty != first_from)
+                    .any(|node| node.primary_key_column().logical_type() != first_from)
                     || to
                         .iter()
-                        .any(|node| &node.columns[node.primary_key].ty != first_to)
+                        .any(|node| node.primary_key_column().logical_type() != first_to)
                 {
                     return Err(Error::binder(format!(
                         "Relationship group `{}` has endpoint primary keys with incompatible logical types.",
-                        table.name
+                        table.name()
                     )));
                 }
-                let mut fields = Vec::with_capacity(table.columns.len() + 2);
+                let mut fields = Vec::with_capacity(table.columns().len() + 2);
                 fields.push(("from", first_from, true));
                 fields.push(("to", first_to, true));
                 fields.extend(
                     table
-                        .columns
+                        .columns()
                         .iter()
-                        .map(|column| (column.name.as_str(), &column.ty, false)),
+                        .map(|column| (column.name(), column.logical_type(), false)),
                 );
                 Ok(fields)
             }
@@ -1410,9 +1413,9 @@ fn import_node(
     mappings: &[Vec<usize>],
 ) -> Result<u64> {
     let types = table
-        .columns
+        .columns()
         .iter()
-        .map(|column| column.ty.clone())
+        .map(|column| column.logical_type().clone())
         .collect::<Vec<_>>();
     let mut inserted = 0u64;
     for (batch, mapping) in batches.iter().zip(mappings) {
@@ -1420,7 +1423,8 @@ fn import_node(
         let chunk = fill_chunk(batch, mapping, &types)?;
         for result in context
             .storage()
-            .insert_node_batch(write, table.id, &chunk, false)
+            .write()
+            .insert_node_batch(write, table.id(), &chunk, false)
         {
             result?;
             inserted += 1;
@@ -1439,9 +1443,9 @@ fn import_rel(
     mappings: &[Vec<usize>],
 ) -> Result<u64> {
     let prop_types = table
-        .columns
+        .columns()
         .iter()
-        .map(|column| column.ty.clone())
+        .map(|column| column.logical_type().clone())
         .collect::<Vec<_>>();
     let chunk_types = std::iter::once(LogicalType::InternalId)
         .chain(std::iter::once(LogicalType::InternalId))
@@ -1458,32 +1462,34 @@ fn import_rel(
             .saturating_mul(std::mem::size_of::<(usize, InternalId, InternalId)>() as u64)
             .saturating_mul(2)
             .saturating_add(
-                (table.pairs.len() * std::mem::size_of::<Vec<(usize, InternalId, InternalId)>>())
+                (table.pairs().len() * std::mem::size_of::<Vec<(usize, InternalId, InternalId)>>())
                     as u64,
             );
         let _routing_memory = context.memory().try_reserve(routing_bytes)?;
         let from_array = batch.column(mapping[0]);
         let to_array = batch.column(mapping[1]);
         let mut routed: Vec<Vec<(usize, InternalId, InternalId)>> =
-            table.pairs.iter().map(|_| Vec::new()).collect();
+            table.pairs().iter().map(|_| Vec::new()).collect();
         for row in 0..batch.num_rows() {
             let from_pk = array_value(from_array.as_ref(), row, from_ty)?;
             let to_pk = array_value(to_array.as_ref(), row, to_ty)?;
             let mut route = None;
-            for pair in 0..table.pairs.len() {
-                let src =
-                    context
-                        .storage()
-                        .find_node_by_pk(write.read(), from_tables[pair].id, &from_pk);
-                let dst =
-                    context
-                        .storage()
-                        .find_node_by_pk(write.read(), to_tables[pair].id, &to_pk);
+            for pair in 0..table.pairs().len() {
+                let src = context.storage().read().find_node_by_pk(
+                    write.read(),
+                    from_tables[pair].id(),
+                    &from_pk,
+                );
+                let dst = context.storage().read().find_node_by_pk(
+                    write.read(),
+                    to_tables[pair].id(),
+                    &to_pk,
+                );
                 if let (Some(src), Some(dst)) = (src, dst) {
                     if route.is_some() {
                         return Err(Error::runtime(format!(
                             "Relationship row {row} resolves to more than one endpoint pair in group `{}`.",
-                            table.name
+                            table.name()
                         )));
                     }
                     route = Some((pair, src, dst));
@@ -1492,7 +1498,7 @@ fn import_rel(
             let (pair, src, dst) = route.ok_or_else(|| {
                 Error::runtime(format!(
                     "Relationship row {row} cannot resolve `from`/`to` primary keys in table `{}`.",
-                    table.name
+                    table.name()
                 ))
             })?;
             routed[pair].push((row, src, dst));
@@ -1512,11 +1518,12 @@ fn import_rel(
                 }
             }
             chunk.set_flat(rows.len());
-            for result in
-                context
-                    .storage()
-                    .insert_rel_batch(write, table.member_ids[pair], &chunk, false)
-            {
+            for result in context.storage().write().insert_rel_batch(
+                write,
+                table.pairs()[pair].member,
+                &chunk,
+                false,
+            ) {
                 result?;
                 inserted += 1;
             }
@@ -1594,7 +1601,8 @@ mod tests {
             vec!["id".into(), "name".into()],
             vec![LogicalType::Int64, LogicalType::String],
             Vec::new(),
-        );
+        )
+        .unwrap();
         let batches = result.to_arrow_record_batches().unwrap();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].num_rows(), 0);
@@ -1697,7 +1705,8 @@ mod tests {
             (0..types.len()).map(|index| format!("c{index}")).collect(),
             types.clone(),
             vec![values.clone(), vec![Value::Null; types.len()]],
-        );
+        )
+        .unwrap();
         let batches = result.to_arrow_record_batches().unwrap();
         assert_eq!(batches.len(), 1);
         for (index, ty) in types.iter().enumerate() {
@@ -1774,7 +1783,8 @@ mod tests {
                 union.clone(),
             ],
             rows,
-        );
+        )
+        .unwrap();
 
         let batches = result.to_arrow_record_batches().unwrap();
         assert_eq!(batches.len(), 2);
@@ -1818,12 +1828,9 @@ mod tests {
             array_value(batches[1].column(0).as_ref(), 0, &LogicalType::Int64).unwrap(),
             Value::Int64(9_999)
         );
-        let database = Database::in_memory();
+        let database = Database::new();
         let connection = database.connect();
-        connection
-            .query(
-                "CREATE NODE TABLE RoundTrip(id INT64, flag BOOL, nested STRUCT(items INT64[], attrs MAP(STRING, INT64)), choice UNION(number INT64, text STRING), PRIMARY KEY(id))",
-            )
+        connection.execute("CREATE NODE TABLE RoundTrip(id INT64, flag BOOL, nested STRUCT(items INT64[], attrs MAP(STRING, INT64)), choice UNION(number INT64, text STRING), PRIMARY KEY(id))")
             .unwrap();
         assert_eq!(
             connection.import_arrow("roundtrip", &batches).unwrap(),
@@ -1831,28 +1838,28 @@ mod tests {
         );
         assert_eq!(
             connection
-                .query("MATCH (n:RoundTrip) WHERE n.id = 1 RETURN n.nested, n.choice")
+                .execute("MATCH (n:RoundTrip) WHERE n.id = 1 RETURN n.nested, n.choice")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["{items: [2,], attrs: {x=3}}|u"]
         );
     }
 
     #[test]
     fn arrow_node_import_validates_names_types_and_nulls() {
-        let db = Database::in_memory();
+        let db = Database::new();
         let connection = db.connect();
         connection
-            .query("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
+            .execute("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
             .unwrap();
 
         let batch = node_batch(vec![Some(1), Some(2)], vec![Some("a"), None]);
         assert_eq!(connection.import_arrow("n", &[batch]).unwrap(), 2);
         assert_eq!(
             connection
-                .query("MATCH (n:N) RETURN n.id, n.name ORDER BY n.id")
+                .execute("MATCH (n:N) RETURN n.id, n.name ORDER BY n.id")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["1|a", "2|"]
         );
 
@@ -1890,30 +1897,30 @@ mod tests {
         ));
         assert_eq!(
             connection
-                .query("MATCH (n:N) RETURN count(*)")
+                .execute("MATCH (n:N) RETURN count(*)")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["2"]
         );
     }
 
     #[test]
     fn arrow_relationship_group_routes_by_endpoint_primary_keys() {
-        let db = Database::in_memory();
+        let db = Database::new();
         let connection = db.connect();
         connection
-            .query("CREATE NODE TABLE Person(name STRING, PRIMARY KEY(name))")
+            .execute("CREATE NODE TABLE Person(name STRING, PRIMARY KEY(name))")
             .unwrap();
         connection
-            .query("CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))")
+            .execute("CREATE NODE TABLE City(name STRING, PRIMARY KEY(name))")
             .unwrap();
         connection
-            .query(
+            .execute(
                 "CREATE REL TABLE Likes(FROM Person TO Person, FROM Person TO City, weight INT64)",
             )
             .unwrap();
         connection
-            .query(
+            .execute(
                 "CREATE (:Person {name:'Alice'}), (:Person {name:'Bob'}), (:City {name:'London'})",
             )
             .unwrap();
@@ -1932,43 +1939,43 @@ mod tests {
         assert_eq!(connection.import_arrow("likes", &[batch]).unwrap(), 2);
         assert_eq!(
             connection
-                .query("MATCH (:Person)-[r:Likes]->(n) RETURN n.name, r.weight ORDER BY r.weight")
+                .execute("MATCH (:Person)-[r:Likes]->(n) RETURN n.name, r.weight ORDER BY r.weight")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["Bob|4", "London|7"]
         );
     }
 
     #[test]
     fn arrow_import_rolls_back_all_batches_and_call_savepoint() {
-        let db = Database::in_memory();
-        let connection = db.connect();
+        let db = Database::new();
+        let mut connection = db.connect();
         connection
-            .query("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
+            .execute("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
             .unwrap();
         let first = node_batch(vec![Some(1)], vec![Some("first")]);
         let duplicate = node_batch(vec![Some(1)], vec![Some("duplicate")]);
         assert!(connection.import_arrow("N", &[first, duplicate]).is_err());
         assert_eq!(
             connection
-                .query("MATCH (n:N) RETURN count(*)")
+                .execute("MATCH (n:N) RETURN count(*)")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["0"]
         );
 
         let transaction = connection.transaction().unwrap();
         transaction
-            .query("CREATE (:N {id: 10, name: 'kept'})")
+            .execute("CREATE (:N {id: 10, name: 'kept'})")
             .unwrap();
         let first = node_batch(vec![Some(11)], vec![Some("rolled")]);
         let duplicate = node_batch(vec![Some(10)], vec![Some("duplicate")]);
-        assert!(connection.import_arrow("N", &[first, duplicate]).is_err());
+        assert!(transaction.import_arrow("N", &[first, duplicate]).is_err());
         assert_eq!(
             transaction
-                .query("MATCH (n:N) RETURN n.id ORDER BY n.id")
+                .execute("MATCH (n:N) RETURN n.id ORDER BY n.id")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["10"]
         );
         transaction.commit().unwrap();
@@ -1977,31 +1984,31 @@ mod tests {
     #[test]
     fn arrow_import_obeys_memory_limit_without_mutation() {
         let config = DatabaseConfig::new().with_memory_limit(60_000).unwrap();
-        let db = Database::in_memory_with_config(config).unwrap();
+        let db = Database::with_config(config);
         let connection = db.connect();
         connection
-            .query("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
+            .execute("CREATE NODE TABLE N(id INT64, name STRING, PRIMARY KEY(id))")
             .unwrap();
         let batch = node_batch(vec![Some(1)], vec![Some("value")]);
         assert!(connection.import_arrow("N", &[batch]).is_err());
         assert_eq!(
             connection
-                .query("MATCH (n:N) RETURN count(*)")
+                .execute("MATCH (n:N) RETURN count(*)")
                 .unwrap()
-                .to_result_strings(),
+                .rendered_rows(),
             vec!["0"]
         );
     }
 
     #[test]
     fn arrow_export_rejects_graph_and_internal_values() {
-        let db = Database::in_memory();
+        let db = Database::new();
         let connection = db.connect();
         connection
-            .query("CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))")
+            .execute("CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))")
             .unwrap();
-        connection.query("CREATE (:N {id: 1})").unwrap();
-        let graph = connection.query("MATCH (n:N) RETURN n").unwrap();
+        connection.execute("CREATE (:N {id: 1})").unwrap();
+        let graph = connection.execute("MATCH (n:N) RETURN n").unwrap();
         assert!(matches!(
             graph.to_arrow_record_batches(),
             Err(Error::NotImplemented(_))
@@ -2014,7 +2021,8 @@ mod tests {
                 koko_common::TableId(1),
                 0,
             ))]],
-        );
+        )
+        .unwrap();
         assert!(matches!(
             internal.to_arrow_record_batches(),
             Err(Error::NotImplemented(_))

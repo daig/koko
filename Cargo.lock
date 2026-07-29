@@ -875,6 +875,7 @@ dependencies = [
  "koko-common",
  "koko-expr",
  "koko-function",
+ "koko-ir",
  "koko-loader",
  "koko-parser",
  "koko-planner",
@@ -890,6 +891,7 @@ dependencies = [
  "koko-catalog",
  "koko-common",
  "koko-function",
+ "koko-ir",
  "koko-parser",
 ]
 
@@ -942,9 +944,9 @@ dependencies = [
 name = "koko-expr"
 version = "0.0.0"
 dependencies = [
- "koko-binder",
  "koko-common",
  "koko-function",
+ "koko-ir",
 ]
 
 [[package]]
@@ -954,6 +956,14 @@ dependencies = [
  "koko-common",
  "regex",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "koko-ir"
+version = "0.0.0"
+dependencies = [
+ "koko-common",
+ "koko-function",
 ]
 
 [[package]]
@@ -985,24 +995,22 @@ dependencies = [
 name = "koko-planner"
 version = "0.0.0"
 dependencies = [
- "koko-binder",
  "koko-catalog",
  "koko-common",
  "koko-function",
+ "koko-ir",
 ]
 
 [[package]]
 name = "koko-processor"
 version = "0.0.0"
 dependencies = [
- "csv",
- "koko-binder",
  "koko-catalog",
  "koko-common",
  "koko-expr",
  "koko-function",
+ "koko-ir",
  "koko-loader",
- "koko-planner",
  "koko-storage",
 ]
 

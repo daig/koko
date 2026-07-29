@@ -1,0 +1,9 @@
+RETURN NULL AS x;
+RETURN '' AS x;
+RETURN ' ' AS x;
+RETURN 'a|b' AS x;
+RETURN [NULL, 1] AS x;
+RETURN 'has "quotes"' AS x;
+RETURN {a: NULL, b: 1} AS x;
+RETURN 'multi
+line' AS x;

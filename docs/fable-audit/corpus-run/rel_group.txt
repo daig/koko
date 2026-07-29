@@ -1,0 +1,14 @@
+FAIL  basic.SimpleMatch — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+FAIL  basic.Drop — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+SKIP  basic.DropReclaim (-SKIP_IN_MEM)
+FAIL  basic.Alter — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+FAIL  basic.DMLCreateWithSRCandDEST — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+FAIL  basic.COPYWithFROMTO — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+SKIP  basic.DropCheckpointedColumn (-SKIP_IN_MEM)
+SKIP  basic.ImportRELGROUPfromOldVersion (-SKIP)
+FAIL  basic.BulkInsertManyFromTo — dataset load failed: Binder exception: Unrecognized csv parsing option: FROM.
+SKIP  edge_cases.AlterRelGroupChildTable (dataset `EMPTY` is not available)
+SKIP  edge_cases.DuplicateRelTable (dataset `EMPTY` is not available)
+SKIP  edge_cases.DuplicateFromToPairs (dataset `EMPTY` is not available)
+
+0 passed, 6 skipped, 6 failed

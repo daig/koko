@@ -1,0 +1,10 @@
+CREATE NODE TABLE A(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE R(FROM A TO A);
+CREATE (:A {id: 1});
+CREATE (:A {id: 2});
+MATCH (x:A {id: 1}), (y:A {id: 2}) CREATE (x)-[:R]->(y);
+MATCH p = (a:A)-[:R]->(b:A) RETURN struct_extract(rels(p)[1], '_src') AS s;
+MATCH (a:A)-[r:R]->(b:A) RETURN struct_extract(r, '_src') AS s;
+MATCH p = (a:A)-[:R]->(b:A) RETURN CAST(struct_extract(rels(p)[1], '_src'), 'STRING') AS s;
+MATCH (a:A)-[r:R]->(b:A) RETURN struct_extract(r, '_id') AS s;
+MATCH p = (a:A)-[:R]->(b:A) RETURN struct_extract(nodes(p)[1], '_id') AS s;

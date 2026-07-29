@@ -104,7 +104,7 @@ pub fn resolve_files(
     for spelling in spellings {
         if has_uri_scheme(spelling) {
             return Err(Error::not_implemented(format!(
-                "Remote file sources are not supported until IM5: {spelling}."
+                "Remote file sources are not supported by the in-memory product: {spelling}."
             )));
         }
     }
@@ -444,7 +444,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             error.to_string(),
-            "Not implemented exception: Remote file sources are not supported until IM5: https://example.test/a.csv."
+            "Not implemented exception: Remote file sources are not supported by the in-memory product: https://example.test/a.csv."
         );
     }
 }

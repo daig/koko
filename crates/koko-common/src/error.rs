@@ -1,9 +1,9 @@
 //! The unified error model shared by every layer.
 //!
-//! Each layer raises a variant of [`Error`]; the `Display` text mirrors the
-//! C++ engine's exception prefixes (`Binder exception: …`, `Runtime exception:
-//! …`, …) so that the `.test` corpus — which embeds expected error strings —
-//! can serve as a differential oracle without translation.
+//! Each layer raises a categorized [`Error`]. `Display` supplies the established
+//! Koko exception prefixes (`Binder exception: …`, `Runtime exception: …`, and
+//! peers); public callers and fixed `.test` regressions can therefore compare
+//! human-facing diagnostics without decoding an internal layer.
 
 /// The crate-wide result alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -13,6 +13,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Categories match the stages of the pipeline so callers can `match` on where
 /// a failure originated. The wrapped `String` is the human-facing message; the
 /// category prefix is supplied by the `Display` impl.
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     /// Lexing/parsing failure (malformed Cypher).
@@ -50,7 +51,7 @@ pub enum Error {
         "Buffer manager exception: Unable to allocate memory! The buffer pool is full and no memory could be freed!"
     )]
     BufferManager,
-    /// A surface that is recognized but not yet implemented in this phase.
+    /// A recognized surface that the current product does not implement.
     #[error("Not implemented exception: {0}")]
     NotImplemented(String),
     /// A transaction-control error. The engine emits these without an exception

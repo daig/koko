@@ -1,19 +1,26 @@
 //! Canonical bind-plan-execute funnel and statement-scoped execution state.
 
-use super::QueryParameter;
 use crate::copy::{CopyOperationContext, run_copy, run_copy_from_rows};
+use crate::diagnostics::Diagnostics;
+use crate::execution::Parameter;
 use crate::interchange;
 use crate::macros::{self, MacroDef, MacroRegistry};
 use crate::result;
 use crate::runtime::context::{QueryContext, READ_ONLY_WRITE_MSG, RUNTIME_SETTING_SPECS};
 use crate::runtime::graph::GraphData;
-use crate::{
-    DataChunk, DatabaseConfig, Error, InternalId, LogicalType, MemoryTracker, MemoryUsage,
-    QueryResult, QueryResultKind, Result, TableId, Value,
+use crate::{DatabaseConfig, Error, LogicalType, QueryResult, Result, Value};
+use koko_binder::bind_statement;
+use koko_catalog::{
+    Catalog, ColumnDefault, ColumnDefinition, ColumnGeneration, NodeTableDefinition,
+    RelTableDefinition,
 };
-use koko_binder::{BoundAlterOp, BoundColumnDefault, BoundStatement, bind_statement};
-use koko_catalog::{Catalog, ColumnDefault};
+use koko_common::{DataChunk, InternalId, MemoryTracker, MemoryUsage, TableId};
 use koko_common::{ReadView, Ts, VECTOR_CAPACITY};
+use koko_ir::bound::{
+    BoundAlterOp, BoundColumn, BoundColumnDefault, BoundColumnGeneration, BoundRegularQuery,
+    BoundStatement,
+};
+use koko_loader::icebug::IcebugQuerySources;
 use koko_storage::{SharedStorage, StorageReadHandle, StorageWriteHandle};
 use std::collections::HashMap;
 use std::path::Path;
@@ -76,14 +83,11 @@ fn collect_stats(
         .into_iter()
         .chain(catalog.rel_table_ids())
     {
-        if let Some(source) = catalog
-            .icebug_table(id)
-            .and_then(|table| table.source.as_ref())
-        {
+        if let Some(source) = catalog.icebug_table(id).and_then(|table| table.source()) {
             let num_columns = catalog
                 .node_table(id)
-                .map(|table| table.columns.len())
-                .or_else(|| catalog.rel_table(id).map(|table| table.columns.len()))
+                .map(|table| table.columns().len())
+                .or_else(|| catalog.rel_table(id).map(|table| table.columns().len()))
                 .unwrap_or(0);
             map.insert(
                 id,
@@ -105,7 +109,7 @@ struct TableFunctionContext<'a> {
     stats: koko_planner::StatsMap,
 }
 
-impl koko_binder::TableFuncRuntime for TableFunctionContext<'_> {
+impl koko_processor::table_function::TableFunctionRuntime for TableFunctionContext<'_> {
     fn current_setting(&self, key: &str) -> Value {
         self.query.settings.current(key)
     }
@@ -174,7 +178,7 @@ impl GraphData {
         self.catalog
             .rel_table_ids()
             .into_iter()
-            .map(|id| (id, self.storage.rel_count(id)))
+            .map(|id| (id, self.storage.read().rel_count(id)))
             .collect()
     }
 
@@ -257,27 +261,23 @@ impl GraphData {
             query.compilation_time += compilation_started.elapsed();
             let plan = self.prepare_regular_plan(&regular_query, query)?;
             let presentation = result::plan_presentation(&plan, *profile);
-            let mut result = if *profile {
+            let result = if *profile {
                 let mut execution =
                     execute_regular_with_context(self, &regular_query, &plan, query)?;
                 if !rel_base.is_empty() {
                     remap_created_rel_ids(&mut execution, rel_base);
                 }
-                QueryResult::from_exec(execution)
+                QueryResult::from_exec(execution)?
             } else {
                 QueryResult::default()
             };
-            let kind = if *profile {
-                QueryResultKind::Profile
+            let type_context =
+                result::capture_result_type_context(&self.catalog, self.catalog_version);
+            return if *profile {
+                result.into_profile(type_context, presentation)
             } else {
-                QueryResultKind::Explain
+                Ok(QueryResult::explain(type_context, presentation))
             };
-            result.configure_explain(
-                kind,
-                result::capture_result_type_context(&self.catalog, self.catalog_version),
-                presentation,
-            );
-            return Ok(result);
         }
         match stmt {
             koko_parser::ast::Statement::CreateMacro(m) => {
@@ -313,11 +313,8 @@ impl GraphData {
             BoundStatement::CreateNodeTable {
                 name,
                 columns,
-                defaults,
-                metadata,
                 primary_key,
                 if_not_exists,
-                serial_columns,
                 icebug_storage,
             } => {
                 if if_not_exists && self.catalog.contains_table(&name) {
@@ -326,19 +323,17 @@ impl GraphData {
                     )));
                 }
                 self.reserve_catalog_name(&name, query.view)?;
-                let column_types: Vec<_> = columns.iter().map(|(_, ty)| ty.clone()).collect();
-                let pk_col = columns
+                let ResolvedBoundColumns {
+                    definitions,
+                    column_types,
+                } = resolve_bound_columns(columns)?;
+                let pk_col = definitions
                     .iter()
-                    .position(|(n, _)| n.eq_ignore_ascii_case(&primary_key))
+                    .position(|column| column.name.eq_ignore_ascii_case(&primary_key))
                     .expect("binder validated the primary key column");
-                // Fold constant `DEFAULT`s to values before they reach the catalog.
-                let defaults = resolve_column_defaults(defaults)?;
                 let GraphData {
                     catalog, storage, ..
                 } = self;
-                let type_texts: Vec<_> = metadata.iter().map(|m| m.type_text.clone()).collect();
-                let default_texts: Vec<_> =
-                    metadata.iter().map(|m| m.default_text.clone()).collect();
                 let icebug = match icebug_storage.as_deref() {
                     Some(storage_root) if koko_loader::icebug::is_remote(storage_root) => Some((
                         None,
@@ -347,29 +342,33 @@ impl GraphData {
                             &name,
                         )),
                     )),
-                    Some(storage_root) => Some((
-                        Some(koko_loader::icebug::inspect_node_table(
-                            &name,
-                            &columns,
-                            storage_root,
-                        )?),
-                        None,
-                    )),
+                    Some(storage_root) => {
+                        let columns = definitions
+                            .iter()
+                            .map(|column| (column.name.clone(), column.logical_type.clone()))
+                            .collect::<Vec<_>>();
+                        Some((
+                            Some(koko_loader::icebug::inspect_node_table(
+                                &name,
+                                &columns,
+                                storage_root,
+                            )?),
+                            None,
+                        ))
+                    }
                     None => None,
                 };
-                let table_id = Arc::make_mut(catalog).create_node_table_with_metadata(
-                    &name,
-                    columns,
-                    &defaults,
-                    &type_texts,
-                    &default_texts,
-                    &serial_columns,
-                    &primary_key,
-                )?;
+                let table_id = Arc::make_mut(catalog).create_node_table(NodeTableDefinition {
+                    name: name.clone(),
+                    columns: definitions,
+                    primary_key: primary_key.clone(),
+                })?;
                 let write = query.storage_write()?;
-                storage.create_node_table(write, table_id, &column_types, pk_col);
+                storage
+                    .write()
+                    .create_node_table(write, table_id, &column_types, pk_col);
                 if let (Some(storage_root), Some((source, load_error))) = (icebug_storage, icebug) {
-                    storage.mark_icebug_node_table(table_id);
+                    storage.write().mark_icebug_node_table(table_id);
                     Arc::make_mut(catalog).mark_icebug_table(
                         table_id,
                         storage_root,
@@ -385,8 +384,6 @@ impl GraphData {
                 name,
                 pairs,
                 columns,
-                defaults,
-                metadata,
                 if_not_exists,
                 multiplicity,
                 storage_direction,
@@ -398,20 +395,13 @@ impl GraphData {
                     )));
                 }
                 self.reserve_catalog_name(&name, query.view)?;
-                let column_types: Vec<_> = columns.iter().map(|(_, ty)| ty.clone()).collect();
-                let defaults = resolve_column_defaults(defaults)?;
+                let ResolvedBoundColumns {
+                    definitions,
+                    column_types,
+                } = resolve_bound_columns(columns)?;
                 let GraphData {
                     catalog, storage, ..
                 } = self;
-                let type_texts: Vec<_> = metadata.iter().map(|m| m.type_text.clone()).collect();
-                let default_texts: Vec<_> =
-                    metadata.iter().map(|m| m.default_text.clone()).collect();
-                let serial_columns: Vec<usize> = columns
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, ty))| *ty == LogicalType::Serial)
-                    .map(|(i, _)| i)
-                    .collect();
                 let icebug = match icebug_storage.as_deref() {
                     Some(storage_root) if koko_loader::icebug::is_remote(storage_root) => Some((
                         None,
@@ -424,9 +414,13 @@ impl GraphData {
                             .expect("relationship has one endpoint pair");
                         let from_count = catalog
                             .icebug_table(from)
-                            .and_then(|table| table.source.as_ref())
+                            .and_then(|table| table.source())
                             .map(koko_catalog::IcebugTableSource::num_rows)
-                            .unwrap_or_else(|| storage.node_count(from));
+                            .unwrap_or_else(|| storage.read().node_count(from));
+                        let columns = definitions
+                            .iter()
+                            .map(|column| (column.name.clone(), column.logical_type.clone()))
+                            .collect::<Vec<_>>();
                         Some((
                             Some(koko_loader::icebug::inspect_rel_table(
                                 &name,
@@ -439,16 +433,12 @@ impl GraphData {
                     }
                     None => None,
                 };
-                let table_id = Arc::make_mut(catalog).create_rel_table_with_serials(
-                    &name,
-                    &pairs,
-                    columns,
-                    &defaults,
-                    &type_texts,
-                    &default_texts,
-                    &serial_columns,
+                let table_id = Arc::make_mut(catalog).create_rel_table(RelTableDefinition {
+                    name: name.clone(),
+                    endpoint_pairs: pairs.clone(),
+                    columns: definitions,
                     storage_direction,
-                )?;
+                })?;
                 // One physical store per (FROM,TO) pair (matching C++/Kùzu): a rel's
                 // `_ID` carries its pair's member id. A single-pair rel is exactly one
                 // store at the primary id — unchanged. Each store also holds the name +
@@ -456,7 +446,7 @@ impl GraphData {
                 let write = query.storage_write()?;
                 let members = catalog.rel_members(table_id);
                 for &(member, from, to) in &members {
-                    storage.create_rel_table(
+                    storage.write().create_rel_table(
                         write,
                         member,
                         from,
@@ -472,7 +462,7 @@ impl GraphData {
                             "An icebug-disk relationship table requires exactly one FROM-TO pair.",
                         ));
                     };
-                    storage.mark_icebug_rel_table(*member);
+                    storage.write().mark_icebug_rel_table(*member);
                     let catalog = Arc::make_mut(catalog);
                     catalog.mark_icebug_table(
                         table_id,
@@ -506,10 +496,10 @@ impl GraphData {
                     .collect();
                 Arc::make_mut(&mut self.catalog).drop_table(id);
                 if rel_members.is_empty() {
-                    self.storage.drop_table(query.storage_write()?, id);
+                    self.storage.write().drop_table(query.storage_write()?, id);
                 } else {
                     for m in rel_members {
-                        self.storage.drop_table(query.storage_write()?, m);
+                        self.storage.write().drop_table(query.storage_write()?, m);
                     }
                 }
                 Ok(QueryResult::message(format!(
@@ -607,6 +597,10 @@ impl GraphData {
                 }
                 let rows =
                     execute_regular_with_context(self, &source_query, &plan, query)?.into_rows();
+                let columns = columns
+                    .into_iter()
+                    .map(|column| (column.name, column.logical_type))
+                    .collect::<Vec<_>>();
                 if is_node {
                     // The first result column becomes the primary key.
                     let pk_name = columns[0].0.clone();
@@ -614,14 +608,19 @@ impl GraphData {
                     let GraphData {
                         catalog, storage, ..
                     } = self;
-                    let table_id = Arc::make_mut(catalog).create_node_table(
-                        &name,
-                        columns,
-                        &[],
-                        &[],
-                        &pk_name,
-                    )?;
-                    storage.create_node_table(query.storage_write()?, table_id, &column_types, 0);
+                    let definitions = columns
+                        .iter()
+                        .map(|(name, ty)| ColumnDefinition::plain(name.clone(), ty.clone()))
+                        .collect();
+                    let table_id =
+                        Arc::make_mut(catalog).create_node_table(NodeTableDefinition {
+                            name: name.clone(),
+                            columns: definitions,
+                            primary_key: pk_name,
+                        })?;
+                    let write = query.storage_write()?;
+                    let mut storage = storage.write();
+                    storage.create_node_table(write, table_id, &column_types, 0);
                     // CTAS ingests through the bulk-copy path: constraint
                     // violations (duplicate PK etc.) are Copy exceptions.
                     for rows in rows.chunks(VECTOR_CAPACITY) {
@@ -632,12 +631,7 @@ impl GraphData {
                             }
                         }
                         batch.set_flat(rows.len());
-                        for result in storage.insert_node_batch(
-                            query.storage_write()?,
-                            table_id,
-                            &batch,
-                            false,
-                        ) {
+                        for result in storage.insert_node_batch(write, table_id, &batch, false) {
                             result.map_err(|error| match error {
                                 Error::Runtime(message) => Error::Copy(message),
                                 other => other,
@@ -659,20 +653,21 @@ impl GraphData {
                     let (from0, to0) = pairs[0];
                     let props = columns;
                     let column_types: Vec<_> = props.iter().map(|(_, ty)| ty.clone()).collect();
-                    let table_id = Arc::make_mut(&mut self.catalog)
-                        .create_rel_table_with_metadata(
-                            &name,
-                            &pairs,
-                            props,
-                            &[],
-                            &[],
-                            &[],
+                    let definitions = props
+                        .iter()
+                        .map(|(name, ty)| ColumnDefinition::plain(name.clone(), ty.clone()))
+                        .collect();
+                    let table_id =
+                        Arc::make_mut(&mut self.catalog).create_rel_table(RelTableDefinition {
+                            name: name.clone(),
+                            endpoint_pairs: pairs.clone(),
+                            columns: definitions,
                             storage_direction,
-                        )?;
+                        })?;
                     // Rel CTAS has no multiplicity keyword → unconstrained. One store per
                     // pair (single-pair CTAS = one store at the primary id, unchanged).
                     for (member, from, to) in self.catalog.rel_members(table_id) {
-                        self.storage.create_rel_table(
+                        self.storage.write().create_rel_table(
                             query.storage_write()?,
                             member,
                             from,
@@ -698,7 +693,7 @@ impl GraphData {
                             }
                         }
                         batch.set_flat(rows.len());
-                        for result in self.storage.insert_rel_batch(
+                        for result in self.storage.write().insert_rel_batch(
                             query.storage_write()?,
                             table_id,
                             &batch,
@@ -718,8 +713,12 @@ impl GraphData {
                 let name = self
                     .catalog
                     .node_table(copy.table)
-                    .map(|t| t.name.clone())
-                    .or_else(|| self.catalog.rel_table(copy.table).map(|t| t.name.clone()))
+                    .map(|table| table.name().to_string())
+                    .or_else(|| {
+                        self.catalog
+                            .rel_table(copy.table)
+                            .map(|table| table.name().to_string())
+                    })
                     .unwrap_or_default();
                 let qid = query.warnings.query_id();
                 let rows = if let Some(source) = copy.source_query.as_deref() {
@@ -750,16 +749,7 @@ impl GraphData {
                          show_warnings() RETURN *' to view the actual warnings. Query \
                          ID: {qid}"
                     );
-                    let mut result = QueryResult::from_typed_rows(
-                        col_names(&["result"]),
-                        vec![LogicalType::String],
-                        vec![
-                            vec![Value::String(copied.clone())],
-                            vec![Value::String(warning.clone())],
-                        ],
-                    );
-                    result.configure_status(format!("{copied}\n{warning}"));
-                    return Ok(result);
+                    return Ok(QueryResult::message(format!("{copied}\n{warning}")));
                 }
                 Ok(QueryResult::message(format!(
                     "{n} tuples have been copied to the {name} table."
@@ -790,7 +780,7 @@ impl GraphData {
 
     fn run_regular_query(
         &mut self,
-        query: &koko_binder::BoundRegularQuery,
+        query: &BoundRegularQuery,
         rel_base: &HashMap<TableId, u64>,
         context: &mut QueryContext,
     ) -> Result<QueryResult> {
@@ -799,7 +789,7 @@ impl GraphData {
         if !rel_base.is_empty() {
             remap_created_rel_ids(&mut result, rel_base);
         }
-        let mut result = QueryResult::from_exec(result);
+        let mut result = QueryResult::from_exec(result)?;
         result.set_type_context(result::capture_result_type_context(
             &self.catalog,
             self.catalog_version,
@@ -809,9 +799,9 @@ impl GraphData {
 
     fn prepare_regular_plan(
         &self,
-        query: &koko_binder::BoundRegularQuery,
+        query: &BoundRegularQuery,
         context: &mut QueryContext,
-    ) -> Result<koko_planner::RegularPlan> {
+    ) -> Result<koko_ir::plan::RegularPlan> {
         let compilation_started = Instant::now();
         let stats = if context.optimizer_enabled() {
             collect_stats(&self.catalog, &self.storage, context.storage_read())
@@ -844,12 +834,15 @@ impl GraphData {
         let write = StorageWriteHandle::new(view, writer_id);
         match op {
             BoundAlterOp::AddProperty {
-                name,
-                ty,
-                default,
-                metadata,
+                column,
                 if_not_exists,
             } => {
+                let BoundColumn {
+                    name,
+                    logical_type: ty,
+                    type_text,
+                    generation,
+                } = column;
                 if self.catalog.table_has_column(table, &name) {
                     let msg = format!("{table_name} table already has property {name}.");
                     return if if_not_exists {
@@ -868,18 +861,24 @@ impl GraphData {
                         .collect()
                 };
                 let storage_type = ty.clone();
-                match default {
-                    BoundColumnDefault::None => {
-                        Arc::make_mut(&mut self.catalog).add_column_with_metadata(
+                match generation {
+                    generation @ (BoundColumnGeneration::None | BoundColumnGeneration::Serial) => {
+                        let generation = match generation {
+                            BoundColumnGeneration::None => ColumnGeneration::None,
+                            BoundColumnGeneration::Serial => ColumnGeneration::Serial,
+                            BoundColumnGeneration::Default { .. } => unreachable!(),
+                        };
+                        Arc::make_mut(&mut self.catalog).add_column(
                             table,
-                            &name,
-                            ty,
-                            ColumnDefault::None,
-                            metadata.type_text,
-                            metadata.default_text,
-                        );
+                            ColumnDefinition {
+                                name: name.clone(),
+                                logical_type: ty,
+                                type_text,
+                                generation,
+                            },
+                        )?;
                         for physical_table in &physical_tables {
-                            self.storage.add_column(
+                            self.storage.write().add_column(
                                 write,
                                 *physical_table,
                                 storage_type.clone(),
@@ -887,27 +886,37 @@ impl GraphData {
                             )?;
                         }
                     }
-                    BoundColumnDefault::Const(expr) => {
+                    BoundColumnGeneration::Default {
+                        value: BoundColumnDefault::Constant(expr),
+                        source_text,
+                    } => {
                         // Backfill every existing row with the one folded value.
-                        let v = koko_processor::eval_constant(&expr)?;
-                        Arc::make_mut(&mut self.catalog).add_column_with_metadata(
+                        let value = koko_expr::eval_constant(&expr)?;
+                        Arc::make_mut(&mut self.catalog).add_column(
                             table,
-                            &name,
-                            ty,
-                            ColumnDefault::Const(v.clone()),
-                            metadata.type_text,
-                            metadata.default_text,
-                        );
+                            ColumnDefinition {
+                                name: name.clone(),
+                                logical_type: ty,
+                                type_text,
+                                generation: ColumnGeneration::Default {
+                                    value: ColumnDefault::Constant(value.clone()),
+                                    source_text,
+                                },
+                            },
+                        )?;
                         for physical_table in &physical_tables {
-                            self.storage.add_column(
+                            self.storage.write().add_column(
                                 write,
                                 *physical_table,
                                 storage_type.clone(),
-                                v.clone(),
+                                value.clone(),
                             )?;
                         }
                     }
-                    BoundColumnDefault::NextVal(seq) => {
+                    BoundColumnGeneration::Default {
+                        value: BoundColumnDefault::NextVal(sequence),
+                        source_text,
+                    } => {
                         // A sequence default backfills each existing row with its own
                         // `nextval`; the C++ engine forbids this on REL tables.
                         if self.catalog.node_table(table).is_none() {
@@ -917,35 +926,40 @@ impl GraphData {
                                     .to_string(),
                             ));
                         }
-                        Arc::make_mut(&mut self.catalog).add_column_with_metadata(
+                        Arc::make_mut(&mut self.catalog).add_column(
                             table,
-                            &name,
-                            ty,
-                            ColumnDefault::NextVal(seq.clone()),
-                            metadata.type_text,
-                            metadata.default_text,
-                        );
+                            ColumnDefinition {
+                                name: name.clone(),
+                                logical_type: ty,
+                                type_text,
+                                generation: ColumnGeneration::Default {
+                                    value: ColumnDefault::NextVal(sequence.clone()),
+                                    source_text,
+                                },
+                            },
+                        )?;
                         let col_idx = self
                             .catalog
                             .column_index(table, &name)
                             .expect("just added the column");
                         self.storage
+                            .write()
                             .add_column(write, table, storage_type, Value::Null)?;
                         let column_type = self
                             .catalog
                             .node_table(table)
                             .expect("node table checked above")
-                            .columns[col_idx]
-                            .ty
+                            .columns()[col_idx]
+                            .logical_type()
                             .clone();
-                        let n = self.storage.node_count(table);
+                        let n = self.storage.read().node_count(table);
                         for start in (0..n).step_by(VECTOR_CAPACITY) {
                             let mut batch =
                                 DataChunk::new(&[LogicalType::InternalId, column_type.clone()]);
                             let mut len = 0;
                             for off in start..(start + VECTOR_CAPACITY as u64).min(n) {
-                                if !self.storage.node_is_deleted(read, table, off) {
-                                    let value = self.catalog.sequence_next_val(&seq)?;
+                                if !self.storage.read().node_is_deleted(read, table, off) {
+                                    let value = self.catalog.sequence_next_val(&sequence)?;
                                     batch.columns[0]
                                         .set_internal_id(len, InternalId::new(table, off));
                                     batch.columns[1].set_value_owned(len, Value::Int64(value));
@@ -954,6 +968,7 @@ impl GraphData {
                             }
                             batch.set_flat(len);
                             self.storage
+                                .write()
                                 .set_node_property_batch(write, table, col_idx, &batch)?;
                         }
                     }
@@ -982,7 +997,7 @@ impl GraphData {
                 };
                 Arc::make_mut(&mut self.catalog).drop_column(table, idx);
                 for physical_table in physical_tables {
-                    self.storage.drop_column(write, physical_table, idx);
+                    self.storage.write().drop_column(write, physical_table, idx);
                 }
                 Ok(QueryResult::message(format!(
                     "Property {name} has been dropped from table {table_name}."
@@ -1033,21 +1048,21 @@ impl GraphData {
                 // new pair's per-pair storage store so inserts can route to it.
                 let existing_member = self.catalog.rel_members(table).first().map(|&(m, _, _)| m);
                 let mult = existing_member
-                    .map(|m| self.storage.rel_multiplicity(m))
+                    .map(|m| self.storage.read().rel_multiplicity(m))
                     .unwrap_or_default();
                 if let Some(member) = Arc::make_mut(&mut self.catalog).add_rel_pair(table, from, to)
                 {
                     let (column_types, rel_name) = {
                         let rt = self.catalog.rel_table(table).expect("rel table exists");
                         (
-                            rt.columns
+                            rt.columns()
                                 .iter()
-                                .map(|column| column.ty.clone())
+                                .map(|column| column.logical_type().clone())
                                 .collect::<Vec<_>>(),
-                            rt.name.clone(),
+                            rt.name().to_string(),
                         )
                     };
-                    self.storage.create_rel_table(
+                    self.storage.write().create_rel_table(
                         write,
                         member,
                         from,
@@ -1079,7 +1094,7 @@ impl GraphData {
                 if let Some(member) =
                     Arc::make_mut(&mut self.catalog).drop_rel_pair(table, from, to)
                 {
-                    self.storage.drop_table(write, member);
+                    self.storage.write().drop_table(write, member);
                 }
                 Ok(QueryResult::message(format!(
                     "{from_name}->{to_name} has been dropped from table {table_name}."
@@ -1104,11 +1119,12 @@ impl GraphData {
         read: StorageReadHandle,
     ) -> Result<InternalId> {
         let lookup_key = if let Some(t) = self.catalog.node_table(table) {
-            koko_function::cast_value(key, &t.primary_key_column().ty)?
+            koko_function::cast_value(key, t.primary_key_column().logical_type())?
         } else {
             key.clone()
         };
         self.storage
+            .read()
             .find_node_by_pk(read, table, &lookup_key)
             .ok_or_else(|| {
                 // The bulk-copy wording/class (rel CTAS ingests like COPY).
@@ -1140,10 +1156,9 @@ impl GraphData {
     }
 
     /// Remove a scalar macro. The lookup is case-insensitive, but the error/skip
-    /// message echoes the name **as typed** (matching the C++ oracle, e.g.
-    /// `Macro add2 does not exist.`). A missing macro under `IF EXISTS` errors in
-    /// C++ too — with the upstream "Marco" typo. The corpus is the contract, typo
-    /// and all (ledger: docs/DIVERGENCES.md "drop-macro-if-exists").
+    /// message echoes the name **as typed** (matching the historical corpus, e.g.
+    /// `Macro add2 does not exist.`). A missing macro under `IF EXISTS` also errors
+    /// with the inherited "Marco" typo; the focused regression pins that contract.
     fn remove_macro(&mut self, name: &str, if_exists: bool) -> Result<QueryResult> {
         if Arc::make_mut(&mut self.macros)
             .remove(&name.to_uppercase())
@@ -1214,7 +1229,7 @@ impl GraphData {
                 let compilation_started = Instant::now();
                 koko_binder::table_func_schema(
                     &self.catalog,
-                    koko_binder::BoundTableFunc::from(*func),
+                    koko_binder::bound_table_func(*func),
                     arg.as_deref(),
                     extra_args,
                 )?;
@@ -1238,7 +1253,7 @@ impl GraphData {
         let config = query.binder_config();
         let bound = koko_binder::bind_config_value(&self.catalog, value, &config, &destination)?;
         query.compilation_time += compilation_started.elapsed();
-        let value = koko_processor::eval_constant(&bound)?;
+        let value = koko_expr::eval_constant(&bound)?;
         let invalid_semantic = (key == "recursive_pattern_semantic")
             .then(|| value.as_str())
             .flatten()
@@ -1255,16 +1270,16 @@ impl GraphData {
             )));
         }
         validate_runtime_setting(&key, &value)?;
-        let exceeded_worker_limit = self.config.max_workers().filter(|max_workers| {
+        let exceeded_worker_limit = self.config.max_threads().filter(|max_threads| {
             key == "threads"
                 && value
                     .as_int128()
-                    .is_some_and(|requested| requested > *max_workers as i128)
+                    .is_some_and(|requested| requested > *max_threads as i128)
         });
-        if let Some(max_workers) = exceeded_worker_limit {
+        if let Some(max_threads) = exceeded_worker_limit {
             return Err(Error::configuration(format!(
                 "Requested threads value {} exceeds the database max_workers limit of \
-                 {max_workers}.",
+                 {max_threads}.",
                 value.to_result_string()
             )));
         }
@@ -1300,7 +1315,7 @@ impl GraphData {
         extra_args: &[String],
         query: &mut QueryContext,
     ) -> Result<QueryResult> {
-        let bound_func = koko_binder::BoundTableFunc::from(func);
+        let bound_func = koko_binder::bound_table_func(func);
         let compilation_started = Instant::now();
         let schema = koko_binder::table_func_schema(&self.catalog, bound_func, arg, extra_args)?;
         query.compilation_time += compilation_started.elapsed();
@@ -1311,14 +1326,19 @@ impl GraphData {
             memory: &self.memory,
             stats: collect_stats(&self.catalog, &self.storage, query.storage_read()),
         };
-        let rows = koko_binder::table_func_rows(&self.catalog, bound_func, arg, &runtime)?;
-        Ok(QueryResult::from_typed_rows(names, types, rows))
+        let rows = koko_processor::table_function::produce_table_function_rows(
+            &self.catalog,
+            bound_func,
+            arg,
+            &runtime,
+        )?;
+        QueryResult::from_typed_rows(names, types, rows)
     }
 }
 
 fn execute_copy_source(
     graph: &mut GraphData,
-    source: &koko_binder::BoundRegularQuery,
+    source: &BoundRegularQuery,
     context: &QueryContext,
 ) -> Result<Vec<Vec<Value>>> {
     let stats = if context.optimizer_enabled() {
@@ -1357,8 +1377,8 @@ pub(super) fn apply_interchange_image(
 
 fn execute_regular_with_context(
     database: &mut GraphData,
-    query: &koko_binder::BoundRegularQuery,
-    plan: &koko_planner::RegularPlan,
+    query: &BoundRegularQuery,
+    plan: &koko_ir::plan::RegularPlan,
     context: &QueryContext,
 ) -> Result<koko_processor::ExecResult> {
     let GraphData {
@@ -1376,11 +1396,7 @@ fn execute_regular_with_context(
         stats: collect_stats(catalog, storage, context.storage_read()),
     };
     let operator_memory = koko_processor::QueryMemory::new(memory)?;
-    let sources = koko_processor::QuerySourceState::capture(
-        catalog,
-        context.query_control(),
-        &operator_memory,
-    )?;
+    let sources = IcebugQuerySources::capture(catalog, context.query_control(), memory)?;
     let execution = koko_processor::ExecutionContext {
         storage_read: context.storage_read(),
         storage_write: context
@@ -1391,7 +1407,7 @@ fn execute_regular_with_context(
         random: &context.random,
         worker_count: context
             .worker_count()
-            .min(config.max_workers().unwrap_or(usize::MAX)),
+            .min(config.max_threads().unwrap_or(usize::MAX)),
         warnings: &context.warnings,
         control: context.query_control(),
         memory: &operator_memory,
@@ -1444,11 +1460,7 @@ pub(super) fn run_regular_on_snapshot(
         stats,
     };
     let operator_memory = koko_processor::QueryMemory::new(memory)?;
-    let sources = koko_processor::QuerySourceState::capture(
-        catalog,
-        context.query_control(),
-        &operator_memory,
-    )?;
+    let sources = IcebugQuerySources::capture(catalog, context.query_control(), memory)?;
     let execution = koko_processor::ExecutionContext {
         storage_read: context.storage_read(),
         storage_write: context
@@ -1459,7 +1471,7 @@ pub(super) fn run_regular_on_snapshot(
         random: &context.random,
         worker_count: context
             .worker_count()
-            .min(config.max_workers().unwrap_or(usize::MAX)),
+            .min(config.max_threads().unwrap_or(usize::MAX)),
         warnings: &context.warnings,
         control: context.query_control(),
         memory: &operator_memory,
@@ -1470,16 +1482,12 @@ pub(super) fn run_regular_on_snapshot(
     if !rel_base.is_empty() {
         remap_created_rel_ids(&mut result, rel_base);
     }
-    let mut result = QueryResult::from_exec(result);
+    let mut result = QueryResult::from_exec(result)?;
     result.set_type_context(result::capture_result_type_context(
         catalog,
         catalog_version,
     ));
     Ok(result)
-}
-
-fn col_names(names: &[&str]) -> Vec<String> {
-    names.iter().map(|s| s.to_string()).collect()
 }
 
 /// Kùzu gives a rel created inside a transaction a temporary offset starting at
@@ -1578,23 +1586,29 @@ pub(super) fn apply_index_statement(
 }
 
 pub(super) fn normalize_query_parameters(
-    params: &[QueryParameter<'_>],
-) -> Result<Vec<(String, Value)>> {
-    params
-        .iter()
-        .map(|parameter| {
-            if parameter.name().is_empty() {
-                return Err(Error::binder("Parameter name cannot be empty."));
-            }
-            let value = match parameter.declared_type() {
-                Some(declared_type) => koko_function::cast_value(parameter.value(), declared_type)?,
-                None => parameter.value().clone(),
-            };
-            Ok((parameter.name().to_string(), value))
-        })
-        .collect()
+    parameters: impl IntoIterator<Item = Parameter>,
+) -> Result<HashMap<String, Value>> {
+    let mut normalized = HashMap::new();
+    for parameter in parameters {
+        let (name, value, declared_type) = parameter.into_parts();
+        if name.is_empty() {
+            return Err(Error::configuration(
+                "Query parameter name cannot be empty.",
+            ));
+        }
+        if normalized.contains_key(&name) {
+            return Err(Error::configuration(format!(
+                "Duplicate query parameter `{name}`."
+            )));
+        }
+        let value = match declared_type {
+            Some(declared_type) => koko_function::cast_value(&value, &declared_type)?,
+            None => value,
+        };
+        normalized.insert(name, value);
+    }
+    Ok(normalized)
 }
-
 /// Whether a statement mutates the database (so it needs the single-writer slot
 /// when run auto-commit). DDL/`COPY`/CTAS are writes; a query is a write iff it has
 /// an updating clause or calls `nextval`. `currval` is a pure read.
@@ -1822,21 +1836,45 @@ fn expr_calls_nextval(e: &koko_parser::ast::Expr) -> bool {
     }
 }
 
-/// Fold each bound column `DEFAULT` into the catalog's resolved form: a constant
-/// expression is evaluated to a `Value` (via the real evaluator); a `nextval`
-/// default keeps its sequence name for per-row evaluation at insert.
-fn resolve_column_defaults(defaults: Vec<BoundColumnDefault>) -> Result<Vec<ColumnDefault>> {
-    defaults.into_iter().map(resolve_column_default).collect()
+struct ResolvedBoundColumns {
+    definitions: Vec<ColumnDefinition>,
+    column_types: Vec<LogicalType>,
 }
 
-fn resolve_column_default(d: BoundColumnDefault) -> Result<ColumnDefault> {
-    Ok(match d {
-        BoundColumnDefault::None => ColumnDefault::None,
-        BoundColumnDefault::Const(expr) => {
-            ColumnDefault::Const(koko_processor::eval_constant(&expr)?)
-        }
-        BoundColumnDefault::NextVal(s) => ColumnDefault::NextVal(s),
-    })
+/// Convert each structural bound generation exactly once at the facade boundary.
+fn resolve_bound_columns(columns: Vec<BoundColumn>) -> Result<ResolvedBoundColumns> {
+    let mut resolved = ResolvedBoundColumns {
+        definitions: Vec::with_capacity(columns.len()),
+        column_types: Vec::with_capacity(columns.len()),
+    };
+    for column in columns {
+        let generation = match column.generation {
+            BoundColumnGeneration::None => ColumnGeneration::None,
+            BoundColumnGeneration::Serial => ColumnGeneration::Serial,
+            BoundColumnGeneration::Default {
+                value: BoundColumnDefault::Constant(expr),
+                source_text,
+            } => ColumnGeneration::Default {
+                value: ColumnDefault::Constant(koko_expr::eval_constant(&expr)?),
+                source_text,
+            },
+            BoundColumnGeneration::Default {
+                value: BoundColumnDefault::NextVal(sequence),
+                source_text,
+            } => ColumnGeneration::Default {
+                value: ColumnDefault::NextVal(sequence),
+                source_text,
+            },
+        };
+        resolved.column_types.push(column.logical_type.clone());
+        resolved.definitions.push(ColumnDefinition {
+            name: column.name,
+            logical_type: column.logical_type,
+            type_text: column.type_text,
+            generation,
+        });
+    }
+    Ok(resolved)
 }
 
 pub(super) fn attach_query_summary(
@@ -1846,7 +1884,7 @@ pub(super) fn attach_query_summary(
     tracker: &MemoryTracker,
 ) -> Result<QueryResult> {
     let result = result.map(|mut result| {
-        result.set_diagnostics(result::statement_diagnostics(
+        result.set_diagnostics(Diagnostics::from_engine(
             query.warnings.retained(),
             query.warnings.count() as u64,
         ));
@@ -1859,13 +1897,16 @@ pub(super) fn attach_query_summary(
 
 pub(super) fn attach_summary(
     result: Result<QueryResult>,
-    compiling_time: Duration,
+    compilation_time: Duration,
     total_time: Duration,
     tracker: &MemoryTracker,
 ) -> Result<QueryResult> {
     result.and_then(|mut result| {
         result.track_memory(tracker)?;
-        result.set_summary(compiling_time, total_time.saturating_sub(compiling_time));
+        result.set_summary(
+            compilation_time,
+            total_time.saturating_sub(compilation_time),
+        );
         Ok(result)
     })
 }

@@ -1,0 +1,5 @@
+#ORDER# MATCH (o:organisation) RETURN o.ID, o.state ORDER BY o.ID
+#ORDER# MATCH (o:organisation) RETURN o.ID, o.state.location ORDER BY o.ID
+#ORDER# RETURN ['a','b,c','d e'] AS lst
+#ORDER# RETURN {location: ['x,y']} AS s
+#ORDER# RETURN ['comma,here'] AS l1, ['space here'] AS l2, ['both, here'] AS l3, ['plain'] AS l4

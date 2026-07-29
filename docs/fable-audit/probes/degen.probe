@@ -1,0 +1,10 @@
+CREATE NODE TABLE A(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE R(FROM A TO A);
+CREATE (:A {id: 1});
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN p IS NULL AS pnull;
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN b IS NULL AS bnull;
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN nodes(p) AS ns;
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN rels(p) AS rs;
+CREATE (:A {id: 9});
+MATCH (x:A {id: 1}), (y:A {id: 9}) CREATE (x)-[:R]->(y);
+MATCH (a:A {id: 1}) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN length(p) AS l;

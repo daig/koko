@@ -1,0 +1,6 @@
+// float to int rounding
+RETURN to_int16(1.731), to_int32(1.5), to_uint128(1.50), to_uint128(1.49)
+// list comparison with null
+RETURN [3,4] > [3,NULL]
+// negation/factorial
+RETURN --5

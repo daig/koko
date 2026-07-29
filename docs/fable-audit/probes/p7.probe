@@ -1,0 +1,3 @@
+MATCH (a:person) WHERE a.fName STARTS WITH 'A' RETURN count(*)
+MATCH (a:person) WHERE a.fName ENDS WITH 'e' RETURN count(*)
+MATCH (a:person) WHERE a.fName CONTAINS 'l' RETURN count(*)

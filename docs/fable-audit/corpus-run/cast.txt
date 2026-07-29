@@ -1,0 +1,38 @@
+SKIP  cast_bounds.i128 / ui128 (dataset `EMPTY` is not available)
+SKIP  cast_bounds.i64 (dataset `EMPTY` is not available)
+SKIP  cast_bounds.i32 (dataset `EMPTY` is not available)
+SKIP  cast_bounds.i16 (dataset `EMPTY` is not available)
+SKIP  cast_bounds.i8 (dataset `EMPTY` is not available)
+parse error in /Users/dai/code/koko/test/test_files/cast/cast_error.test: invalid result count `error(regex)`
+FAIL  cast_to_nested_types.CastToNestedTypes — statement #1 `LOAD WITH HEADERS (list INT64[][], a struct(num INT64, str STRING), array INT16[…`: row mismatch: expected `[[],[],[]]|{num: 2341, str: }|`, got `[[],[],[]]|{num: 2341, str: no}|`
+PASS  cast_to_nested_types.CASTNestedDecimal
+FAIL  cast_to_nested_types.CastToUnion — statement #2 `CREATE (p:Person {id: 5, description: 6})`: expected success, got error: Binder exception: Expression 6 has data type INT64 but expected UNION(height INT64, name STRING). Implicit cast is not supported.
+FAIL  cast_to_nested_types.CastToUnionAllTypes — statement #1 `RETURN CAST(false AS UNION(a BOOL))`: expected rows, got error: Conversion exception: Cannot cast BOOL to UNION(a BOOL).
+FAIL  cast_to_nested_types.CastBetweenUnion — statement #4 `RETURN CAST(union_value(f := 123) AS UNION(v STRING, b BOOL, f FLOAT, t INT32))`: row mismatch: expected `123.000000`, got `123`
+FAIL  cast_to_nested_types.CastWithUnionNested — statement #2 `WITH CAST([4444] AS UNION(a INT64, x STRING)[]) AS q RETURN q, union_tag(q[1])`: expected rows, got error: Conversion exception: Cannot cast INT64 to UNION(a INT64, x STRING).
+FAIL  cast_to_nested_types.CastToUnionError — statement #1 `RETURN CAST(CAST(1282158 AS INT64) AS UNION(a INT32, b INT16, c UINT8, d INT8))`: expected error `Conversion exception: Cannot cast from INT64 to UNION(a INT32, b INT16, c UINT8, d INT8), target type has no compatible field.`, got `Conversion exception: Cannot cast INT64 to UNION(a INT32, b INT16, c UINT8, d INT8).`
+PASS  implicit_cast.Caststringtoint8
+PASS  implicit_cast.CastUint64ToInt128
+PASS  implicit_cast.CastUint32ToInt128
+PASS  implicit_cast.CastUint16ToInt128
+PASS  implicit_cast.CastUint8ToInt128
+FAIL  implicit_cast.CastIntervalToString — statement #1 `RETURN left(Interval('31 months 20 days 10 hours 100us'), 50)`: expected rows, got error: Runtime exception: expected a STRING argument, got INTERVAL
+FAIL  implicit_cast.CastDateToString — statement #1 `RETURN left(Date('1950-05-14'), 10)`: expected rows, got error: Runtime exception: expected a STRING argument, got DATE
+FAIL  implicit_cast.CastTimestampToString — statement #1 `RETURN left(timestamp('2011-08-20 11:25:30'), 19)`: expected rows, got error: Runtime exception: expected a STRING argument, got TIMESTAMP
+FAIL  implicit_cast.CastBooleanToString — statement #1 `RETURN left(to_bool("true"), 4)`: expected rows, got error: Runtime exception: expected a STRING argument, got BOOL
+FAIL  implicit_cast.CastDoubleToString — statement #1 `RETURN left(to_double(1.34), 8)`: expected rows, got error: Runtime exception: expected a STRING argument, got DOUBLE
+FAIL  implicit_cast.CastfloatToString — statement #1 `RETURN left(to_float(1.34), 8)`: expected rows, got error: Runtime exception: expected a STRING argument, got FLOAT
+FAIL  implicit_cast.Castint128ToString — statement #1 `RETURN left(to_int128(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got INT128
+FAIL  implicit_cast.Castint64ToString — statement #1 `RETURN left(to_int64(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got INT64
+FAIL  implicit_cast.Castint32ToString — statement #1 `RETURN left(to_int32(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got INT32
+FAIL  implicit_cast.Castint16ToString — statement #1 `RETURN left(to_int16(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got INT16
+FAIL  implicit_cast.Castint8ToString — statement #1 `RETURN left(to_int8(13), 2)`: expected rows, got error: Runtime exception: expected a STRING argument, got INT8
+FAIL  implicit_cast.Castuint64ToString — statement #1 `RETURN left(to_uint64(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got UINT64
+FAIL  implicit_cast.Castuint32ToString — statement #1 `RETURN left(to_uint32(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got UINT32
+FAIL  implicit_cast.Castuint16ToString — statement #1 `RETURN left(to_uint16(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got UINT16
+FAIL  implicit_cast.Castuint8ToString — statement #1 `RETURN left(to_uint8(134), 3)`: expected rows, got error: Runtime exception: expected a STRING argument, got UINT8
+FAIL  implicit_cast.CastuuidToString — statement #1 `RETURN left(uuid('A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'), 36)`: expected rows, got error: Runtime exception: expected a STRING argument, got UUID
+FAIL  implicit_cast.ImplicitCastWithInsertion — statement #2 `LOAD FROM "${KOKO_ROOT_DIRECTORY}/dataset/embeddings/embeddings-8-1k.csv" (deLim…`: expected success, got error: Binder exception: Variable column0 is not in scope.
+SKIP  property_cast.x (dataset `EMPTY` is not available)
+
+6 passed, 6 skipped, 24 failed

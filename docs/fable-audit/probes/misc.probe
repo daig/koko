@@ -1,0 +1,15 @@
+CREATE NODE TABLE A(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE R(FROM A TO A);
+CREATE (:A {id: 1});
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN a.id, p;
+MATCH (a:A) OPTIONAL MATCH p = (a)-[:R*]->(b:A) RETURN a.id, length(p);
+CREATE (:A {id: 2});
+CREATE (:A {id: 3});
+MATCH (a:A) RETURN a.id ORDER BY a.id LIMIT 1+1;
+MATCH (a:A) RETURN a.id ORDER BY a.id SKIP 1 LIMIT 1;
+EXPLAIN MATCH (a:A) RETURN a.id;
+PROFILE MATCH (a:A) RETURN count(*);
+CALL threads=4;
+CALL timeout=100;
+CALL progress_bar=false;
+RETURN current_setting('threads') AS t;

@@ -1,0 +1,59 @@
+# Integer-width casts and width-aware arithmetic.
+-DATASET CSV empty
+
+--
+
+-CASE CastAndWidthArithmetic
+-STATEMENT RETURN CAST(12, "UINT8") + CAST(24, "UINT8")
+---- 1
+36
+-STATEMENT RETURN CAST(255, "UINT8") + CAST(5, "UINT8")
+---- error
+Overflow exception: Value 255 + 5 is not within UINT8 range.
+-STATEMENT RETURN CAST(24, "INT8") + CAST(400, "INT16")
+---- 1
+424
+-STATEMENT RETURN CAST(70000, "INT32") * CAST(2, "INT32")
+---- 1
+140000
+-STATEMENT RETURN CAST(9223372036854775807, "INT64") + CAST(1, "INT64")
+---- error
+Overflow exception: Value 9223372036854775807 + 1 is not within INT64 range.
+
+-CASE Int128AndUint64
+-STATEMENT RETURN CAST(170141183460469231731687303715884105727, "INT128") + CAST(1183460469231731687303715884105727, "INT128")
+---- error
+Overflow exception: INT128 is out of range: cannot add.
+-STATEMENT RETURN CAST(17446744073709551615, "UINT64") - CAST(7000000000000000000, "UINT64")
+---- 1
+10446744073709551615
+
+-CASE Negation
+-STATEMENT RETURN -CAST(256, "UINT16")
+---- 1
+65280
+-STATEMENT RETURN -CAST(-128, "INT8")
+---- error
+Overflow exception: Value -128 cannot be negated within INT8 range.
+-STATEMENT RETURN -CAST(100, "INT16")
+---- 1
+-100
+
+-CASE ModuloMinByNegOne
+-STATEMENT RETURN CAST(-128, "INT8") % CAST(-1, "INT8")
+---- error
+Overflow exception: Value -128 % -1 is not within INT8 range.
+-STATEMENT RETURN CAST(400, "INT16") % CAST(77, "INT16")
+---- 1
+15
+
+-CASE CastForms
+-STATEMENT RETURN CAST('42' AS INT32)
+---- 1
+42
+-STATEMENT RETURN CAST(1 AS DOUBLE)
+---- 1
+1.000000
+-STATEMENT RETURN CAST(255 AS UINT8) = CAST(255, "INT64")
+---- 1
+True

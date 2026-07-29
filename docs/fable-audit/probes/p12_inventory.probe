@@ -1,0 +1,21 @@
+// JSON
+RETURN CAST('{}' AS JSON)
+RETURN typeof(to_json(1))
+RETURN to_json([1,2])
+// ARRAY fixed-length
+RETURN CAST([1,2,3] AS INT64[3])
+RETURN typeof(CAST([1,2,3] AS INT64[3]))
+RETURN CAST([1,2,3] AS INT64[2])
+RETURN typeof(CAST([1,2] AS INT32[2]))
+// POINTER / misc
+RETURN typeof(CAST(1 AS POINTER))
+// BYTEA alias
+RETURN typeof(CAST('\xAB' AS BYTEA))
+// NUMERIC alias
+RETURN typeof(CAST(1 AS NUMERIC))
+// INT / INTEGER aliases
+RETURN typeof(CAST(1 AS INT))
+RETURN typeof(CAST(1 AS INTEGER))
+RETURN typeof(CAST(1 AS REAL))
+// SERIAL
+RETURN typeof(CAST(1 AS SERIAL))

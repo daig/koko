@@ -1,0 +1,58 @@
+// ===== date literals & basic =====
+RETURN date('2020-01-01') AS x
+RETURN date('2020-02-29') AS x
+RETURN date('2021-02-29') AS x
+RETURN timestamp('2020-01-01 12:30:00') AS x
+// ===== date + int (days) =====
+RETURN date('2020-01-01') + 5 AS x
+RETURN date('2020-01-01') - 5 AS x
+RETURN 5 + date('2020-01-01') AS x
+RETURN date('2020-01-31') + 1 AS x
+RETURN date('2020-12-31') + 1 AS x
+RETURN date('2020-01-01') - 1 AS x
+RETURN date('2020-03-01') - 1 AS x
+// ===== date - date =====
+RETURN date('2020-01-10') - date('2020-01-01') AS x
+RETURN date('2020-01-01') - date('2020-01-10') AS x
+RETURN date('2021-01-01') - date('2020-01-01') AS x
+// ===== interval function =====
+RETURN interval('1 day') AS x
+RETURN interval('1 year 2 months') AS x
+RETURN interval('25 hours') AS x
+RETURN interval('90 minutes') AS x
+RETURN interval('1 day') + interval('2 days') AS x
+RETURN interval('1 year') + interval('13 months') AS x
+RETURN interval('1 day') - interval('12 hours') AS x
+RETURN interval('2 hours') * 3 AS x
+// ===== date + interval =====
+RETURN date('2020-01-01') + interval('1 day') AS x
+RETURN date('2020-01-01') + interval('1 month') AS x
+RETURN date('2020-01-31') + interval('1 month') AS x
+RETURN date('2020-01-01') + interval('1 year') AS x
+RETURN date('2020-01-01') - interval('1 day') AS x
+RETURN interval('1 day') + date('2020-01-01') AS x
+// ===== timestamp arithmetic =====
+RETURN timestamp('2020-01-01 12:00:00') + interval('1 hour') AS x
+RETURN timestamp('2020-01-01 12:00:00') - interval('30 minutes') AS x
+RETURN timestamp('2020-01-02 00:00:00') - timestamp('2020-01-01 00:00:00') AS x
+RETURN timestamp('2020-01-01 01:00:00') - timestamp('2020-01-01 00:00:00') AS x
+// ===== SQL-style INTERVAL literal =====
+RETURN date('2020-01-01') + INTERVAL '1' DAY AS x
+RETURN INTERVAL '1' DAY AS x
+RETURN INTERVAL '3' MONTH AS x
+// ===== temporal comparisons =====
+RETURN date('2020-01-01') < date('2020-01-02') AS x
+RETURN date('2020-01-02') < date('2020-01-01') AS x
+RETURN date('2020-01-01') = date('2020-01-01') AS x
+RETURN timestamp('2020-01-01 00:00:00') < timestamp('2020-01-01 00:00:01') AS x
+RETURN date('2020-01-01') < timestamp('2020-01-02 00:00:00') AS x
+RETURN date('2020-01-01') = timestamp('2020-01-01 00:00:00') AS x
+RETURN interval('1 day') < interval('2 days') AS x
+RETURN interval('25 hours') > interval('1 day') AS x
+// ===== typeof temporal =====
+RETURN typeof(date('2020-01-01')) AS x
+RETURN typeof(date('2020-01-01') + 5) AS x
+RETURN typeof(date('2020-01-10') - date('2020-01-01')) AS x
+RETURN typeof(interval('1 day')) AS x
+RETURN typeof(timestamp('2020-01-02 00:00:00') - timestamp('2020-01-01 00:00:00')) AS x
+RETURN typeof(date('2020-01-01') + interval('1 day')) AS x

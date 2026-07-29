@@ -1,9 +1,9 @@
 //! The owned [`Value`] type and its result-string formatting.
 //!
-//! `Value` is the materialized, public-facing value type (one cell of a query
-//! result). Its [`Value::to_result_string`] reproduces the C++
-//! `Value::toString()` rendering **byte-for-byte** for the P0 type subset, so
-//! the `.test` corpus compares cleanly. See `docs/cpp-reference/02-value-formatting.md`.
+//! `Value` is the materialized public cell type. [`Value::to_result_string`]
+//! preserves Koko's established list-format rendering, inherited during the
+//! clean-room migration and now covered by fixed regressions. See
+//! `docs/cpp-reference/02-value-formatting.md` for its provenance.
 
 use crate::temporal::{self, Interval};
 use crate::types::{IntKind, InternalId, LogicalType, TableId};

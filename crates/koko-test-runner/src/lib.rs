@@ -1,16 +1,17 @@
-//! `koko-test-runner` — a parser and runner for the Koko `.test` corpus
-//! format, used as the differential oracle.
+//! Parser and runner for Koko's `.test` behavior format.
 //!
-//! P0 supports the subset of the format the bespoke `CREATE`-based fixtures
-//! need: a `-DATASET CSV empty` header, `-CASE`, `-LOG`, `-STATEMENT` (with
-//! continuation lines), the `---- N` / `---- ok` / `---- error` result blocks,
-//! and the `-CHECK_ORDER` / `-CHECK_PRECISION` flags. Default comparison sorts
-//! both sides lexicographically (matching the C++ runner); `-CHECK_ORDER`
-//! compares in order. Files whose dataset is not `empty` (i.e. those needing the
-//! P1 CSV loader) are reported as skipped rather than failed.
+//! The same engine drives manifested Koko product regressions and optional
+//! historical external-corpus audits. It supports statement/result blocks, dataset setup,
+//! parameters and substitution, macros, loops, multiple connections, concurrent
+//! execution, and the comparison directives used by those suites. Default row
+//! comparison sorts both sides lexicographically; `-CHECK_ORDER` preserves order
+//! and `-CHECK_PRECISION` applies numeric tolerance. A case is skipped only when
+//! its directive or external prerequisite is explicitly unavailable.
 
 mod md5;
 
+use koko::execution::Parameter;
+use koko::test_support::load_csv_dataset;
 use koko::{Connection, Database, DatabaseConfig, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -1408,7 +1409,7 @@ fn panic_msg(p: &(dyn std::any::Any + Send)) -> String {
 fn configured_connection(db: &Database) -> Connection {
     let connection = db.connect();
     connection
-        .set_max_num_threads(2)
+        .set_max_threads(2)
         .expect("test runner thread count is valid");
     connection
 }
@@ -1582,7 +1583,7 @@ fn execute_schema(connection: &Connection, directory: &Path) -> Result<(), Strin
             .replace("storage = '.'", &format!("storage = '{storage_root}'"))
             .replace("storage='.'", &format!("storage='{storage_root}'"));
         connection
-            .query(&statement)
+            .execute(&statement)
             .map_err(|error| format!("executing dataset schema `{statement}`: {error}"))?;
     }
     Ok(())
@@ -1590,7 +1591,7 @@ fn execute_schema(connection: &Connection, directory: &Path) -> Result<(), Strin
 
 fn query_first_string(connection: &Connection, query: &str) -> Result<String, String> {
     let result = connection
-        .query(query)
+        .execute(query)
         .map_err(|error| format!("executing dataset metadata query `{query}`: {error}"))?;
     result
         .rows()
@@ -1636,7 +1637,7 @@ fn execute_dataset_by_row(connection: &Connection, directory: &Path) -> Result<(
             &format!("CALL show_tables() WHERE name='{table}' RETURN type"),
         )?;
         let properties_result = connection
-            .query(&format!(
+            .execute(&format!(
                 "CALL table_info('{table}') RETURN name, type ORDER BY `property id`"
             ))
             .map_err(|error| format!("reading properties for `{table}`: {error}"))?;
@@ -1673,7 +1674,7 @@ fn execute_dataset_by_row(connection: &Connection, directory: &Path) -> Result<(
             )
         } else if table_type.eq_ignore_ascii_case("REL") {
             let connection_result = connection
-                .query(&format!("CALL show_connection('{table}') RETURN *"))
+                .execute(&format!("CALL show_connection('{table}') RETURN *"))
                 .map_err(|error| {
                     format!("reading relationship endpoints for `{table}`: {error}")
                 })?;
@@ -1720,7 +1721,7 @@ fn execute_dataset_by_row(connection: &Connection, directory: &Path) -> Result<(
             ));
         };
         connection
-            .query(&query)
+            .execute(&query)
             .map_err(|error| format!("row-wise load for `{table}` failed: {error}"))?;
     }
     Ok(())
@@ -1756,14 +1757,13 @@ fn run_case(
             .expect("positive corpus buffer-pool limit"),
         None => DatabaseConfig::default(),
     };
-    let mut db =
-        Database::in_memory_with_config(config.clone()).expect("validated corpus database config");
+    let mut db = Database::with_config(config.clone());
     let mut connections = HashMap::new();
     connections.insert(String::new(), configured_connection(&db));
     if let Some(directory) = dataset_dir {
         let started = std::time::Instant::now();
         match panic::catch_unwind(AssertUnwindSafe(|| {
-            connections[""].load_csv_dataset(directory)
+            load_csv_dataset(&connections[""], directory)
         })) {
             Ok(Ok(())) => {}
             Ok(Err(error)) => return Outcome::Fail(format!("dataset load failed: {error}")),
@@ -1816,8 +1816,7 @@ fn run_case(
             continue;
         }
         if statement.reset_database {
-            db = Database::in_memory_with_config(config.clone())
-                .expect("validated corpus database config");
+            db = Database::with_config(config.clone());
             connections.clear();
             connections.insert(String::new(), configured_connection(&db));
             index += 1;
@@ -1872,7 +1871,7 @@ fn run_multi_copy(
         ));
         std::fs::write(&path, slice.join("\n"))
             .map_err(|e| format!("writing multi-copy slice: {e}"))?;
-        let res = conn.query(&format!("COPY {} FROM \"{}\"", spec.table, path.display()));
+        let res = conn.execute(&format!("COPY {} FROM \"{}\"", spec.table, path.display()));
         let _ = std::fs::remove_file(&path);
         res.map_err(|e| format!("multi-copy slice #{k} failed: {e}"))?;
     }
@@ -1922,20 +1921,20 @@ fn run_statement(
         }
         other => other,
     };
-    let params: Vec<(&str, Value)> = stmt
+    let params: Vec<Parameter> = stmt
         .params
         .iter()
-        .map(|(k, v)| (k.as_str(), v.clone()))
+        .map(|(name, value)| Parameter::new(name.clone(), value.clone()))
         .collect();
     // Substitute `${KOKO_ROOT_DIRECTORY}` so explicit COPY/LOAD paths resolve.
     let query = expand_corpus_vars(&stmt.query, &env);
-    let result = conn.query_with_params(&query, &params);
+    let result = conn.execute_with(&query, params);
     let engine_errored = result.is_err();
     let outcome: Result<(), String> = match (expected, result) {
         (Expected::Ok, Ok(_)) => Ok(()),
         (Expected::Ok, Err(e)) => Err(format!("expected success, got error: {e}")),
         (Expected::Error(expected), Err(e)) => {
-            let expected = expand_corpus_vars(expected, &env);
+            let expected = expand_corpus_vars(expected.as_str(), &env);
             let actual = e.to_string();
             // Both sides right-trimmed, matching the C++ runner (`StringUtils::rtrim`).
             if actual.trim_end() == expected.as_ref().trim_end() {
@@ -1946,10 +1945,10 @@ fn run_statement(
         }
         (Expected::Error(expected), Ok(_)) => Err(format!(
             "expected error `{}`, but statement succeeded",
-            expand_corpus_vars(expected, &env)
+            expand_corpus_vars(expected.as_str(), &env)
         )),
         (Expected::ErrorRegex(pat), Err(e)) => {
-            let expanded = expand_corpus_vars(pat, &env);
+            let expanded = expand_corpus_vars(pat.as_str(), &env);
             let pat = escape_unexpanded_regex_vars(&expanded);
             let actual = e.to_string();
             let actual = actual.trim_end();
@@ -1963,7 +1962,7 @@ fn run_statement(
             }
         }
         (Expected::ErrorRegex(pat), Ok(_)) => {
-            let expanded = expand_corpus_vars(pat, &env);
+            let expanded = expand_corpus_vars(pat.as_str(), &env);
             let pat = escape_unexpanded_regex_vars(&expanded);
             Err(format!(
                 "expected error matching regex `{pat}`, but statement succeeded"
@@ -2009,9 +2008,32 @@ fn run_statement(
 /// header row prepended under `-CHECK_COLUMN_NAMES` (it then participates in
 /// count/sort/compare like a data row, exactly like the C++ runner).
 fn actual_rows(result: &koko::QueryResult, stmt: &TestStatement) -> Vec<String> {
-    let mut rows = result.to_result_strings();
+    if let Some(message) = result.status_message() {
+        return message.lines().map(ToOwned::to_owned).collect();
+    }
+    let mut rows = result
+        .rows()
+        .map(|row| {
+            (0..row.len())
+                .map(|index| {
+                    row.value(index)
+                        .expect("materialized result row index is valid")
+                        .to_result_string()
+                })
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect::<Vec<_>>();
     if stmt.check_column_names {
-        rows.insert(0, result.column_names().join("|"));
+        rows.insert(
+            0,
+            result
+                .columns()
+                .iter()
+                .map(|column| column.name())
+                .collect::<Vec<_>>()
+                .join("|"),
+        );
     }
     rows
 }
@@ -2058,8 +2080,8 @@ fn compare_rows_precision(
     if !stmt.check_order {
         return Err("CHECK_ORDER MUST BE ENABLED FOR CHECK_PRECISION".to_string());
     }
-    let nrows = result.num_rows();
-    let ncols = result.num_columns();
+    let nrows = result.len();
+    let ncols = result.width();
     let header = usize::from(stmt.check_column_names);
     if expected.len() != nrows + header {
         return Err(format!(
@@ -2069,7 +2091,12 @@ fn compare_rows_precision(
         ));
     }
     if stmt.check_column_names {
-        let names = result.column_names().join("|");
+        let names = result
+            .columns()
+            .iter()
+            .map(|column| column.name())
+            .collect::<Vec<_>>()
+            .join("|");
         if expected[0] != names {
             return Err(format!(
                 "column-name row mismatch: expected `{}`, got `{names}`",

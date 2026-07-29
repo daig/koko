@@ -1,345 +1,17 @@
-//! Name-keyed scalar function registry — the analogue of the C++
-//! `FunctionCollection`. Functions are dispatched by (lower-cased) name so the
-//! library can grow without a giant enum. Operators (`+ - * …`) stay in
-//! [`crate::ScalarOp`]; aggregates in [`crate::AggOp`]; `CAST` is handled by the
-//! binder. Everything else — math, string, list, temporal constructors, the
-//! `to_*` cast aliases — registers here.
+//! Scalar function typing and evaluation behind generated [`BuiltinScalar`] IDs.
+//!
+//! Binding resolves each accepted spelling through the generated descriptor
+//! registry once. Result typing and evaluation then dispatch on the typed ID;
+//! operators remain in [`crate::ScalarOp`] and aggregates in [`crate::AggOp`].
 
-use crate::cast_value;
+use crate::{BuiltinScalar, DigestAlgorithm, RoundMode, cast_value, resolve_builtin};
 use koko_common::{Error, LogicalType, Result, Value, temporal};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Every registered scalar function name (lower-case). The binder consults this
-/// to decide whether a call is a scalar function before erroring.
-pub const SCALAR_NAMES: &[&str] = &[
-    // temporal constructors
-    "date",
-    "timestamp",
-    "interval",
-    "duration",
-    "uuid",
-    "string",
-    "blob",
-    "make_date",
-    "to_timestamp",
-    "century",
-    // numeric / math
-    "abs",
-    "floor",
-    "ceil",
-    "ceiling",
-    "round",
-    "sign",
-    "even",
-    "factorial",
-    "sqrt",
-    "cbrt",
-    "ln",
-    "log",
-    "log2",
-    "log10",
-    "exp",
-    "pow",
-    "power",
-    "sin",
-    "cos",
-    "tan",
-    "cot",
-    "asin",
-    "acos",
-    "atan",
-    "atan2",
-    "degrees",
-    "radians",
-    "gamma",
-    "lgamma",
-    "pi",
-    "negate",
-    // bitwise
-    "bitwise_and",
-    "bitwise_or",
-    "bitwise_xor",
-    "bitshift_left",
-    "bitshift_right",
-    // generic utility
-    "coalesce",
-    "ifnull",
-    "nullif",
-    "greatest",
-    "least",
-    "typeof",
-    "constant_or_null",
-    // uuid generator
-    "gen_random_uuid",
-    // union accessors (`union_value` is constructed in the binder/processor)
-    "union_tag",
-    "union_extract",
-    // string
-    "concat",
-    "contains",
-    "prefix",
-    "suffix",
-    "starts_with",
-    "ends_with",
-    "lower",
-    "lcase",
-    "upper",
-    "ucase",
-    "trim",
-    "ltrim",
-    "rtrim",
-    "reverse",
-    "size",
-    "length",
-    "left",
-    "right",
-    "lpad",
-    "rpad",
-    "substr",
-    "substring",
-    "repeat",
-    "initcap",
-    "string_split",
-    "split_part",
-    "str_split",
-    "string_to_array",
-    "array_extract",
-    "levenshtein",
-    "list_to_string",
-    "replace",
-    "regexp_matches",
-    "regexp_full_match",
-    "regexp_replace",
-    "regexp_extract",
-    "regexp_extract_all",
-    "regexp_split_to_array",
-    // list
-    "range",
-    "list_creation",
-    "list_extract",
-    "list_element",
-    "list_slice",
-    "array_slice",
-    "list_concat",
-    "list_cat",
-    "list_append",
-    "list_prepend",
-    "list_contains",
-    "list_position",
-    "list_indexof",
-    "list_reverse",
-    "list_sort",
-    "list_reverse_sort",
-    "list_distinct",
-    "list_unique",
-    "list_sum",
-    "list_product",
-    "list_any_value",
-    // array aliases of the list functions
-    "array_contains",
-    "array_concat",
-    "array_cat",
-    "array_position",
-    "array_indexof",
-    "array_reverse",
-    "array_distinct",
-    "array_sort",
-    "array_to_string",
-    // fixed-array / vector functions
-    "array_value",
-    "array_distance",
-    "array_squared_distance",
-    "array_inner_product",
-    "array_dot_product",
-    "array_cosine_similarity",
-    "array_cross_product",
-    // struct / map
-    "struct_extract",
-    "map",
-    "map_extract",
-    "element_at",
-    "map_keys",
-    "map_values",
-    "cardinality",
-    // date / timestamp / interval
-    "dayname",
-    "monthname",
-    "last_day",
-    "date_part",
-    "datepart",
-    "date_trunc",
-    "datetrunc",
-    "to_years",
-    "to_months",
-    "to_days",
-    "to_hours",
-    "to_minutes",
-    "to_seconds",
-    "to_milliseconds",
-    "to_microseconds",
-    // cast aliases
-    "to_int8",
-    "to_int16",
-    "to_int32",
-    "to_int64",
-    "to_int128",
-    "to_uint8",
-    "to_uint16",
-    "to_uint32",
-    "to_uint64",
-    "to_uint128",
-    "to_serial",
-    "to_double",
-    "to_float",
-    "to_bool",
-    "to_string",
-    "to_blob",
-    "to_uuid",
-    "to_date",
-    "to_timestamp",
-    // Node/rel accessors (evaluated specially in koko-expr, which has the
-    // table-name map; registered here so the binder accepts and types them).
-    "id",
-    "offset",
-    "label",
-    "labels",
-    // Recursive-rel / path accessors.
-    "nodes",
-    "rels",
-    "relationships",
-    "properties",
-    // M5 backfill: string/blob/temporal/hash/random utilities and the
-    // remaining list/array aliases.
-    "cost",
-    "rowid",
-    "is_trail",
-    "is_acyclic",
-    "start_node",
-    "end_node",
-    "equals",
-    "not_equals",
-    "greater_than",
-    "greater_than_equals",
-    "less_than",
-    "less_than_equals",
-    "concat_ws",
-    "count_if",
-    "current_date",
-    "current_timestamp",
-    "octet_length",
-    "encode",
-    "decode",
-    "epoch_ms",
-    "to_epoch_ms",
-    "hash",
-    "md5",
-    "sha256",
-    "internal_id",
-    "random",
-    "setseed",
-    "error",
-    "tolower",
-    "toupper",
-    "to_interval",
-    "list_has",
-    "list_has_all",
-    "array_has",
-    "array_append",
-    "array_prepend",
-    "array_push_back",
-    "array_push_front",
-];
-
-/// The argument positions a function's C++ signature declares as STRING — every
-/// implicitly castable type coerces to STRING there at bind (audit §6.1 slice,
-/// oracle-verified: `lower(123)` → `123`, `left(to_double(1.34), 8)` →
-/// `1.340000`, `upper(true)` → `TRUE`). BLOB and graph types do NOT coerce
-/// (C++ rejects `lower(BLOB)` with the overload table). `None` = no STRING
-/// params / not in this interim table (the full M3 catalog supersedes it).
+/// The argument positions declared as STRING by the generated bind policy.
 pub fn string_coerce_positions(name: &str) -> Option<&'static [usize]> {
-    const P0: &[usize] = &[0];
-    const P01: &[usize] = &[0, 1];
-    const P012: &[usize] = &[0, 1, 2];
-    const P02: &[usize] = &[0, 2];
-    Some(match name {
-        "lower" | "lcase" | "upper" | "ucase" | "trim" | "ltrim" | "rtrim" | "initcap" | "left"
-        | "right" | "repeat" | "substr" | "substring" => P0,
-        "lpad" | "rpad" => P02,
-        "contains"
-        | "prefix"
-        | "suffix"
-        | "starts_with"
-        | "ends_with"
-        | "string_split"
-        | "str_split"
-        | "string_to_array"
-        | "levenshtein"
-        | "regexp_matches"
-        | "regexp_full_match"
-        | "regexp_extract"
-        | "regexp_extract_all"
-        | "regexp_split_to_array"
-        | "split_part" => P01,
-        "replace" | "regexp_replace" => P012,
-        "list_to_string" => P0,
-        "reverse" => P0,
-        "md5" | "sha256" => P0,
-        _ => return None,
-    })
-}
-
-/// Whether `name` (case-insensitive) is a registered scalar function.
-pub fn is_scalar(name: &str) -> bool {
-    let n = name.to_ascii_lowercase();
-    SCALAR_NAMES.contains(&n.as_str())
-}
-
-/// Canonicalize `array_*` aliases to their `list_*` equivalents.
-fn canonical(name: &str) -> &str {
-    match name {
-        "array_contains" => "list_contains",
-        "array_concat" | "array_cat" => "list_concat",
-        "array_position" | "array_indexof" => "list_position",
-        "array_reverse" => "list_reverse",
-        "array_distinct" => "list_distinct",
-        // C++ CARDINALITY is a SIZE alias (its four overloads are SIZE's).
-        "cardinality" => "size",
-        "array_sort" => "list_sort",
-        "array_to_string" => "list_to_string",
-        "tolower" => "lower",
-        "toupper" => "upper",
-        "to_interval" => "interval",
-        "list_has" | "array_has" => "list_contains",
-        "array_append" | "array_push_back" => "list_append",
-        "array_prepend" | "array_push_front" => "list_prepend",
-        other => other,
-    }
-}
-
-/// The cast-target type for a `to_*` alias, if `name` is one.
-fn cast_alias_target(name: &str) -> Option<LogicalType> {
-    use koko_common::IntKind::*;
-    Some(match name {
-        "to_int8" => LogicalType::Int(I8),
-        "to_int16" => LogicalType::Int(I16),
-        "to_int32" => LogicalType::Int(I32),
-        "to_int64" => LogicalType::Int64,
-        "to_serial" => LogicalType::Serial,
-        "to_int128" => LogicalType::Int(I128),
-        "to_uint8" => LogicalType::Int(U8),
-        "to_uint16" => LogicalType::Int(U16),
-        "to_uint32" => LogicalType::Int(U32),
-        "to_uint64" => LogicalType::Int(U64),
-        "to_uint128" => LogicalType::UInt128,
-        "to_double" => LogicalType::Double,
-        "to_float" => LogicalType::Float,
-        "to_bool" => LogicalType::Bool,
-        "to_string" => LogicalType::String,
-        "to_blob" => LogicalType::Blob,
-        "to_uuid" => LogicalType::Uuid,
-        "to_date" => LogicalType::Date,
-        _ => return None,
-    })
+    let positions = resolve_builtin(name)?.string_coerce;
+    (!positions.is_empty()).then_some(positions)
 }
 
 /// The catalog signature gate: every scalar call whose (as-called) name exists
@@ -353,190 +25,83 @@ fn cast_alias_target(name: &str) -> Option<LogicalType> {
 /// still applies its own stricter refinements after.
 mod sigcatalog {
     use super::signature_error;
-    use crate::catalog_data::FUNCTION_CATALOG;
+    use crate::catalog_data::{KokoOverloadDescriptor, KokoOverloadFamily};
+    use crate::{
+        BuiltinFunction, BuiltinScalar, FunctionCatalogKind, OverloadDescriptor, resolve_builtin,
+    };
     use koko_common::types::{UNDEFINED_CAST_COST, cast_cost};
-    use koko_common::{Error, LogicalType, TableId};
-    use std::collections::HashMap;
-    use std::sync::LazyLock;
+    use koko_common::{Error, LogicalType};
 
-    /// A parsed overload: the parameter type-ID representatives (`None` for
-    /// JSON, which this engine has no value of) and the verbatim signature row.
-    struct Overload {
-        params: Vec<Option<LogicalType>>,
-        sig: &'static str,
-    }
-
-    /// A representative of the C++ `LogicalTypeID` a signature token names --
-    /// [`cast_cost`] compares container/parameterized types by constructor only,
-    /// so placeholder children suffice.
-    fn token_type(tok: &str) -> Option<LogicalType> {
-        use koko_common::types::IntKind::*;
-        Some(match tok {
-            "ANY" => LogicalType::Any,
-            "BOOL" => LogicalType::Bool,
-            "INT8" => LogicalType::Int(I8),
-            "INT16" => LogicalType::Int(I16),
-            "INT32" => LogicalType::Int(I32),
-            "INT64" => LogicalType::Int(I64),
-            "INT128" => LogicalType::Int(I128),
-            "UINT8" => LogicalType::Int(U8),
-            "UINT16" => LogicalType::Int(U16),
-            "UINT32" => LogicalType::Int(U32),
-            "UINT64" => LogicalType::Int(U64),
-            "UINT128" => LogicalType::UInt128,
-            "SERIAL" => LogicalType::Serial,
-            "DECIMAL" => LogicalType::Decimal(0, 0),
-            "DOUBLE" => LogicalType::Double,
-            "FLOAT" => LogicalType::Float,
-            "STRING" => LogicalType::String,
-            "DATE" => LogicalType::Date,
-            "TIMESTAMP" => LogicalType::Timestamp,
-            "TIMESTAMP_NS" => LogicalType::TimestampNs,
-            "TIMESTAMP_MS" => LogicalType::TimestampMs,
-            "TIMESTAMP_SEC" => LogicalType::TimestampSec,
-            "TIMESTAMP_TZ" => LogicalType::TimestampTz,
-            "INTERVAL" => LogicalType::Interval,
-            "UUID" => LogicalType::Uuid,
-            "BLOB" => LogicalType::Blob,
-            "LIST" => LogicalType::List(Box::new(LogicalType::Any)),
-            "ARRAY" => LogicalType::Array(Box::new(LogicalType::Any), 0),
-            "STRUCT" => LogicalType::Struct(Vec::new()),
-            "MAP" => LogicalType::Map(Box::new(LogicalType::Any), Box::new(LogicalType::Any)),
-            "UNION" => LogicalType::Union(Vec::new()),
-            "NODE" => LogicalType::Node(TableId(0)),
-            "REL" => LogicalType::Rel(TableId(0)),
-            "RECURSIVE_REL" => LogicalType::RecursiveRel,
-            "INTERNAL_ID" => LogicalType::InternalId,
-            _ => return None, // JSON (and anything future) never matches a value
-        })
-    }
-
-    static SCALAR_SIGS: LazyLock<HashMap<&'static str, Vec<Overload>>> = LazyLock::new(|| {
-        let mut m: HashMap<&'static str, Vec<Overload>> = HashMap::new();
-        for (name, kind, sig) in FUNCTION_CATALOG.iter() {
-            // REWRITE functions (LENGTH, ID, LABEL, NULLIF, ...) share the same
-            // signature matching and error block; their signature rows simply
-            // have no `-> RETURN` part.
-            if *kind != "SCALAR FUNCTION" && *kind != "REWRITE FUNCTION" {
-                continue;
-            }
-            let inner = sig
-                .strip_prefix('(')
-                .and_then(|s| s.split_once(')'))
-                .map(|(p, _)| p)
-                .unwrap_or_default();
-            let params = if inner.is_empty() {
-                Vec::new()
-            } else {
-                inner.split(',').map(token_type).collect()
-            };
-            m.entry(name).or_default().push(Overload { params, sig });
-        }
-        m
-    });
-
-    /// C++ functions registered with `isVarLength = true`: one parameter type,
-    /// matched against every argument regardless of arity.
-    const VAR_LENGTH: &[&str] = &[
-        "CONCAT",
-        "CONCAT_WS",
-        "LIST_CREATION",
-        "STRUCT_PACK",
-        "ARRAY_VALUE",
-        "COALESCE",
-    ];
-
-    fn overload_matches(o: &Overload, args: &[LogicalType], var_len: bool) -> bool {
-        if var_len {
-            let Some(Some(p)) = o.params.first() else {
+    fn scalar_overload_matches(
+        overload: &OverloadDescriptor,
+        args: &[LogicalType],
+        variable_arity: bool,
+    ) -> bool {
+        if variable_arity {
+            let Some(parameter) = overload.params.first() else {
                 return false;
             };
-            return args.iter().all(|a| cast_cost(a, p) != UNDEFINED_CAST_COST);
+            let Some(parameter) = parameter.logical_type() else {
+                return false;
+            };
+            return args
+                .iter()
+                .all(|actual| cast_cost(actual, &parameter) != UNDEFINED_CAST_COST);
         }
-        o.params.len() == args.len()
-            && o.params.iter().zip(args).all(|(p, a)| match p {
-                Some(p) => cast_cost(a, p) != UNDEFINED_CAST_COST,
-                None => false,
+        overload.params.len() == args.len()
+            && overload.params.iter().zip(args).all(|(parameter, actual)| {
+                parameter
+                    .logical_type()
+                    .is_some_and(|parameter| cast_cost(actual, &parameter) != UNDEFINED_CAST_COST)
             })
     }
 
-    /// Ledgered pure-superset extensions (docs/DIVERGENCES.md
-    /// `pure-superset-extensions`): call shapes the C++ engine rejects but this
-    /// engine deliberately accepts -- exempt from the catalog gate by
-    /// `(name, arity)`.
-    const LEDGERED_SUPERSETS: &[(&str, usize)] = &[("SUBSTR", 2), ("SUBSTRING", 2), ("ROUND", 1)];
-
-    /// Parsed AGGREGATE FUNCTION rows: catalog order, with the distinct flag
-    /// decoded from the adjacent-duplicate convention (each type registers its
-    /// DISTINCT variant first, then the plain one — oracle-verified via the
-    /// MIN(NODE) error block).
-    struct AggOverload {
-        distinct: bool,
-        params: Vec<Option<LogicalType>>,
-        sig: &'static str,
-    }
-
-    static AGG_SIGS: LazyLock<HashMap<&'static str, Vec<AggOverload>>> = LazyLock::new(|| {
-        let mut m: HashMap<&'static str, Vec<AggOverload>> = HashMap::new();
-        let rows: Vec<(&str, &str)> = FUNCTION_CATALOG
-            .iter()
-            .filter(|(_, kind, _)| *kind == "AGGREGATE FUNCTION")
-            .map(|(name, _, sig)| (*name, *sig))
-            .collect();
-        let mut i = 0;
-        while i < rows.len() {
-            let (name, sig) = rows[i];
-            let paired = i + 1 < rows.len() && rows[i + 1] == (name, sig);
-            let parse = |sig: &'static str| {
-                let inner = sig
-                    .strip_prefix('(')
-                    .and_then(|s| s.split_once(')'))
-                    .map(|(p, _)| p)
-                    .unwrap_or_default();
-                if inner.is_empty() {
-                    Vec::new()
-                } else {
-                    inner.split(',').map(token_type).collect()
-                }
-            };
-            if paired {
-                m.entry(name).or_default().push(AggOverload {
-                    distinct: true,
-                    params: parse(sig),
-                    sig,
-                });
-                m.entry(name).or_default().push(AggOverload {
-                    distinct: false,
-                    params: parse(sig),
-                    sig,
-                });
-                i += 2;
-            } else {
-                m.entry(name).or_default().push(AggOverload {
-                    distinct: false,
-                    params: parse(sig),
-                    sig,
-                });
-                i += 1;
+    fn koko_overload_matches(overload: &KokoOverloadDescriptor, args: &[LogicalType]) -> bool {
+        if args.len() < overload.min_arity {
+            return false;
+        }
+        match overload.family {
+            KokoOverloadFamily::Numeric => {
+                koko_common::types::common_numeric_type(args.iter()).is_some()
             }
         }
-        m
-    });
+    }
+
+    fn ledgered_superset_matches(
+        function: BuiltinScalar,
+        args: &[LogicalType],
+        descriptor: &crate::BuiltinDescriptor,
+    ) -> bool {
+        let allowed = matches!(
+            (function, args.len()),
+            (BuiltinScalar::Substr, 2) | (BuiltinScalar::Round(_), 1)
+        );
+        allowed
+            && descriptor.overloads.iter().any(|overload| {
+                overload.params.len() > args.len()
+                    && overload.params.iter().zip(args).all(|(parameter, actual)| {
+                        parameter.logical_type().is_some_and(|parameter| {
+                            cast_cost(actual, &parameter) != UNDEFINED_CAST_COST
+                        })
+                    })
+            })
+    }
 
     /// The aggregate gate (C++ `matchAggregateFunction`): arity and distinct
     /// must match exactly and each argument's type-ID must equal the parameter
     /// (ANY skips; no implicit casts). `Some(err)` = catalogued, no candidate.
     pub(super) fn agg_gate(called: &str, args: &[LogicalType], distinct: bool) -> Option<Error> {
-        use koko_common::types::cast_cost;
-        let upper = called.to_ascii_uppercase();
-        let overloads = AGG_SIGS.get(upper.as_str())?;
-        let matched = overloads.iter().any(|o| {
-            o.distinct == distinct
-                && o.params.len() == args.len()
-                && o.params.iter().zip(args).all(|(p, a)| match p {
-                    Some(LogicalType::Any) => true,
-                    Some(p) => cast_cost(a, p) == 0,
-                    None => false,
+        let descriptor = resolve_builtin(called)?;
+        if descriptor.catalog_kind != FunctionCatalogKind::Aggregate {
+            return None;
+        }
+        let matched = descriptor.overloads.iter().any(|overload| {
+            overload.distinct == distinct
+                && overload.params.len() == args.len()
+                && overload.params.iter().zip(args).all(|(parameter, actual)| {
+                    parameter.logical_type().is_some_and(|parameter| {
+                        parameter == LogicalType::Any || cast_cost(actual, &parameter) == 0
+                    })
                 })
         });
         if matched {
@@ -556,28 +121,29 @@ mod sigcatalog {
                 format!("({shown})")
             }
         );
+        let upper = called.to_ascii_uppercase();
         let mut msg = format!(
             "Function {upper} did not receive correct arguments:\nActual:   {actual}\nExpected: "
         );
-        let lines: Vec<String> = overloads
+        let mut lines = descriptor
+            .overloads
             .iter()
-            .filter(|o| !o.params.is_empty())
-            .map(|o| {
-                if o.distinct {
-                    format!("DISTINCT {}", o.sig)
+            .filter(|overload| !overload.params.is_empty())
+            .map(|overload| {
+                if overload.distinct {
+                    format!("DISTINCT {}", overload.display_signature)
                 } else {
-                    o.sig.to_string()
+                    overload.display_signature.to_string()
                 }
-            })
-            .collect();
-        if lines.is_empty() {
-            msg.push_str("()");
-        } else {
-            msg.push_str(&lines[0]);
-            for line in &lines[1..] {
+            });
+        if let Some(first) = lines.next() {
+            msg.push_str(&first);
+            for line in lines {
                 msg.push_str("\n          ");
-                msg.push_str(line);
+                msg.push_str(&line);
             }
+        } else {
+            msg.push_str("()");
         }
         msg.push_str("\n\n");
         Some(Error::binder(msg))
@@ -585,34 +151,46 @@ mod sigcatalog {
 
     /// `Some(err)` = the name is catalogued and no overload accepts the args.
     pub(super) fn gate(called: &str, args: &[LogicalType]) -> Option<Error> {
-        let upper = called.to_ascii_uppercase();
-        let overloads = SCALAR_SIGS.get(upper.as_str())?;
-        // The exemption covers the *documented* superset shape only: each arg
-        // must be individually plausible for the function — castable to some
-        // parameter of some overload (`round('x')` still errors with the C++
-        // block; only `round(1.2)` is the ledgered accept).
-        if LEDGERED_SUPERSETS.contains(&(upper.as_str(), args.len()))
-            && args.iter().all(|a| {
-                overloads.iter().any(|o| {
-                    o.params.iter().any(|p| match p {
-                        Some(p) => cast_cost(a, p) != UNDEFINED_CAST_COST,
-                        None => false,
-                    })
-                })
-            })
+        let descriptor = resolve_builtin(called)?;
+        if !matches!(
+            descriptor.catalog_kind,
+            FunctionCatalogKind::Scalar | FunctionCatalogKind::Rewrite
+        ) {
+            return None;
+        }
+        let BuiltinFunction::Scalar(function) = descriptor.function else {
+            return None;
+        };
+        if ledgered_superset_matches(function, args, descriptor) {
+            return None;
+        }
+        if descriptor
+            .koko_overloads
+            .iter()
+            .any(|overload| koko_overload_matches(overload, args))
         {
             return None;
         }
-        let var_len = VAR_LENGTH.contains(&upper.as_str());
-        if overloads.iter().any(|o| overload_matches(o, args, var_len)) {
+        if descriptor
+            .overloads
+            .iter()
+            .any(|overload| scalar_overload_matches(overload, args, descriptor.variable_arity))
+        {
             return None;
         }
-        let expected: Vec<&str> = overloads
+        let expected = descriptor
+            .overloads
             .iter()
-            .filter(|o| !o.params.is_empty())
-            .map(|o| o.sig)
-            .collect();
-        Some(signature_error(&upper, args, &expected))
+            .filter(|overload| !overload.params.is_empty())
+            .map(|overload| overload.display_signature)
+            .chain(
+                descriptor
+                    .koko_overloads
+                    .iter()
+                    .map(|overload| overload.display_signature),
+            )
+            .collect::<Vec<_>>();
+        Some(signature_error(called, args, &expected))
     }
 }
 
@@ -630,7 +208,6 @@ fn actual_signature(args: &[LogicalType]) -> String {
         )
     }
 }
-
 pub fn signature_error(name: &str, args: &[LogicalType], expected: &[&str]) -> Error {
     let mut msg = format!(
         "Function {} did not receive correct arguments:\nActual:   {}\nExpected: ",
@@ -978,7 +555,13 @@ fn greatest_least_result_type(name: &str, args: &[LogicalType]) -> Result<Logica
     let expected = &[
         "(DATE, DATE) -> DATE",
         "(TIMESTAMP, TIMESTAMP) -> TIMESTAMP",
+        "(NUMERIC, NUMERIC, ...) -> NUMERIC",
     ];
+    if args.len() >= 2 {
+        if let Some(common) = koko_common::types::common_numeric_type(args.iter()) {
+            return Ok(common);
+        }
+    }
     if args.len() != 2 {
         return Err(signature_error(name, args, expected));
     }
@@ -1009,117 +592,6 @@ fn greatest_least_result_type(name: &str, args: &[LogicalType]) -> Result<Logica
     }
 }
 
-/// Interim bind-time arity bounds (audit C1): the min/max argument count of every
-/// scalar whose result-type path doesn't validate arity itself, so a wrong-arity
-/// call is a clean binder error instead of an `args[i]` eval panic. Bounds mirror
-/// the C++ overload tables (verified against the oracle shell), except where Rust
-/// deliberately accepts a wider form C++ lacks (1-arg `round`, 2-arg `substr` —
-/// pure-superset extension space, ledgered in `docs/DIVERGENCES.md`). `None` means
-/// the function's bespoke check in [`scalar_result_type`] owns arity (and its
-/// C++-parity signature error). The declarative signature catalog (M3) replaces this.
-fn arity_bounds(name: &str) -> Option<(usize, usize)> {
-    const MANY: usize = usize::MAX;
-    Some(match name {
-        "pi" | "gen_random_uuid" | "current_date" | "current_timestamp" | "random" => (0, 0),
-        "count_if" | "octet_length" | "encode" | "decode" | "epoch_ms" | "to_epoch_ms" | "hash"
-        | "md5" | "sha256" | "setseed" | "error" => (1, 1),
-        "internal_id"
-        | "list_has_all"
-        | "equals"
-        | "not_equals"
-        | "greater_than"
-        | "greater_than_equals"
-        | "less_than"
-        | "less_than_equals" => (2, 2),
-        "date" | "timestamp" | "interval" | "duration" | "uuid" | "string" | "blob"
-        | "to_timestamp" | "century" | "abs" | "negate" | "floor" | "ceil" | "ceiling" | "sign"
-        | "even" | "factorial" | "sqrt" | "cbrt" | "ln" | "log" | "log2" | "log10" | "exp"
-        | "sin" | "cos" | "tan" | "cot" | "asin" | "acos" | "atan" | "degrees" | "radians"
-        | "gamma" | "lgamma" | "typeof" | "union_tag" | "id" | "offset" | "label" | "labels"
-        | "nodes" | "rels" | "relationships" | "lower" | "lcase" | "upper" | "ucase" | "trim"
-        | "ltrim" | "rtrim" | "reverse" | "initcap" | "length" | "dayname" | "monthname"
-        | "last_day" | "cardinality" | "map_keys" | "map_values" | "to_years" | "to_months"
-        | "to_days" | "to_hours" | "to_minutes" | "to_seconds" | "to_milliseconds"
-        | "to_microseconds" => (1, 1),
-        "pow"
-        | "power"
-        | "atan2"
-        | "bitwise_and"
-        | "bitwise_or"
-        | "bitwise_xor"
-        | "bitshift_left"
-        | "bitshift_right"
-        | "contains"
-        | "prefix"
-        | "suffix"
-        | "starts_with"
-        | "ends_with"
-        | "left"
-        | "right"
-        | "repeat"
-        | "string_split"
-        | "str_split"
-        | "string_to_array"
-        | "levenshtein"
-        | "regexp_matches"
-        | "regexp_full_match"
-        | "regexp_split_to_array"
-        | "struct_extract"
-        | "map"
-        | "map_extract"
-        | "element_at"
-        | "date_part"
-        | "datepart"
-        | "date_trunc"
-        | "datetrunc"
-        | "properties"
-        | "union_extract"
-        | "nullif" => (2, 2),
-        "make_date" | "lpad" | "rpad" | "replace" | "split_part" => (3, 3),
-        "round" => (1, 2),
-        "substr" | "substring" => (2, 3),
-        "regexp_replace" => (3, 4),
-        "regexp_extract" | "regexp_extract_all" => (2, 3),
-        "concat" | "list_creation" => (0, MANY),
-        _ => return None,
-    })
-}
-
-/// The INT64 argument positions of functions whose C++ signature rejects
-/// non-integer args with the overload table (audit V4 — the old eval path
-/// yielded garbage: `left('hello', 2.0)` → `''`, `factorial('5')` → `1`), plus
-/// the verbatim C++ "Expected:" lines. Lossless integer upcasts (INT8..INT64,
-/// SERIAL, UINT8..UINT32) are accepted; DOUBLE/STRING/INT128/UINT64+ reject —
-/// all oracle-verified. The M3 declarative catalog supersedes this table.
-fn int_strict_positions(name: &str) -> Option<(&'static [usize], &'static [&'static str])> {
-    Some(match name {
-        "left" => (&[1], &["(STRING, INT64) -> STRING"]),
-        "right" => (&[1], &["(STRING, INT64) -> STRING"]),
-        "lpad" => (&[1], &["(STRING, INT64, STRING) -> STRING"]),
-        "rpad" => (&[1], &["(STRING, INT64, STRING) -> STRING"]),
-        "substr" | "substring" => (&[1, 2], &["(STRING, INT64, INT64) -> STRING"]),
-        "repeat" => (&[1], &["(STRING, INT64) -> STRING"]),
-        "split_part" => (&[2], &["(STRING, STRING, INT64) -> STRING"]),
-        "factorial" => (&[0], &["(INT64) -> INT64"]),
-        "round" => (&[1], &["(DOUBLE, INT64) -> DOUBLE"]),
-        "regexp_extract" | "regexp_extract_all" => (&[2], &[]),
-        _ => return None,
-    })
-}
-
-/// Whether a type is accepted at a C++ INT64 parameter position: only lossless
-/// integer upcasts (oracle-verified: INT8/UINT32 pass, INT128/UINT64/DOUBLE
-/// reject).
-fn int64_upcastable(t: &LogicalType) -> bool {
-    use koko_common::IntKind::*;
-    matches!(
-        t,
-        LogicalType::Any
-            | LogicalType::Serial
-            | LogicalType::Int(I8 | I16 | I32 | I64 | U8 | U16 | U32)
-    )
-}
-
 /// The result [`LogicalType`] of scalar function `name` over `args`.
 /// The aggregate-signature gate (see `sigcatalog::agg_gate`), for the binder's
 /// aggregate dispatch. `Some(err)` = catalogued name, no matching overload.
@@ -1135,20 +607,24 @@ pub fn aggregate_signature_error(
 /// the binder calls this BEFORE its STRING-position coercions so signature
 /// errors render the ORIGINAL actual types (C++ matchFunction order).
 pub fn signature_gate(called: &str, args: &[LogicalType]) -> Result<()> {
-    match sigcatalog::gate(&called.to_ascii_lowercase(), args) {
+    match sigcatalog::gate(called, args) {
         Some(err) => Err(err),
         None => Ok(()),
     }
 }
 
-pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalType> {
-    let called = name.to_ascii_lowercase();
+pub fn scalar_result_type(
+    function: BuiltinScalar,
+    called_name: &str,
+    args: &[LogicalType],
+) -> Result<LogicalType> {
+    let called = called_name;
     // The catalog signature gate runs first, under the *as-called* name (each
     // C++ alias is its own catalog entry, and the error echoes the called name);
     // per-name logic below then applies its stricter bind-time refinements.
     // concat_ws validates before the generic gate: its own arity wording, and
     // a strict all-STRING rule (no coercion) with the C++ message.
-    if called == "concat_ws" {
+    if function == BuiltinScalar::ConcatWs {
         if args.len() < 2 {
             return Err(Error::binder(format!(
                 "concat_ws expects at least two parameters. Got: {}.",
@@ -1165,10 +641,10 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
         }
         return Ok(LogicalType::String);
     }
-    if let Some(err) = sigcatalog::gate(&called, args) {
+    if let Some(err) = sigcatalog::gate(called, args) {
         return Err(err);
     }
-    let name = canonical(&called).to_string();
+    let name = function.canonical_name();
     let arity_err = || {
         Error::binder(format!(
             "Function {} got {} argument(s).",
@@ -1176,31 +652,15 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             args.len()
         ))
     };
-    if let Some((min, max)) = arity_bounds(&name) {
-        if args.len() < min || args.len() > max {
-            return Err(arity_err());
-        }
-    }
-    // C++ INT64-position strictness (audit V4): a non-upcastable arg is a bind
-    // error with the overload table, never a garbage value at eval.
-    if let Some((positions, expected)) = int_strict_positions(&name) {
-        for &i in positions {
-            if let Some(t) = args.get(i) {
-                if !int64_upcastable(t) {
-                    return Err(signature_error(&called, args, expected));
-                }
-            }
-        }
-    }
-    if let Some(target) = cast_alias_target(&name) {
+    if let BuiltinScalar::Cast(target) = function {
         if args.len() != 1 {
             return Err(arity_err());
         }
-        return Ok(target);
+        return Ok(target.logical_type());
     }
     // `size` accepts only LIST/ARRAY/MAP/STRING; a NODE/REL/RECURSIVE_REL arg is a
     // binder error with the C++ signature listing (matches `path.test`).
-    if name == "size" {
+    if function == BuiltinScalar::Size {
         // Numerics reach SIZE via the (STRING) overload (implicit cast):
         // size(12345) is the rendered string's length, 5.
         let ok = args.len() == 1
@@ -1215,7 +675,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 ));
         if !ok {
             return Err(signature_error(
-                &name,
+                name,
                 args,
                 &[
                     "(LIST) -> INT64",
@@ -1227,8 +687,8 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
         }
         return Ok(LogicalType::Int64);
     }
-    match name.as_str() {
-        "coalesce" => {
+    match function {
+        BuiltinScalar::Coalesce => {
             if args.is_empty() {
                 return Err(Error::binder(
                     "COALESCE requires at least one argument".to_string(),
@@ -1236,15 +696,15 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             }
             return Ok(first_concrete_or_string(args));
         }
-        "ifnull" => {
+        BuiltinScalar::Ifnull => {
             if args.len() != 2 {
-                return Err(signature_error(&name, args, &["(ANY, ANY) -> ANY"]));
+                return Err(signature_error(name, args, &["(ANY, ANY) -> ANY"]));
             }
             return Ok(first_concrete_or_string(args));
         }
-        "constant_or_null" => {
+        BuiltinScalar::ConstantOrNull => {
             if args.len() != 2 {
-                return Err(signature_error(&name, args, &["(ANY, ANY) -> ANY"]));
+                return Err(signature_error(name, args, &["(ANY, ANY) -> ANY"]));
             }
             return Ok(if args[0] == LogicalType::Any {
                 LogicalType::String
@@ -1252,7 +712,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 args[0].clone()
             });
         }
-        "range" => {
+        BuiltinScalar::Range => {
             if !(args.len() == 2 || args.len() == 3) || !args.iter().all(integer_compatible) {
                 // The verbatim C++ per-width overload table (oracle-captured).
                 const RANGE_EXPECTED: &[&str] = &[
@@ -1279,7 +739,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                     "(UINT8,UINT8) -> LIST",
                     "(UINT8,UINT8,UINT8) -> LIST",
                 ];
-                return Err(signature_error(&name, args, RANGE_EXPECTED));
+                return Err(signature_error(name, args, RANGE_EXPECTED));
             }
             // C++ registers per-width overloads: the element type is the (uniform)
             // endpoint type — range(UINT128, UINT128) -> UINT128[] (audit V16).
@@ -1296,13 +756,13 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             };
             return Ok(LogicalType::List(Box::new(elem)));
         }
-        "list_extract" | "list_element" | "array_extract" => {
+        BuiltinScalar::ListExtract | BuiltinScalar::ArrayExtract => {
             if args.len() != 2
                 || !list_or_string_compatible(&args[0])
                 || !integer_compatible(&args[1])
             {
                 return Err(signature_error(
-                    &name,
+                    name,
                     args,
                     &[
                         "(LIST, INT64) -> ANY",
@@ -1314,7 +774,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             // ARRAY_EXTRACT's only C++ overload is (STRING,INT64) -> STRING —
             // a LIST argument implicitly casts to STRING and gets *character*
             // extraction (oracle: array_extract([10,20,30], 1) = '[').
-            if name == "array_extract" {
+            if function == BuiltinScalar::ArrayExtract {
                 return Ok(LogicalType::String);
             }
             return Ok(match &args[0] {
@@ -1323,14 +783,14 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 _ => LogicalType::String,
             });
         }
-        "list_slice" | "array_slice" => {
+        BuiltinScalar::ListSlice | BuiltinScalar::ArraySlice => {
             if args.len() != 3
                 || !list_or_string_compatible(&args[0])
                 || !integer_compatible(&args[1])
                 || !integer_compatible(&args[2])
             {
                 return Err(signature_error(
-                    &name,
+                    name,
                     args,
                     &[
                         "(LIST, INT64, INT64) -> LIST",
@@ -1348,29 +808,29 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 t => t.clone(),
             });
         }
-        "list_concat" | "list_cat" => {
-            return list_concat_result_type(args, &called);
+        BuiltinScalar::ListConcat => {
+            return list_concat_result_type(args, called);
         }
         // Fixed-array constructor: `ARRAY(common_type(args), argcount)`.
-        "array_value" => {
+        BuiltinScalar::ArrayValue => {
             let inner = first_concrete_or_string(args);
             return Ok(LogicalType::Array(Box::new(inner), args.len() as u64));
         }
         // Binary vector functions returning a scalar (the array's FLOAT/DOUBLE child).
-        "array_distance"
-        | "array_squared_distance"
-        | "array_inner_product"
-        | "array_dot_product"
-        | "array_cosine_similarity" => {
-            return array_binary_scalar_result_type(&called, args);
+        BuiltinScalar::ArrayDistance
+        | BuiltinScalar::ArraySquaredDistance
+        | BuiltinScalar::ArrayInnerProduct
+        | BuiltinScalar::ArrayDotProduct
+        | BuiltinScalar::ArrayCosineSimilarity => {
+            return array_binary_scalar_result_type(called, args);
         }
         // 3-D cross product returning an `ARRAY` of the (preserved) element type.
-        "array_cross_product" => {
-            return array_cross_product_result_type(&called, args);
+        BuiltinScalar::ArrayCrossProduct => {
+            return array_cross_product_result_type(called, args);
         }
-        "list_append" | "list_prepend" => {
+        BuiltinScalar::ListAppend | BuiltinScalar::ListPrepend => {
             if args.len() != 2 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST, ANY) -> LIST"]));
+                return Err(signature_error(name, args, &["(LIST, ANY) -> LIST"]));
             }
             return Ok(match &args[0] {
                 LogicalType::List(inner) | LogicalType::Array(inner, _) => {
@@ -1379,42 +839,42 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 _ => LogicalType::List(Box::new(args[1].clone())),
             });
         }
-        "list_contains" => {
+        BuiltinScalar::ListContains => {
             if args.len() != 2 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST, ANY) -> BOOL"]));
+                return Err(signature_error(name, args, &["(LIST, ANY) -> BOOL"]));
             }
             return Ok(LogicalType::Bool);
         }
-        "list_position" | "list_indexof" => {
+        BuiltinScalar::ListPosition => {
             if args.len() != 2 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST, ANY) -> INT64"]));
+                return Err(signature_error(name, args, &["(LIST, ANY) -> INT64"]));
             }
             return Ok(LogicalType::Int64);
         }
-        "list_any_value" => {
+        BuiltinScalar::ListAnyValue => {
             if args.len() != 1 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST) -> ANY"]));
+                return Err(signature_error(name, args, &["(LIST) -> ANY"]));
             }
             return Ok(match &args[0] {
                 LogicalType::List(inner) | LogicalType::Array(inner, _) => (**inner).clone(),
                 _ => LogicalType::Any,
             });
         }
-        "list_reverse" | "list_distinct" => {
+        BuiltinScalar::ListReverse | BuiltinScalar::ListDistinct => {
             if args.len() != 1 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST) -> LIST"]));
+                return Err(signature_error(name, args, &["(LIST) -> LIST"]));
             }
             return Ok(list_result_or_any(args.first()));
         }
-        "list_unique" => {
+        BuiltinScalar::ListUnique => {
             if args.len() != 1 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST) -> INT64"]));
+                return Err(signature_error(name, args, &["(LIST) -> INT64"]));
             }
             return Ok(LogicalType::Int64);
         }
-        "list_sum" | "list_product" => {
+        BuiltinScalar::ListSum | BuiltinScalar::ListProduct => {
             if args.len() != 1 || !list_compatible(&args[0]) {
-                return Err(signature_error(&name, args, &["(LIST) -> INT64"]));
+                return Err(signature_error(name, args, &["(LIST) -> INT64"]));
             }
             // C++ dispatches on the child type and keeps it (INT16[] -> INT16,
             // FLOAT[] -> FLOAT, UINT128[] -> UINT128 — audit V16); a
@@ -1438,7 +898,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                 _ => LogicalType::Int64,
             });
         }
-        "list_sort" => {
+        BuiltinScalar::ListSort => {
             if !(1..=3).contains(&args.len())
                 || !list_compatible(&args[0])
                 || args
@@ -1447,7 +907,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                     .any(|a| !matches!(a, LogicalType::String | LogicalType::Any))
             {
                 return Err(signature_error(
-                    &name,
+                    name,
                     args,
                     &[
                         "(LIST) -> LIST",
@@ -1458,7 +918,7 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             }
             return Ok(list_result_or_any(args.first()));
         }
-        "list_reverse_sort" => {
+        BuiltinScalar::ListReverseSort => {
             if !(1..=2).contains(&args.len())
                 || !list_compatible(&args[0])
                 || args
@@ -1467,153 +927,201 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
                     .any(|a| !matches!(a, LogicalType::String | LogicalType::Any))
             {
                 return Err(signature_error(
-                    &name,
+                    name,
                     args,
                     &["(LIST) -> LIST", "(LIST, STRING) -> LIST"],
                 ));
             }
             return Ok(list_result_or_any(args.first()));
         }
-        "list_to_string" => {
+        BuiltinScalar::ListToString => {
             if args.len() != 2
                 || !matches!(&args[0], LogicalType::String | LogicalType::Any)
                 || !list_compatible(&args[1])
             {
-                return Err(signature_error(&name, args, &["(STRING, LIST) -> STRING"]));
+                return Err(signature_error(name, args, &["(STRING, LIST) -> STRING"]));
             }
             return Ok(LogicalType::String);
         }
         _ => {}
     }
-    let ty = match name.as_str() {
-        "date" | "make_date" => LogicalType::Date,
-        "timestamp" | "to_timestamp" => LogicalType::Timestamp,
-        "interval" | "duration" => LogicalType::Interval,
-        "uuid" | "gen_random_uuid" => LogicalType::Uuid,
-        "blob" => LogicalType::Blob,
-        "typeof" | "string" | "union_tag" => LogicalType::String,
+    let ty = match function {
+        BuiltinScalar::Date | BuiltinScalar::MakeDate => LogicalType::Date,
+        BuiltinScalar::Timestamp | BuiltinScalar::ToTimestamp => LogicalType::Timestamp,
+        BuiltinScalar::Interval => LogicalType::Interval,
+        BuiltinScalar::Uuid | BuiltinScalar::GenRandomUuid => LogicalType::Uuid,
+        BuiltinScalar::Blob => LogicalType::Blob,
+        BuiltinScalar::Typeof | BuiltinScalar::String | BuiltinScalar::UnionTag => {
+            LogicalType::String
+        }
         // `union_extract(u, 'field')` yields the member type, resolved at eval from
         // the runtime union value (like `struct_extract`).
-        "union_extract" => LogicalType::Any,
+        BuiltinScalar::UnionExtract => LogicalType::Any,
         // Node/rel accessors.
-        "id" => LogicalType::InternalId,
-        "offset" => LogicalType::Int64,
+        BuiltinScalar::Id => LogicalType::InternalId,
+        BuiltinScalar::Offset => LogicalType::Int64,
         // `labels` aliases `label` — scalar STRING in the C++ oracle (audit V8).
-        "label" | "labels" => LogicalType::String,
-        "century" => LogicalType::Int64,
-        "pi" => LogicalType::Double,
+        BuiltinScalar::Label | BuiltinScalar::Labels => LogicalType::String,
+        BuiltinScalar::Century => LogicalType::Int64,
+        BuiltinScalar::Pi => LogicalType::Double,
         // Keep the operand's numeric type — except floor/ceil on DECIMAL(p,s),
         // which reduce to DECIMAL(p,0) like C++ (audit R2).
-        "floor" | "ceil" | "ceiling" => match args.first() {
-            Some(LogicalType::Decimal(p, _)) => LogicalType::Decimal(*p, 0),
-            other => other.cloned().unwrap_or(LogicalType::Any),
-        },
-        "abs" | "negate" => args.first().cloned().unwrap_or(LogicalType::Any),
-        "round" if args.len() == 2 => LogicalType::Double,
-        "round" => args.first().cloned().unwrap_or(LogicalType::Any),
-        // Pure double-valued math.
-        "sqrt" | "cbrt" | "ln" | "log" | "log2" | "log10" | "exp" | "pow" | "power" | "sin"
-        | "cos" | "tan" | "cot" | "asin" | "acos" | "atan" | "atan2" | "degrees" | "radians"
-        | "gamma" | "lgamma" | "even" => LogicalType::Double,
-        // sign() is always INT64, regardless of the operand's numeric type.
-        "sign" | "factorial" => LogicalType::Int64,
-        "bitwise_and" | "bitwise_or" | "bitwise_xor" | "bitshift_left" | "bitshift_right" => {
-            LogicalType::Int64
+        BuiltinScalar::Round(RoundMode::Floor) | BuiltinScalar::Round(RoundMode::Ceil) => {
+            match args.first() {
+                Some(LogicalType::Decimal(p, _)) => LogicalType::Decimal(*p, 0),
+                other => other.cloned().unwrap_or(LogicalType::Any),
+            }
         }
-        "greatest" | "least" => greatest_least_result_type(&name, args)?,
+        BuiltinScalar::Abs | BuiltinScalar::Negate => {
+            args.first().cloned().unwrap_or(LogicalType::Any)
+        }
+        BuiltinScalar::Round(RoundMode::Round) if args.len() == 2 => LogicalType::Double,
+        BuiltinScalar::Round(RoundMode::Round) => args.first().cloned().unwrap_or(LogicalType::Any),
+        // Pure double-valued math.
+        BuiltinScalar::Sqrt
+        | BuiltinScalar::Cbrt
+        | BuiltinScalar::Ln
+        | BuiltinScalar::Log
+        | BuiltinScalar::Log2
+        | BuiltinScalar::Log10
+        | BuiltinScalar::Exp
+        | BuiltinScalar::Pow
+        | BuiltinScalar::Sin
+        | BuiltinScalar::Cos
+        | BuiltinScalar::Tan
+        | BuiltinScalar::Cot
+        | BuiltinScalar::Asin
+        | BuiltinScalar::Acos
+        | BuiltinScalar::Atan
+        | BuiltinScalar::Atan2
+        | BuiltinScalar::Degrees
+        | BuiltinScalar::Radians
+        | BuiltinScalar::Gamma
+        | BuiltinScalar::Lgamma
+        | BuiltinScalar::Even => LogicalType::Double,
+        // sign() is always INT64, regardless of the operand's numeric type.
+        BuiltinScalar::Sign | BuiltinScalar::Factorial => LogicalType::Int64,
+        BuiltinScalar::BitwiseAnd
+        | BuiltinScalar::BitwiseOr
+        | BuiltinScalar::BitwiseXor
+        | BuiltinScalar::BitshiftLeft
+        | BuiltinScalar::BitshiftRight => LogicalType::Int64,
+        BuiltinScalar::Greatest | BuiltinScalar::Least => greatest_least_result_type(name, args)?,
         // Common type of the arguments (first non-Any wins).
-        "nullif" => args
+        BuiltinScalar::Nullif => args
             .iter()
             .find(|a| **a != LogicalType::Any)
             .cloned()
             .unwrap_or(LogicalType::Any),
-        "count_if" => LogicalType::Int(koko_common::IntKind::U8),
-        "current_date" => LogicalType::Date,
-        "current_timestamp" => LogicalType::Timestamp,
-        "octet_length" | "to_epoch_ms" => LogicalType::Int64,
-        "encode" => LogicalType::Blob,
-        "decode" | "md5" | "sha256" => LogicalType::String,
-        "epoch_ms" => LogicalType::Timestamp,
-        "hash" => LogicalType::Int(koko_common::IntKind::U64),
-        "internal_id" => LogicalType::InternalId,
-        "random" => LogicalType::Double,
-        "setseed" | "error" => LogicalType::Int(koko_common::IntKind::I32),
+        BuiltinScalar::CountIf => LogicalType::Int(koko_common::IntKind::U8),
+        BuiltinScalar::CurrentDate => LogicalType::Date,
+        BuiltinScalar::CurrentTimestamp => LogicalType::Timestamp,
+        BuiltinScalar::OctetLength | BuiltinScalar::ToEpochMs => LogicalType::Int64,
+        BuiltinScalar::Encode => LogicalType::Blob,
+        BuiltinScalar::Decode
+        | BuiltinScalar::Digest(DigestAlgorithm::Md5)
+        | BuiltinScalar::Digest(DigestAlgorithm::Sha256) => LogicalType::String,
+        BuiltinScalar::EpochMs => LogicalType::Timestamp,
+        BuiltinScalar::Hash => LogicalType::Int(koko_common::IntKind::U64),
+        BuiltinScalar::InternalId => LogicalType::InternalId,
+        BuiltinScalar::Random => LogicalType::Double,
+        BuiltinScalar::Setseed | BuiltinScalar::Error => {
+            LogicalType::Int(koko_common::IntKind::I32)
+        }
         // cost(recursive_rel) — registered so `cost()` gets the catalog
         // signature error; the weighted-path value lands with WSHORTEST.
-        "cost" => LogicalType::Double,
+        BuiltinScalar::Cost => LogicalType::Double,
         // rowid(node) — the node's internal offset.
-        "rowid" => LogicalType::Int64,
-        "is_trail" | "is_acyclic" => LogicalType::Bool,
+        BuiltinScalar::Rowid => LogicalType::Int64,
+        BuiltinScalar::IsTrail | BuiltinScalar::IsAcyclic => LogicalType::Bool,
         // start_node/end_node(rel) — the physical endpoint nodes; the element
         // type resolves from the runtime value.
-        "start_node" | "end_node" => LogicalType::Any,
-        "list_has_all"
-        | "equals"
-        | "not_equals"
-        | "greater_than"
-        | "greater_than_equals"
-        | "less_than"
-        | "less_than_equals" => LogicalType::Bool,
+        BuiltinScalar::StartNode | BuiltinScalar::EndNode => LogicalType::Any,
+        BuiltinScalar::ListHasAll
+        | BuiltinScalar::Equals
+        | BuiltinScalar::NotEquals
+        | BuiltinScalar::GreaterThan
+        | BuiltinScalar::GreaterThanEquals
+        | BuiltinScalar::LessThan
+        | BuiltinScalar::LessThanEquals => LogicalType::Bool,
         // String functions.
-        "concat" | "lower" | "lcase" | "upper" | "ucase" | "trim" | "ltrim" | "rtrim"
-        | "initcap" | "left" | "right" | "lpad" | "rpad" | "substr" | "substring" | "repeat"
-        | "split_part" | "replace" | "regexp_replace" | "regexp_extract" => LogicalType::String,
-        "contains" | "prefix" | "suffix" | "starts_with" | "ends_with" | "regexp_matches"
-        | "regexp_full_match" => LogicalType::Bool,
-        "length" | "levenshtein" => LogicalType::Int64,
+        BuiltinScalar::Concat
+        | BuiltinScalar::Lower
+        | BuiltinScalar::Upper
+        | BuiltinScalar::Trim
+        | BuiltinScalar::Ltrim
+        | BuiltinScalar::Rtrim
+        | BuiltinScalar::Initcap
+        | BuiltinScalar::Left
+        | BuiltinScalar::Right
+        | BuiltinScalar::Lpad
+        | BuiltinScalar::Rpad
+        | BuiltinScalar::Substr
+        | BuiltinScalar::Repeat
+        | BuiltinScalar::SplitPart
+        | BuiltinScalar::Replace
+        | BuiltinScalar::RegexpReplace
+        | BuiltinScalar::RegexpExtract => LogicalType::String,
+        BuiltinScalar::Contains
+        | BuiltinScalar::Prefix
+        | BuiltinScalar::Suffix
+        | BuiltinScalar::RegexpMatches
+        | BuiltinScalar::RegexpFullMatch => LogicalType::Bool,
+        BuiltinScalar::Length | BuiltinScalar::Levenshtein => LogicalType::Int64,
         // Recursive-rel / path accessors. `nodes`/`rels` extract the node/rel
         // value lists; `properties(list, key)` maps a property over them. The
         // element types are resolved from the runtime values, so they type as
         // `LIST(ANY)` here (display is value-driven).
         // nodes()/rels() type as NODE/REL lists (table resolved from runtime
         // values — the sentinel id renders plain "NODE"/"REL" in errors).
-        "nodes" => LogicalType::List(Box::new(LogicalType::Node(koko_common::TableId(u64::MAX)))),
-        "rels" | "relationships" => {
+        BuiltinScalar::Nodes => {
+            LogicalType::List(Box::new(LogicalType::Node(koko_common::TableId(u64::MAX))))
+        }
+        BuiltinScalar::Rels => {
             LogicalType::List(Box::new(LogicalType::Rel(koko_common::TableId(u64::MAX))))
         }
-        "properties" => LogicalType::List(Box::new(LogicalType::Any)),
-        "reverse" => match args.first() {
+        BuiltinScalar::Properties => LogicalType::List(Box::new(LogicalType::Any)),
+        BuiltinScalar::Reverse => match args.first() {
             // `reverse` of an ARRAY yields a LIST (matches the list oracle).
             Some(LogicalType::Array(inner, _)) => LogicalType::List(inner.clone()),
             Some(t) => t.clone(),
             None => LogicalType::String,
         },
-        "string_split" | "regexp_extract_all" | "regexp_split_to_array" => {
-            LogicalType::List(Box::new(LogicalType::String))
-        }
+        BuiltinScalar::StringSplit
+        | BuiltinScalar::RegexpExtractAll
+        | BuiltinScalar::RegexpSplitToArray => LogicalType::List(Box::new(LogicalType::String)),
         // List construction/string splitting functions not covered by fixed
         // C++ signatures above.
-        "list_creation" => {
+        BuiltinScalar::ListCreation => {
             let inner = args.first().cloned().unwrap_or(LogicalType::Any);
             LogicalType::List(Box::new(inner))
         }
-        "str_split" | "string_to_array" => LogicalType::List(Box::new(LogicalType::String)),
         // Struct / map functions.
-        "struct_extract" => LogicalType::Any, // resolved from the field at eval
-        "map" | "map_checked" => match (args.first(), args.get(1)) {
+        BuiltinScalar::StructExtract => LogicalType::Any, // resolved from the field at eval
+        BuiltinScalar::Map => match (args.first(), args.get(1)) {
             (Some(LogicalType::List(k)), Some(LogicalType::List(v))) => {
                 LogicalType::Map(k.clone(), v.clone())
             }
             _ => LogicalType::Map(Box::new(LogicalType::Any), Box::new(LogicalType::Any)),
         },
-        "map_extract" | "element_at" => match args.first() {
+        BuiltinScalar::MapExtract | BuiltinScalar::ElementAt => match args.first() {
             Some(LogicalType::Map(_, v)) => LogicalType::List(v.clone()),
             _ => LogicalType::List(Box::new(LogicalType::Any)),
         },
-        "map_keys" => match args.first() {
+        BuiltinScalar::MapKeys => match args.first() {
             Some(LogicalType::Map(k, _)) => LogicalType::List(k.clone()),
             _ => LogicalType::List(Box::new(LogicalType::Any)),
         },
-        "map_values" => match args.first() {
+        BuiltinScalar::MapValues => match args.first() {
             Some(LogicalType::Map(_, v)) => LogicalType::List(v.clone()),
             _ => LogicalType::List(Box::new(LogicalType::Any)),
         },
-        "cardinality" => LogicalType::Int64,
+        BuiltinScalar::Size => LogicalType::Int64,
         // Date / timestamp / interval functions.
-        "dayname" | "monthname" => LogicalType::String,
-        "date_part" | "datepart" => LogicalType::Int64,
-        "last_day" => LogicalType::Date,
-        "date_trunc" | "datetrunc" => match args.get(1) {
+        BuiltinScalar::Dayname | BuiltinScalar::Monthname => LogicalType::String,
+        BuiltinScalar::DatePart => LogicalType::Int64,
+        BuiltinScalar::LastDay => LogicalType::Date,
+        BuiltinScalar::DateTrunc => match args.get(1) {
             Some(
                 LogicalType::Timestamp
                 | LogicalType::TimestampNs
@@ -1623,8 +1131,14 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
             ) => LogicalType::Timestamp,
             _ => LogicalType::Date,
         },
-        "to_years" | "to_months" | "to_days" | "to_hours" | "to_minutes" | "to_seconds"
-        | "to_milliseconds" | "to_microseconds" => LogicalType::Interval,
+        BuiltinScalar::ToYears
+        | BuiltinScalar::ToMonths
+        | BuiltinScalar::ToDays
+        | BuiltinScalar::ToHours
+        | BuiltinScalar::ToMinutes
+        | BuiltinScalar::ToSeconds
+        | BuiltinScalar::ToMilliseconds
+        | BuiltinScalar::ToMicroseconds => LogicalType::Interval,
         _ => {
             return Err(Error::binder(format!(
                 "scalar function {name} is not registered"
@@ -1634,20 +1148,23 @@ pub fn scalar_result_type(name: &str, args: &[LogicalType]) -> Result<LogicalTyp
     Ok(ty)
 }
 
-/// Evaluate scalar function `name` over already-evaluated `args` with
+/// Evaluate a typed scalar function over already-evaluated `args` with
 /// connection-owned nondeterministic-function state.
 pub fn eval_with_context(
-    name: &str,
+    function: BuiltinScalar,
+    called_name: &str,
     args: &[Value],
     random: &crate::oracle_hash::RandomState,
 ) -> Result<Value> {
-    let name = canonical(&name.to_ascii_lowercase()).to_string();
+    let validate_map_keys = called_name == "map_checked";
+    let name = function.canonical_name();
 
     // Cast aliases delegate to the cast matrix (NULL → NULL inside cast_value).
     // The `to_uint*` functions reject a negative INT128 with the C++
     // CastToUnsigned wording (to_uint8(to_int128(-1))); narrower sources keep
     // the range message (to_uint64(-500) — oracle-verified split).
-    if let Some(target) = cast_alias_target(&name) {
+    if let BuiltinScalar::Cast(target) = function {
+        let target = target.logical_type();
         let unsigned_target = matches!(
             target,
             LogicalType::Int(k) if !k.is_signed()
@@ -1688,14 +1205,16 @@ pub fn eval_with_context(
     }
 
     // Null-aware functions (must see NULLs).
-    match name.as_str() {
-        "pi" => return Ok(Value::Double(std::f64::consts::PI)),
-        "gen_random_uuid" => return Ok(Value::Uuid(random.next_uuid())),
-        "typeof" => return Ok(Value::String(typeof_type_name(&args[0].logical_type()))),
+    match function {
+        BuiltinScalar::Pi => return Ok(Value::Double(std::f64::consts::PI)),
+        BuiltinScalar::GenRandomUuid => return Ok(Value::Uuid(random.next_uuid())),
+        BuiltinScalar::Typeof => {
+            return Ok(Value::String(typeof_type_name(&args[0].logical_type())));
+        }
         // Fixed-array constructor — like `list_creation`, but NULL-aware so element NULLs
         // are preserved rather than propagating to a NULL result.
-        "array_value" => return Ok(Value::List(args.to_vec())),
-        "concat" => {
+        BuiltinScalar::ArrayValue => return Ok(Value::List(args.to_vec())),
+        BuiltinScalar::Concat => {
             return Ok(Value::String(
                 args.iter()
                     .filter(|a| !a.is_null())
@@ -1703,7 +1222,7 @@ pub fn eval_with_context(
                     .collect(),
             ));
         }
-        "concat_ws" => {
+        BuiltinScalar::ConcatWs => {
             // NULL separator -> NULL. NULL values are skipped, and the
             // separator is emitted before a value only when the *immediately
             // preceding* value argument was non-NULL (oracle:
@@ -1726,27 +1245,27 @@ pub fn eval_with_context(
         }
         // hash() mirrors the C++ vector executor: a NULL input hashes to
         // NULL_HASH (UINT64_MAX), not to NULL.
-        "hash" => {
+        BuiltinScalar::Hash => {
             return Ok(Value::IntX {
                 value: crate::oracle_hash::hash_value(&args[0])? as i128,
                 kind: koko_common::IntKind::U64,
             });
         }
-        "coalesce" | "ifnull" => {
+        BuiltinScalar::Coalesce | BuiltinScalar::Ifnull => {
             return Ok(args
                 .iter()
                 .find(|a| !a.is_null())
                 .cloned()
                 .unwrap_or(Value::Null));
         }
-        "nullif" => {
+        BuiltinScalar::Nullif => {
             // NULL if a == b, else a.
             return Ok(match crate::cypher_cmp(&args[0], &args[1]) {
                 Some(std::cmp::Ordering::Equal) => Value::Null,
                 _ => args[0].clone(),
             });
         }
-        "constant_or_null" => {
+        BuiltinScalar::ConstantOrNull => {
             // constant_or_null(value, ...): NULL if any trailing arg is NULL.
             return Ok(if args[1..].iter().any(|a| a.is_null()) {
                 Value::Null
@@ -1762,8 +1281,8 @@ pub fn eval_with_context(
         return Ok(Value::Null);
     }
 
-    match name.as_str() {
-        "count_if" => {
+    match function {
+        BuiltinScalar::CountIf => {
             let truthy = match &args[0] {
                 Value::Bool(b) => *b,
                 v => v
@@ -1782,26 +1301,26 @@ pub fn eval_with_context(
                 kind: koko_common::IntKind::U8,
             })
         }
-        "current_date" => {
+        BuiltinScalar::CurrentDate => {
             let secs = std::time::UNIX_EPOCH
                 .elapsed()
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             Ok(Value::Date((secs / 86_400) as i32))
         }
-        "current_timestamp" => {
+        BuiltinScalar::CurrentTimestamp => {
             let micros = std::time::UNIX_EPOCH
                 .elapsed()
                 .map(|d| d.as_micros() as i64)
                 .unwrap_or(0);
             Ok(Value::Timestamp(micros))
         }
-        "octet_length" => match &args[0] {
+        BuiltinScalar::OctetLength => match &args[0] {
             Value::Blob(b) => Ok(Value::Int64(b.len() as i64)),
             v => Ok(Value::Int64(v.to_result_string().len() as i64)),
         },
-        "encode" => Ok(Value::Blob(arg_str(&args[0])?.as_bytes().to_vec())),
-        "decode" => match &args[0] {
+        BuiltinScalar::Encode => Ok(Value::Blob(arg_str(&args[0])?.as_bytes().to_vec())),
+        BuiltinScalar::Decode => match &args[0] {
             Value::Blob(b) => match std::str::from_utf8(b) {
                 Ok(t) => Ok(Value::String(t.to_string())),
                 Err(_) => Err(Error::runtime(
@@ -1812,11 +1331,11 @@ pub fn eval_with_context(
             },
             v => Ok(Value::String(v.to_result_string())),
         },
-        "epoch_ms" => {
+        BuiltinScalar::EpochMs => {
             let n = args[0].as_int128().unwrap_or(0) as i64;
             Ok(Value::Timestamp(n.wrapping_mul(1000)))
         }
-        "to_epoch_ms" => match &args[0] {
+        BuiltinScalar::ToEpochMs => match &args[0] {
             Value::Timestamp(t) | Value::TimestampTz(t) => Ok(Value::Int64(t / 1000)),
             // DATE promotes implicitly (midnight UTC).
             Value::Date(d) => Ok(Value::Int64(i64::from(*d) * 86_400_000)),
@@ -1825,16 +1344,16 @@ pub fn eval_with_context(
                 v.logical_type().name()
             ))),
         },
-        "md5" => Ok(Value::String(crate::digest::md5_hex(
+        BuiltinScalar::Digest(DigestAlgorithm::Md5) => Ok(Value::String(crate::digest::md5_hex(
             arg_str(&args[0])?.as_bytes(),
         ))),
-        "sha256" => Ok(Value::String(crate::digest::sha256_hex(
-            arg_str(&args[0])?.as_bytes(),
-        ))),
+        BuiltinScalar::Digest(DigestAlgorithm::Sha256) => Ok(Value::String(
+            crate::digest::sha256_hex(arg_str(&args[0])?.as_bytes()),
+        )),
         // start_node/end_node: the rel's materialized physical endpoints.
-        "start_node" | "end_node" => match &args[0] {
+        BuiltinScalar::StartNode | BuiltinScalar::EndNode => match &args[0] {
             Value::Rel(r) => {
-                let ep = if name == "start_node" {
+                let ep = if function == BuiltinScalar::StartNode {
                     &r.src_node
                 } else {
                     &r.dst_node
@@ -1851,9 +1370,9 @@ pub fn eval_with_context(
             ))),
         },
         // is_trail: no repeated relationship; is_acyclic: no repeated node.
-        "is_trail" | "is_acyclic" => match &args[0] {
+        BuiltinScalar::IsTrail | BuiltinScalar::IsAcyclic => match &args[0] {
             Value::RecursiveRel(r) => {
-                let ids: Vec<_> = if name == "is_trail" {
+                let ids: Vec<_> = if function == BuiltinScalar::IsTrail {
                     r.rels.iter().map(|e| e.id).collect()
                 } else {
                     r.nodes.iter().map(|n| n.id).collect()
@@ -1867,7 +1386,7 @@ pub fn eval_with_context(
                 v.logical_type().name()
             ))),
         },
-        "rowid" => match &args[0] {
+        BuiltinScalar::Rowid => match &args[0] {
             Value::InternalId(id) => Ok(Value::Int64(id.offset.0 as i64)),
             Value::Node(n) => Ok(Value::Int64(n.id.offset.0 as i64)),
             Value::Rel(r) => Ok(Value::Int64(r.id.offset.0 as i64)),
@@ -1876,7 +1395,7 @@ pub fn eval_with_context(
                 v.logical_type().name()
             ))),
         },
-        "internal_id" => {
+        BuiltinScalar::InternalId => {
             let t = args[0].as_int128().unwrap_or(0) as u64;
             let o = args[1].as_int128().unwrap_or(0) as u64;
             Ok(Value::InternalId(koko_common::InternalId::new(
@@ -1884,22 +1403,22 @@ pub fn eval_with_context(
                 o,
             )))
         }
-        "random" => Ok(Value::Double(random.next_random())),
-        "setseed" => {
+        BuiltinScalar::Random => Ok(Value::Double(random.next_random())),
+        BuiltinScalar::Setseed => {
             if let Some(seed) = args[0].as_f64() {
                 random.set_seed(seed);
             }
             Ok(Value::Null)
         }
-        "error" => Err(Error::runtime(arg_str(&args[0])?.to_string())),
-        "equals"
-        | "not_equals"
-        | "greater_than"
-        | "greater_than_equals"
-        | "less_than"
-        | "less_than_equals" => {
+        BuiltinScalar::Error => Err(Error::runtime(arg_str(&args[0])?.to_string())),
+        BuiltinScalar::Equals
+        | BuiltinScalar::NotEquals
+        | BuiltinScalar::GreaterThan
+        | BuiltinScalar::GreaterThanEquals
+        | BuiltinScalar::LessThan
+        | BuiltinScalar::LessThanEquals => {
             let ord = crate::cypher_cmp(&args[0], &args[1]);
-            let b = match (name.as_str(), ord) {
+            let b = match (name, ord) {
                 (_, None) => return Ok(Value::Null),
                 ("equals", Some(o)) => o == std::cmp::Ordering::Equal,
                 ("not_equals", Some(o)) => o != std::cmp::Ordering::Equal,
@@ -1910,7 +1429,7 @@ pub fn eval_with_context(
             };
             Ok(Value::Bool(b))
         }
-        "list_has_all" => {
+        BuiltinScalar::ListHasAll => {
             let hay = arg_list(&args[0])?;
             let needles = arg_list(&args[1])?;
             Ok(Value::Bool(needles.iter().all(|n| {
@@ -1920,11 +1439,11 @@ pub fn eval_with_context(
                         .any(|h| crate::cypher_cmp(h, n) == Some(std::cmp::Ordering::Equal))
             })))
         }
-        "greatest" | "least" => eval_greatest_least(&name, args),
+        BuiltinScalar::Greatest | BuiltinScalar::Least => eval_greatest_least(function, args),
         // `union_tag(u)` → the active member's name; `union_extract(u, 'field')` →
         // the payload if `field` is the active member (else NULL, per C++'s
         // struct-extract reuse over the physical union layout).
-        "union_tag" => match &args[0] {
+        BuiltinScalar::UnionTag => match &args[0] {
             Value::Union { variants, tag, .. } => Ok(Value::String(
                 variants
                     .get(*tag)
@@ -1936,7 +1455,7 @@ pub fn eval_with_context(
                 other.logical_type().name()
             ))),
         },
-        "union_extract" => match (&args[0], &args[1]) {
+        BuiltinScalar::UnionExtract => match (&args[0], &args[1]) {
             (
                 Value::Union {
                     variants,
@@ -1964,16 +1483,16 @@ pub fn eval_with_context(
                 other.logical_type().name()
             ))),
         },
-        "date" => cast_value(&args[0], &LogicalType::Date),
-        "timestamp" => cast_value(&args[0], &LogicalType::Timestamp),
-        "interval" | "duration" => cast_value(&args[0], &LogicalType::Interval),
-        "uuid" => cast_value(&args[0], &LogicalType::Uuid),
-        "string" => cast_value(&args[0], &LogicalType::String),
-        "blob" => cast_value(&args[0], &LogicalType::Blob),
+        BuiltinScalar::Date => cast_value(&args[0], &LogicalType::Date),
+        BuiltinScalar::Timestamp => cast_value(&args[0], &LogicalType::Timestamp),
+        BuiltinScalar::Interval => cast_value(&args[0], &LogicalType::Interval),
+        BuiltinScalar::Uuid => cast_value(&args[0], &LogicalType::Uuid),
+        BuiltinScalar::String => cast_value(&args[0], &LogicalType::String),
+        BuiltinScalar::Blob => cast_value(&args[0], &LogicalType::Blob),
         // to_timestamp(seconds-since-epoch) → TIMESTAMP (micros). C++ computes
         // `sec * MICROS_PER_SEC` in double precision (so large inputs pick up a
         // rounding artifact) and overflow-checks the cast back to int64.
-        "to_timestamp" => {
+        BuiltinScalar::ToTimestamp => {
             let product = arg_f64(&args[0])? * 1_000_000.0;
             // i64::MIN (-2^63) is exactly representable as f64; i64::MAX rounds up
             // to 2^63, so the upper bound is strict.
@@ -1987,7 +1506,7 @@ pub fn eval_with_context(
             }
             Ok(Value::Timestamp(product as i64))
         }
-        "make_date" => {
+        BuiltinScalar::MakeDate => {
             let y = args[0].as_i64().unwrap_or(0);
             let m = args[1].as_i64().unwrap_or(1);
             let d = args[2].as_i64().unwrap_or(1);
@@ -1999,12 +1518,12 @@ pub fn eval_with_context(
             }
             Ok(Value::Date(temporal::days_from_civil(y, m, d) as i32))
         }
-        "century" => date_part("century", &args[0]),
-        "abs" => eval_abs(&args[0]),
-        "negate" => crate::eval_scalar(crate::ScalarOp::Neg, args),
-        "floor" => eval_round_family(&args[0], RoundKind::Floor),
-        "ceil" | "ceiling" => eval_round_family(&args[0], RoundKind::Ceil),
-        "round" => {
+        BuiltinScalar::Century => date_part("century", &args[0]),
+        BuiltinScalar::Abs => eval_abs(&args[0]),
+        BuiltinScalar::Negate => crate::eval_scalar(crate::ScalarOp::Neg, args),
+        BuiltinScalar::Round(RoundMode::Floor) => eval_round_family(&args[0], RoundKind::Floor),
+        BuiltinScalar::Round(RoundMode::Ceil) => eval_round_family(&args[0], RoundKind::Ceil),
+        BuiltinScalar::Round(RoundMode::Round) => {
             if args.len() == 2 {
                 let digits = args[1].as_i64().unwrap_or(0);
                 Ok(Value::Double(round_to(arg_f64(&args[0])?, digits)))
@@ -2012,9 +1531,9 @@ pub fn eval_with_context(
                 eval_round_family(&args[0], RoundKind::Round)
             }
         }
-        "sign" => eval_sign(&args[0]),
-        "even" => Ok(Value::Double((arg_f64(&args[0])? / 2.0).ceil() * 2.0)),
-        "factorial" => {
+        BuiltinScalar::Sign => eval_sign(&args[0]),
+        BuiltinScalar::Even => Ok(Value::Double((arg_f64(&args[0])? / 2.0).ceil() * 2.0)),
+        BuiltinScalar::Factorial => {
             let n = args[0].as_i64().unwrap_or(0);
             let mut acc: i64 = 1;
             for i in 2..=n {
@@ -2024,42 +1543,42 @@ pub fn eval_with_context(
             }
             Ok(Value::Int64(acc))
         }
-        "sqrt" => Ok(Value::Double(arg_f64(&args[0])?.sqrt())),
-        "cbrt" => Ok(Value::Double(arg_f64(&args[0])?.cbrt())),
-        "ln" => Ok(Value::Double(arg_f64(&args[0])?.ln())),
-        "log" | "log10" => Ok(Value::Double(arg_f64(&args[0])?.log10())),
-        "log2" => Ok(Value::Double(arg_f64(&args[0])?.log2())),
-        "exp" => Ok(Value::Double(arg_f64(&args[0])?.exp())),
-        "pow" | "power" => Ok(Value::Double(arg_f64(&args[0])?.powf(arg_f64(&args[1])?))),
-        "sin" => Ok(Value::Double(arg_f64(&args[0])?.sin())),
-        "cos" => Ok(Value::Double(arg_f64(&args[0])?.cos())),
-        "tan" => Ok(Value::Double(arg_f64(&args[0])?.tan())),
-        "cot" => Ok(Value::Double(1.0 / arg_f64(&args[0])?.tan())),
-        "asin" => Ok(Value::Double(arg_f64(&args[0])?.asin())),
-        "acos" => Ok(Value::Double(arg_f64(&args[0])?.acos())),
-        "atan" => Ok(Value::Double(arg_f64(&args[0])?.atan())),
-        "atan2" => Ok(Value::Double(arg_f64(&args[0])?.atan2(arg_f64(&args[1])?))),
-        "degrees" => Ok(Value::Double(arg_f64(&args[0])?.to_degrees())),
-        "radians" => Ok(Value::Double(arg_f64(&args[0])?.to_radians())),
-        "gamma" => Ok(Value::Double(gamma(arg_f64(&args[0])?))),
-        "lgamma" => Ok(Value::Double(lgamma(arg_f64(&args[0])?))),
-        "bitwise_and" => bitwise(args, |a, b| a & b),
-        "bitwise_or" => bitwise(args, |a, b| a | b),
-        "bitwise_xor" => bitwise(args, |a, b| a ^ b),
-        "bitshift_left" => bitwise(args, |a, b| a << b),
-        "bitshift_right" => bitwise(args, |a, b| a >> b),
+        BuiltinScalar::Sqrt => Ok(Value::Double(arg_f64(&args[0])?.sqrt())),
+        BuiltinScalar::Cbrt => Ok(Value::Double(arg_f64(&args[0])?.cbrt())),
+        BuiltinScalar::Ln => Ok(Value::Double(arg_f64(&args[0])?.ln())),
+        BuiltinScalar::Log | BuiltinScalar::Log10 => Ok(Value::Double(arg_f64(&args[0])?.log10())),
+        BuiltinScalar::Log2 => Ok(Value::Double(arg_f64(&args[0])?.log2())),
+        BuiltinScalar::Exp => Ok(Value::Double(arg_f64(&args[0])?.exp())),
+        BuiltinScalar::Pow => Ok(Value::Double(arg_f64(&args[0])?.powf(arg_f64(&args[1])?))),
+        BuiltinScalar::Sin => Ok(Value::Double(arg_f64(&args[0])?.sin())),
+        BuiltinScalar::Cos => Ok(Value::Double(arg_f64(&args[0])?.cos())),
+        BuiltinScalar::Tan => Ok(Value::Double(arg_f64(&args[0])?.tan())),
+        BuiltinScalar::Cot => Ok(Value::Double(1.0 / arg_f64(&args[0])?.tan())),
+        BuiltinScalar::Asin => Ok(Value::Double(arg_f64(&args[0])?.asin())),
+        BuiltinScalar::Acos => Ok(Value::Double(arg_f64(&args[0])?.acos())),
+        BuiltinScalar::Atan => Ok(Value::Double(arg_f64(&args[0])?.atan())),
+        BuiltinScalar::Atan2 => Ok(Value::Double(arg_f64(&args[0])?.atan2(arg_f64(&args[1])?))),
+        BuiltinScalar::Degrees => Ok(Value::Double(arg_f64(&args[0])?.to_degrees())),
+        BuiltinScalar::Radians => Ok(Value::Double(arg_f64(&args[0])?.to_radians())),
+        BuiltinScalar::Gamma => Ok(Value::Double(gamma(arg_f64(&args[0])?))),
+        BuiltinScalar::Lgamma => Ok(Value::Double(lgamma(arg_f64(&args[0])?))),
+        BuiltinScalar::BitwiseAnd => bitwise(args, |a, b| a & b),
+        BuiltinScalar::BitwiseOr => bitwise(args, |a, b| a | b),
+        BuiltinScalar::BitwiseXor => bitwise(args, |a, b| a ^ b),
+        BuiltinScalar::BitshiftLeft => bitwise(args, |a, b| a << b),
+        BuiltinScalar::BitshiftRight => bitwise(args, |a, b| a >> b),
 
         // --- string functions ---
-        "concat" => Ok(Value::String(
+        BuiltinScalar::Concat => Ok(Value::String(
             args.iter().map(|a| a.to_result_string()).collect(),
         )),
-        "lower" | "lcase" => Ok(Value::String(case_map_1to1(arg_str(&args[0])?, false))),
-        "upper" | "ucase" => Ok(Value::String(case_map_1to1(arg_str(&args[0])?, true))),
-        "trim" => Ok(Value::String(arg_str(&args[0])?.trim().to_string())),
-        "ltrim" => Ok(Value::String(arg_str(&args[0])?.trim_start().to_string())),
-        "rtrim" => Ok(Value::String(arg_str(&args[0])?.trim_end().to_string())),
-        "initcap" => Ok(Value::String(initcap(arg_str(&args[0])?))),
-        "contains" => {
+        BuiltinScalar::Lower => Ok(Value::String(case_map_1to1(arg_str(&args[0])?, false))),
+        BuiltinScalar::Upper => Ok(Value::String(case_map_1to1(arg_str(&args[0])?, true))),
+        BuiltinScalar::Trim => Ok(Value::String(arg_str(&args[0])?.trim().to_string())),
+        BuiltinScalar::Ltrim => Ok(Value::String(arg_str(&args[0])?.trim_start().to_string())),
+        BuiltinScalar::Rtrim => Ok(Value::String(arg_str(&args[0])?.trim_end().to_string())),
+        BuiltinScalar::Initcap => Ok(Value::String(initcap(arg_str(&args[0])?))),
+        BuiltinScalar::Contains => {
             // C++ quirk: an empty needle is never contained (`contains('a','')`
             // and `contains('','')` are both False), unlike starts/ends_with.
             let needle = arg_str(&args[1])?;
@@ -2067,13 +1586,13 @@ pub fn eval_with_context(
                 !needle.is_empty() && arg_str(&args[0])?.contains(needle),
             ))
         }
-        "starts_with" | "prefix" => Ok(Value::Bool(
+        BuiltinScalar::Prefix => Ok(Value::Bool(
             arg_str(&args[0])?.starts_with(arg_str(&args[1])?),
         )),
-        "ends_with" | "suffix" => Ok(Value::Bool(
+        BuiltinScalar::Suffix => Ok(Value::Bool(
             arg_str(&args[0])?.ends_with(arg_str(&args[1])?),
         )),
-        "reverse" => match &args[0] {
+        BuiltinScalar::Reverse => match &args[0] {
             Value::List(items) => Ok(Value::List(items.iter().rev().cloned().collect())),
             v => Ok(Value::String(
                 UnicodeSegmentation::graphemes(arg_str(v)?, true)
@@ -2081,7 +1600,7 @@ pub fn eval_with_context(
                     .collect(),
             )),
         },
-        "size" => match &args[0] {
+        BuiltinScalar::Size => match &args[0] {
             Value::List(items) => Ok(Value::Int64(items.len() as i64)),
             Value::Map(entries) => Ok(Value::Int64(entries.len() as i64)),
             // Non-strings arrive via the (STRING) overload's implicit cast:
@@ -2093,13 +1612,13 @@ pub fn eval_with_context(
         },
         // `cost(e)` is the accumulated edge weight of a (ALL) WSHORTEST path
         // (a DOUBLE); NULL on a non-weighted path.
-        "cost" => match &args[0] {
+        BuiltinScalar::Cost => match &args[0] {
             Value::RecursiveRel(r) => Ok(r.cost.map(Value::Double).unwrap_or(Value::Null)),
             v => Err(type_err("cost", "RECURSIVE_REL", v)),
         },
         // `length` is the rel count of a recursive-rel / path value, else a
         // string/list length.
-        "length" => match &args[0] {
+        BuiltinScalar::Length => match &args[0] {
             // The unmatched-OPTIONAL degenerate path is NULL-length (audit V13);
             // a genuinely matched zero-length path is 0.
             Value::RecursiveRel(r) if r.degenerate => Ok(Value::Null),
@@ -2110,7 +1629,7 @@ pub fn eval_with_context(
         },
         // `nodes(p)` / `rels(p)` extract a recursive-rel / path value's node and
         // relationship lists as `LIST[NODE]` / `LIST[REL]`.
-        "nodes" => match &args[0] {
+        BuiltinScalar::Nodes => match &args[0] {
             Value::RecursiveRel(r) => Ok(Value::List(
                 r.nodes
                     .iter()
@@ -2120,7 +1639,7 @@ pub fn eval_with_context(
             )),
             v => Err(type_err("nodes", "RECURSIVE_REL", v)),
         },
-        "rels" | "relationships" => match &args[0] {
+        BuiltinScalar::Rels => match &args[0] {
             Value::RecursiveRel(r) => Ok(Value::List(
                 r.rels
                     .iter()
@@ -2133,7 +1652,7 @@ pub fn eval_with_context(
         // `properties(list, key)` maps property `key` over a `LIST[NODE|REL]`,
         // returning a list of the corresponding values (NULL where absent). The
         // special keys `_id` and `_label` read the identity/label.
-        "properties" => {
+        BuiltinScalar::Properties => {
             let key = arg_str(&args[1])?;
             let out = arg_list(&args[0])?
                 .iter()
@@ -2141,27 +1660,27 @@ pub fn eval_with_context(
                 .collect();
             Ok(Value::List(out))
         }
-        "left" => Ok(Value::String(str_left(
+        BuiltinScalar::Left => Ok(Value::String(str_left(
             arg_str(&args[0])?,
             args[1].as_i64().unwrap_or(0),
         ))),
-        "right" => Ok(Value::String(str_right(
+        BuiltinScalar::Right => Ok(Value::String(str_right(
             arg_str(&args[0])?,
             args[1].as_i64().unwrap_or(0),
         ))),
-        "lpad" => Ok(Value::String(str_pad(
+        BuiltinScalar::Lpad => Ok(Value::String(str_pad(
             arg_str(&args[0])?,
             args[1].as_i64().unwrap_or(0),
             arg_str(&args[2])?,
             true,
         ))),
-        "rpad" => Ok(Value::String(str_pad(
+        BuiltinScalar::Rpad => Ok(Value::String(str_pad(
             arg_str(&args[0])?,
             args[1].as_i64().unwrap_or(0),
             arg_str(&args[2])?,
             false,
         ))),
-        "substr" | "substring" => {
+        BuiltinScalar::Substr => {
             let len = args.get(2).and_then(|v| v.as_i64());
             Ok(Value::String(str_substr(
                 arg_str(&args[0])?,
@@ -2169,11 +1688,11 @@ pub fn eval_with_context(
                 len,
             )))
         }
-        "repeat" => {
+        BuiltinScalar::Repeat => {
             let n = args[1].as_i64().unwrap_or(0).max(0) as usize;
             Ok(Value::String(arg_str(&args[0])?.repeat(n)))
         }
-        "string_split" | "str_split" | "string_to_array" => {
+        BuiltinScalar::StringSplit => {
             let s = arg_str(&args[0])?;
             let sep = arg_str(&args[1])?;
             // An empty separator splits into individual characters (Kùzu).
@@ -2192,7 +1711,7 @@ pub fn eval_with_context(
             };
             Ok(Value::List(parts))
         }
-        "split_part" => {
+        BuiltinScalar::SplitPart => {
             let s = arg_str(&args[0])?;
             let sep = arg_str(&args[1])?;
             let idx = args[2].as_i64().unwrap_or(1);
@@ -2215,7 +1734,7 @@ pub fn eval_with_context(
         }
         // list_to_string(delimiter, list) — C++ signature is (STRING, LIST); NULL
         // list elements are skipped (no surrounding delimiter).
-        "list_to_string" => match &args[1] {
+        BuiltinScalar::ListToString => match &args[1] {
             Value::List(items) => {
                 let sep = arg_str(&args[0])?;
                 Ok(Value::String(
@@ -2232,10 +1751,11 @@ pub fn eval_with_context(
                 v.logical_type()
             ))),
         },
-        "levenshtein" => Ok(Value::Int64(
-            levenshtein(arg_str(&args[0])?, arg_str(&args[1])?) as i64,
-        )),
-        "replace" => {
+        BuiltinScalar::Levenshtein => Ok(Value::Int64(levenshtein(
+            arg_str(&args[0])?,
+            arg_str(&args[1])?,
+        ) as i64)),
+        BuiltinScalar::Replace => {
             let (s, from, to) = (arg_str(&args[0])?, arg_str(&args[1])?, arg_str(&args[2])?);
             // An empty search string leaves the input unchanged (unlike Rust's
             // str::replace, which would insert between every char).
@@ -2248,17 +1768,17 @@ pub fn eval_with_context(
         // Invalid patterns follow RE2's lenient object semantics (audit V10):
         // matches → False, replace → unchanged, split → whole input; only the
         // extract forms raise (RE2's group-index error) — all oracle-verified.
-        "regexp_matches" => {
+        BuiltinScalar::RegexpMatches => {
             let hay = arg_str(&args[0])?;
             let re = compile_regex_lenient(arg_str(&args[1])?);
             Ok(Value::Bool(re.is_some_and(|re| re.is_match(hay))))
         }
-        "regexp_full_match" => {
+        BuiltinScalar::RegexpFullMatch => {
             let hay = arg_str(&args[0])?;
             let re = compile_regex_lenient(&format!("^(?:{})$", arg_str(&args[1])?));
             Ok(Value::Bool(re.is_some_and(|re| re.is_match(hay))))
         }
-        "regexp_replace" => {
+        BuiltinScalar::RegexpReplace => {
             let s = arg_str(&args[0])?;
             let Some(re) = compile_regex_lenient(arg_str(&args[1])?) else {
                 return Ok(Value::String(s.to_string()));
@@ -2277,7 +1797,7 @@ pub fn eval_with_context(
             };
             Ok(Value::String(out))
         }
-        "regexp_extract" => {
+        BuiltinScalar::RegexpExtract => {
             let re = compile_regex_lenient(arg_str(&args[1])?).ok_or_else(|| {
                 Error::runtime("Regex match group index is out of range".to_string())
             })?;
@@ -2288,7 +1808,7 @@ pub fn eval_with_context(
                 .map_or(String::new(), |m| m.as_str().to_string());
             Ok(Value::String(out))
         }
-        "regexp_extract_all" => {
+        BuiltinScalar::RegexpExtractAll => {
             let re = compile_regex_lenient(arg_str(&args[1])?).ok_or_else(|| {
                 Error::runtime("Regex match group index is out of range".to_string())
             })?;
@@ -2299,7 +1819,7 @@ pub fn eval_with_context(
                 .collect();
             Ok(Value::List(out))
         }
-        "regexp_split_to_array" => {
+        BuiltinScalar::RegexpSplitToArray => {
             let s0 = arg_str(&args[0])?;
             let Some(re) = compile_regex_lenient(arg_str(&args[1])?) else {
                 return Ok(Value::List(vec![Value::String(s0.to_string())]));
@@ -2313,7 +1833,7 @@ pub fn eval_with_context(
         }
 
         // --- list functions ---
-        "range" => {
+        BuiltinScalar::Range => {
             // Wide-safe iteration (audit V16): UINT128 endpoints step in u128
             // (the old `as_i64` path silently collapsed them to defaults);
             // signed endpoints step in i128 and keep their width.
@@ -2363,33 +1883,33 @@ pub fn eval_with_context(
             }
             Ok(Value::List(out))
         }
-        "list_creation" => Ok(Value::List(args.to_vec())),
-        "array_distance" => {
+        BuiltinScalar::ListCreation => Ok(Value::List(args.to_vec())),
+        BuiltinScalar::ArrayDistance => {
             let (l, r) = array_pair_f64(args)?;
             let sq: f64 = l.iter().zip(&r).map(|(a, b)| (a - b) * (a - b)).sum();
             Ok(vec_scalar_result(sq.sqrt(), &args[0]))
         }
-        "array_squared_distance" => {
+        BuiltinScalar::ArraySquaredDistance => {
             let (l, r) = array_pair_f64(args)?;
             let sq: f64 = l.iter().zip(&r).map(|(a, b)| (a - b) * (a - b)).sum();
             Ok(vec_scalar_result(sq, &args[0]))
         }
-        "array_inner_product" | "array_dot_product" => {
+        BuiltinScalar::ArrayInnerProduct | BuiltinScalar::ArrayDotProduct => {
             let (l, r) = array_pair_f64(args)?;
             let dp: f64 = l.iter().zip(&r).map(|(a, b)| a * b).sum();
             Ok(vec_scalar_result(dp, &args[0]))
         }
-        "array_cosine_similarity" => {
+        BuiltinScalar::ArrayCosineSimilarity => {
             let (l, r) = array_pair_f64(args)?;
             let dp: f64 = l.iter().zip(&r).map(|(a, b)| a * b).sum();
             let nl = l.iter().map(|a| a * a).sum::<f64>().sqrt();
             let nr = r.iter().map(|b| b * b).sum::<f64>().sqrt();
             Ok(vec_scalar_result(dp / (nl * nr), &args[0]))
         }
-        "array_cross_product" => array_cross_product_eval(args),
+        BuiltinScalar::ArrayCrossProduct => array_cross_product_eval(args),
         // String indexing (`s[i]` / array_extract on a string) returns a 1-char
         // string; list indexing returns the element.
-        "list_extract" | "list_element" | "array_extract"
+        BuiltinScalar::ListExtract | BuiltinScalar::ArrayExtract
             if !matches!(args[0], Value::List(_)) || name == "array_extract" =>
         {
             let owned;
@@ -2428,7 +1948,7 @@ pub fn eval_with_context(
                     .to_string(),
             ))
         }
-        "list_extract" | "list_element" | "array_extract" => {
+        BuiltinScalar::ListExtract | BuiltinScalar::ArrayExtract => {
             let items = arg_list(&args[0])?;
             let idx = args[1].as_i64().unwrap_or(0);
             // 1-indexed; negative counts from the end; 0 and out-of-range error
@@ -2455,12 +1975,12 @@ pub fn eval_with_context(
         }
         // An empty / all-NULL list answers the C++ physical default, 0 —
         // not NULL (oracle: list_any_value([]) = list_any_value([null,null]) = 0).
-        "list_any_value" => Ok(arg_list(&args[0])?
+        BuiltinScalar::ListAnyValue => Ok(arg_list(&args[0])?
             .iter()
             .find(|v| !v.is_null())
             .cloned()
             .unwrap_or(Value::Int64(0))),
-        "list_slice" | "array_slice" => {
+        BuiltinScalar::ListSlice | BuiltinScalar::ArraySlice => {
             // 1-indexed, END-INCLUSIVE (Kùzu list_slice); negatives count from the
             // end. Works on a STRING too (returns a substring).
             let lo = args[1].as_i64().unwrap_or(1);
@@ -2475,38 +1995,38 @@ pub fn eval_with_context(
                 Ok(Value::List(items[from..to].to_vec()))
             }
         }
-        "list_concat" | "list_cat" => {
+        BuiltinScalar::ListConcat => {
             let mut out = arg_list(&args[0])?.to_vec();
             out.extend(arg_list(&args[1])?.iter().cloned());
             Ok(Value::List(out))
         }
-        "list_append" => {
+        BuiltinScalar::ListAppend => {
             let mut out = arg_list(&args[0])?.to_vec();
             out.push(args[1].clone());
             Ok(Value::List(out))
         }
         // list_prepend(list, value) — C++ signature is (LIST, ANY).
-        "list_prepend" => {
+        BuiltinScalar::ListPrepend => {
             let mut out = vec![args[1].clone()];
             out.extend(arg_list(&args[0])?.iter().cloned());
             Ok(Value::List(out))
         }
-        "list_contains" => {
+        BuiltinScalar::ListContains => {
             Ok(Value::Bool(arg_list(&args[0])?.iter().any(|v| {
                 crate::cypher_cmp(v, &args[1]) == Some(std::cmp::Ordering::Equal)
             })))
         }
-        "list_position" | "list_indexof" => {
+        BuiltinScalar::ListPosition => {
             let pos = arg_list(&args[0])?
                 .iter()
                 .position(|v| crate::cypher_cmp(v, &args[1]) == Some(std::cmp::Ordering::Equal));
             // 1-indexed; 0 when absent (matching Kùzu).
             Ok(Value::Int64(pos.map_or(0, |p| p as i64 + 1)))
         }
-        "list_reverse" => Ok(Value::List(
+        BuiltinScalar::ListReverse => Ok(Value::List(
             arg_list(&args[0])?.iter().rev().cloned().collect(),
         )),
-        "list_sort" | "list_reverse_sort" => {
+        BuiltinScalar::ListSort | BuiltinScalar::ListReverseSort => {
             let items = arg_list(&args[0])?;
             // Optional args differ by function:
             //   list_sort(list[, order[, null_order]]) — order is 'ASC'/'DESC',
@@ -2543,7 +2063,7 @@ pub fn eval_with_context(
             }
             Ok(Value::List(out))
         }
-        "list_distinct" | "list_unique" => {
+        BuiltinScalar::ListDistinct | BuiltinScalar::ListUnique => {
             let items = arg_list(&args[0])?;
             let mut seen = std::collections::HashSet::new();
             let mut out = Vec::new();
@@ -2555,7 +2075,7 @@ pub fn eval_with_context(
                     out.push(v.clone());
                 }
             }
-            if name == "list_unique" {
+            if function == BuiltinScalar::ListUnique {
                 Ok(Value::Int64(out.len() as i64))
             } else {
                 Ok(Value::List(out))
@@ -2565,11 +2085,11 @@ pub fn eval_with_context(
         // fixed-width arithmetic (audit V16): list_product([100,2] :: INT8[])
         // -> -56; UINT128 values accumulate exactly in u128 (the old `as_i64`
         // path silently skipped them). NULL elements are skipped (oracle).
-        "list_sum" => list_fold(arg_list(&args[0])?, false),
-        "list_product" => list_fold(arg_list(&args[0])?, true),
+        BuiltinScalar::ListSum => list_fold(arg_list(&args[0])?, false),
+        BuiltinScalar::ListProduct => list_fold(arg_list(&args[0])?, true),
 
         // --- struct / map functions ---
-        "struct_extract" => {
+        BuiltinScalar::StructExtract => {
             let field = arg_str(&args[1])?;
             let find_named = |props: &[(String, Value)]| {
                 props
@@ -2613,7 +2133,7 @@ pub fn eval_with_context(
                 ))),
             }
         }
-        "map" | "map_checked" => {
+        BuiltinScalar::Map => {
             let keys = arg_list(&args[0])?;
             let vals = arg_list(&args[1])?;
             if keys.len() != vals.len() {
@@ -2626,7 +2146,7 @@ pub fn eval_with_context(
             // The binder routes map() through the checked name when enabled;
             // the check then rejects a NULL key, then a duplicate (C++
             // `validateKeys` order — the duplicate reports the key's rendering).
-            if name == "map_checked" {
+            if validate_map_keys {
                 if keys.iter().any(|k| k.is_null()) {
                     return Err(Error::runtime(
                         "Null value key is not allowed in map.".to_string(),
@@ -2648,7 +2168,7 @@ pub fn eval_with_context(
                 keys.iter().cloned().zip(vals.iter().cloned()).collect(),
             ))
         }
-        "map_extract" | "element_at" => match &args[0] {
+        BuiltinScalar::MapExtract | BuiltinScalar::ElementAt => match &args[0] {
             Value::Map(entries) => Ok(Value::List(
                 entries
                     .iter()
@@ -2663,7 +2183,7 @@ pub fn eval_with_context(
                 v.logical_type()
             ))),
         },
-        "map_keys" => match &args[0] {
+        BuiltinScalar::MapKeys => match &args[0] {
             Value::Map(entries) => Ok(Value::List(
                 entries.iter().map(|(k, _)| k.clone()).collect(),
             )),
@@ -2672,7 +2192,7 @@ pub fn eval_with_context(
                 v.logical_type()
             ))),
         },
-        "map_values" => match &args[0] {
+        BuiltinScalar::MapValues => match &args[0] {
             Value::Map(entries) => Ok(Value::List(
                 entries.iter().map(|(_, v)| v.clone()).collect(),
             )),
@@ -2681,17 +2201,9 @@ pub fn eval_with_context(
                 v.logical_type()
             ))),
         },
-        "cardinality" => match &args[0] {
-            Value::Map(entries) => Ok(Value::Int64(entries.len() as i64)),
-            Value::List(items) => Ok(Value::Int64(items.len() as i64)),
-            v => Err(Error::runtime(format!(
-                "cardinality expects a MAP/LIST, got {}",
-                v.logical_type()
-            ))),
-        },
 
         // --- date / timestamp / interval functions ---
-        "dayname" => {
+        BuiltinScalar::Dayname => {
             const NAMES: [&str; 7] = [
                 "Sunday",
                 "Monday",
@@ -2705,7 +2217,7 @@ pub fn eval_with_context(
                 NAMES[temporal::day_of_week(arg_date(&args[0])?)].to_string(),
             ))
         }
-        "monthname" => {
+        BuiltinScalar::Monthname => {
             const NAMES: [&str; 12] = [
                 "January",
                 "February",
@@ -2723,41 +2235,47 @@ pub fn eval_with_context(
             let (_, m, _) = temporal::civil_from_days(arg_date(&args[0])? as i64);
             Ok(Value::String(NAMES[(m - 1) as usize].to_string()))
         }
-        "last_day" => {
+        BuiltinScalar::LastDay => {
             let (y, m, _) = temporal::civil_from_days(arg_date(&args[0])? as i64);
             let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
             Ok(Value::Date(
                 (temporal::days_from_civil(ny, nm, 1) - 1) as i32,
             ))
         }
-        "date_part" | "datepart" => {
+        BuiltinScalar::DatePart => {
             let part = arg_str(&args[0])?.to_ascii_lowercase();
             date_part(&part, &args[1])
         }
-        "date_trunc" | "datetrunc" => {
+        BuiltinScalar::DateTrunc => {
             let part = arg_str(&args[0])?.to_ascii_lowercase();
             date_trunc(&part, &args[1])
         }
-        "to_years" => Ok(iv_months(args[0].as_i64().unwrap_or(0) * 12)),
-        "to_months" => Ok(iv_months(args[0].as_i64().unwrap_or(0))),
-        "to_days" => Ok(iv_days(args[0].as_i64().unwrap_or(0))),
-        "to_hours" => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 3_600_000_000)),
-        "to_minutes" => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 60_000_000)),
-        "to_seconds" => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 1_000_000)),
-        "to_milliseconds" => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 1_000)),
-        "to_microseconds" => Ok(iv_micros(args[0].as_i64().unwrap_or(0))),
+        BuiltinScalar::ToYears => Ok(iv_months(args[0].as_i64().unwrap_or(0) * 12)),
+        BuiltinScalar::ToMonths => Ok(iv_months(args[0].as_i64().unwrap_or(0))),
+        BuiltinScalar::ToDays => Ok(iv_days(args[0].as_i64().unwrap_or(0))),
+        BuiltinScalar::ToHours => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 3_600_000_000)),
+        BuiltinScalar::ToMinutes => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 60_000_000)),
+        BuiltinScalar::ToSeconds => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 1_000_000)),
+        BuiltinScalar::ToMilliseconds => Ok(iv_micros(args[0].as_i64().unwrap_or(0) * 1_000)),
+        BuiltinScalar::ToMicroseconds => Ok(iv_micros(args[0].as_i64().unwrap_or(0))),
 
         other => Err(Error::not_implemented(format!(
-            "scalar function {other} is not supported in this phase"
+            "scalar function {} is not supported in this phase",
+            other.canonical_name()
         ))),
     }
 }
 
-/// Evaluate a context-free scalar. Query execution should use
-/// [`eval_with_context`]; this convenience entry point serves deterministic
-/// helper/tests which do not retain function state between calls.
+/// Evaluate a context-free scalar by called name.
 pub fn eval(name: &str, args: &[Value]) -> Result<Value> {
-    eval_with_context(name, args, &crate::oracle_hash::RandomState::default())
+    let function = crate::resolve_builtin_scalar(name)
+        .ok_or_else(|| Error::binder(format!("scalar function {name} is not registered")))?;
+    eval_with_context(
+        function,
+        name,
+        args,
+        &crate::oracle_hash::RandomState::default(),
+    )
 }
 
 const MICROS_PER_DAY: i64 = 86_400_000_000;
@@ -3211,39 +2729,59 @@ fn bitwise(args: &[Value], f: impl Fn(i64, i64) -> i64) -> Result<Value> {
     Ok(Value::Int64(f(a, b)))
 }
 
-fn eval_greatest_least(name: &str, args: &[Value]) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::runtime(format!("{name} expects two arguments")));
+fn eval_greatest_least(function: BuiltinScalar, args: &[Value]) -> Result<Value> {
+    let name = function.canonical_name();
+    if args.len() < 2 {
+        return Err(Error::runtime(format!(
+            "{name} expects at least two arguments"
+        )));
     }
-    let ord = match (&args[0], &args[1]) {
-        (Value::Date(a), Value::Date(b)) => a.cmp(b),
-        // Timestamp flavors all carry epoch micros — compare across them.
-        (
-            Value::Timestamp(a) | Value::TimestampTz(a),
-            Value::Timestamp(b) | Value::TimestampTz(b),
-        ) => a.cmp(b),
-        (a, b) => {
-            return Err(Error::runtime(format!(
-                "{name} expects DATE or TIMESTAMP operands, got {} and {}",
-                a.logical_type(),
-                b.logical_type()
-            )));
+    let numeric = args
+        .iter()
+        .all(|argument| argument.logical_type().is_numeric());
+    let temporal = args.len() == 2
+        && matches!(
+            (&args[0], &args[1]),
+            (Value::Date(_), Value::Date(_))
+                | (
+                    Value::Timestamp(_) | Value::TimestampTz(_),
+                    Value::Timestamp(_) | Value::TimestampTz(_)
+                )
+        );
+    if !numeric && !temporal {
+        let actual = args
+            .iter()
+            .map(|argument| argument.logical_type().name())
+            .collect::<Vec<_>>()
+            .join(",");
+        return Err(Error::runtime(format!(
+            "{name} expects all-numeric operands or two DATE/TIMESTAMP operands, got ({actual})"
+        )));
+    }
+
+    let mut picked = &args[0];
+    for candidate in &args[1..] {
+        let order = crate::cypher_cmp(picked, candidate).ok_or_else(|| {
+            Error::runtime(format!(
+                "{name} could not compare {} and {}",
+                picked.logical_type(),
+                candidate.logical_type()
+            ))
+        })?;
+        let replace = if function == BuiltinScalar::Greatest {
+            order == std::cmp::Ordering::Less
+        } else {
+            order == std::cmp::Ordering::Greater
+        };
+        if replace {
+            picked = candidate;
         }
-    };
-    let take_left = if name == "greatest" {
-        ord != std::cmp::Ordering::Less
-    } else {
-        ord != std::cmp::Ordering::Greater
-    };
-    let picked = if take_left {
-        args[0].clone()
-    } else {
-        args[1].clone()
-    };
+    }
+
     // The result type is plain TIMESTAMP whenever flavors mix (see
     // greatest_least_result_type) — normalize a TZ value so it renders
-    // without the `+00` suffix.
-    Ok(match picked {
+    // without the `+00` suffix. Equal values keep the leftmost operand.
+    Ok(match picked.clone() {
         Value::TimestampTz(us) if args.iter().any(|a| !matches!(a, Value::TimestampTz(_))) => {
             Value::Timestamp(us)
         }

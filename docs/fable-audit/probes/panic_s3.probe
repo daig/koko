@@ -1,0 +1,1 @@
+#ORDER# MATCH (a:User {name: "Adam"})-[e:Follows* (r, n | WHERE EXISTS {MATCH (n)-[:LivesIn]->(:City {name: "Waterloo"})})]->(b:User) RETURN properties(nodes(e), 'name'), b.name

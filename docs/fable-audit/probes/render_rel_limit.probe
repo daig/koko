@@ -1,0 +1,11 @@
+MATCH (a:organisation) WHERE a.ID=4 RETURN a.state
+RETURN ['a','b'] AS x
+RETURN {loc: ['a','b']} AS x
+RETURN {loc: ['a','b'], n: 1} AS x
+MATCH (a:person)-[e:knows]->(b:person) WHERE a.ID=0 RETURN struct_extract(e, "_src")
+MATCH (a:person)-[e:knows]-(b:person) WHERE a.ID=0 RETURN struct_extract(e, "_src")
+MATCH (a:person)-[e:knows]-(b:person) WHERE a.ID=0 RETURN id(e)
+MATCH (a:person) RETURN a.fName ORDER BY a.fName LIMIT 1 + 1
+MATCH (n:person) WITH n LIMIT to_int64(ceil(1.7)) RETURN count(*) AS c
+MATCH (p:person) RETURN p.fName AS name LIMIT 1.5
+MATCH (p:person) RETURN p.fName AS name SKIP -1

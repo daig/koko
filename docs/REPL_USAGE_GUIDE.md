@@ -2001,13 +2001,13 @@ IMPORT DATABASE './backup';
 
 ## 23. Authoritative references
 
+- Current product, work, limitations and intentional decisions: [`../ROADMAP.md`](../ROADMAP.md)
 - Observable CLI behavior: [`CLI_UX.md`](CLI_UX.md)
 - CLI boundaries and data flow: [`CLI_ARCHITECTURE.md`](CLI_ARCHITECTURE.md)
-- Completed landing/evidence record: [`CLI_PLAN.md`](CLI_PLAN.md)
-- Engine scope and deferred surfaces: [`../ROADMAP.md`](../ROADMAP.md)
-- Current residual/deferred inventory: [`KNOWN_GAPS.md`](KNOWN_GAPS.md)
-- Chronological completion evidence: [`PROGRESS.md`](PROGRESS.md)
+- Completed CLI landing evidence: [`CLI_PLAN.md`](CLI_PLAN.md)
+- Chronological project evidence: [`PROGRESS.md`](PROGRESS.md)
 
-For exact Cypher semantics, the upstream `.test` corpus under `/Users/dai/code/koko/test/test_files`
-remains the differential oracle. For ordinary manual exploration, prefer this guide, live `:schema`/
-`:describe`/`:functions`, and the first-party REPL rather than the historical C++ shell.
+Koko's implementation, current documents, and product regressions define supported Cypher
+semantics. The upstream corpus is optional compatibility evidence when a change explicitly owns
+that contract. For ordinary exploration, prefer this guide, live `:schema`/`:describe`/`:functions`,
+and the first-party REPL rather than the historical C++ shell.

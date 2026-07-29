@@ -1,0 +1,21 @@
+// nested / heterogeneous / null args
+RETURN [[1,2],[3]] AS a
+RETURN [[1,2],[3,4,5]] AS a
+RETURN size([[1,2],[3]]) AS a
+RETURN [[1,2],[3,4]][1] AS a
+RETURN [1,'a',true] AS a
+RETURN [1,2.5,3] AS a
+RETURN [1,null,3] AS a
+RETURN list_extract(NULL, 1) AS a
+RETURN size(NULL) AS a
+RETURN list_reverse(NULL) AS a
+RETURN list_sort(NULL) AS a
+RETURN list_sum(NULL) AS a
+RETURN [null,null] AS a
+RETURN typeof([null,null]) AS a
+RETURN [] AS a
+RETURN typeof([]) AS a
+RETURN [[1],[2],[3]][2][1] AS a
+RETURN list_transform([[1,2],[3,4]], x -> list_sum(x)) AS a
+RETURN [1,2,3] = [1,2,3] AS a
+RETURN [1,2,3] = [1,2,4] AS a

@@ -1,0 +1,10 @@
+RETURN 1+2 AS x;
+RETURN 'a' + 'b' AS s;
+RETURN 5/2 AS d;
+RETURN 5.0/2 AS f;
+RETURN 2^3 AS p;
+RETURN [1,2,3][1] AS idx;
+RETURN size('héllo') AS sz;
+RETURN 1 = 1.0 AS eq;
+RETURN NULL + 1 AS n;
+RETURN 9223372036854775807 + 1 AS ovf;

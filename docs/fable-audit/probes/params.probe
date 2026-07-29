@@ -1,0 +1,15 @@
+RETURN $x AS x
+RETURN $x + 1 AS x
+RETURN $param AS x
+RETURN $1 AS x
+RETURN $ AS x
+RETURN 1 + $y AS x
+RETURN $a.b AS x
+RETURN [$x, $y] AS x
+RETURN $x IS NULL AS x
+WITH $x AS v RETURN v
+RETURN size($list) AS x
+RETURN $x = 1 AS x
+RETURN coalesce($x, 5) AS x
+RETURN $名前 AS x
+RETURN ${x} AS x

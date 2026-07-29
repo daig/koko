@@ -1,0 +1,10 @@
+RETURN 1 = true
+RETURN 1.0 = true
+RETURN 'a' = 1
+RETURN 1 = 'a'
+RETURN [1] = [true]
+RETURN true = 1
+RETURN CAST(1 AS INT8) = true
+RETURN date('2020-01-01') = 1
+RETURN 1 < true
+RETURN 'a' < 1

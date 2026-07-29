@@ -1,0 +1,8 @@
+FAIL  extension.InstallUnofficialExtensions — statement #1 `INSTALL sqlitescanner`: expected error `Binder exception: sqlitescanner is not an official extension.
+Non-official extensions can be installed directly by: `LOAD EXTENSION [EXTENSION_PATH]`.`, got `Parser exception: expected a MATCH, CREATE, or RETURN clause but found Ident("INSTALL")`
+SKIP  extension.LoadNotInstalledExtension (-SKIP_IN_MEM)
+SKIP  extension.UninstallExtensionError (-SKIP_IN_MEM)
+SKIP  extension.ForceInstallExtension (-SKIP_IN_MEM)
+FAIL  extension.WASMExtensionTest — statement #1 `INSTALL neo4j`: expected error `Binder exception: Extensions are not available in the WASM environment`, got `Parser exception: expected a MATCH, CREATE, or RETURN clause but found Ident("INSTALL")`
+
+0 passed, 3 skipped, 2 failed

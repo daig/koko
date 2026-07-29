@@ -1,0 +1,8 @@
+CREATE NODE TABLE N(id INT64, PRIMARY KEY(id));
+CREATE REL TABLE R(FROM N TO N, w INT64);
+CREATE (:N {id: 1});
+CREATE (:N {id: 2});
+MATCH (a:N {id:1}), (b:N {id:2}) CREATE (a)-[:R {w: 10}]->(b);
+MATCH (a:N {id:1}), (b:N {id:2}) CREATE (a)-[:R {w: 20}]->(b);
+MATCH (a:N {id:1}), (b:N {id:2}) MERGE (a)-[r:R]->(b) ON MATCH SET r.w = 99 RETURN r.w;
+MATCH ()-[r:R]->() RETURN r.w;

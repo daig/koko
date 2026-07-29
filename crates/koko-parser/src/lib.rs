@@ -1,9 +1,6 @@
-//! `koko-parser` — a hand-written Cypher front-end (lexer + recursive-descent +
-//! precedence-climbing expression parser) producing the [`ast`] tree.
-//!
-//! ANTLR has no good Rust equivalent and is discarded (roadmap decision 3): a
-//! hand-written parser gives the best error messages with no codegen step. P0
-//! covers `CREATE NODE/REL TABLE`, `CREATE`, and `MATCH … WHERE … RETURN …`.
+//! `koko-parser` — Koko's hand-written Cypher lexer, recursive-descent statement
+//! parser, and Pratt expression parser. It produces an owned [`ast`] without a
+//! generated-parser build step.
 
 pub mod ast;
 pub mod lexer;
@@ -459,6 +456,36 @@ mod tests {
             }
             _ => panic!("expected count(*)"),
         }
+    }
+
+    #[test]
+    fn parse_list_comprehension_and_parenthesized_membership() {
+        let query = single(parse_statement("RETURN [x IN [1,2,3] WHERE x > 1 | x * 10]").unwrap());
+        let ProjectionItem::Expr { expr, .. } = &query.ret.unwrap().items[0] else {
+            panic!("expected expression projection");
+        };
+        let Expr::ListComprehension {
+            var,
+            predicate,
+            projection,
+            ..
+        } = expr
+        else {
+            panic!("expected list comprehension");
+        };
+        assert_eq!(var, "x");
+        assert!(predicate.is_some());
+        assert!(projection.is_some());
+        assert_eq!(
+            super::expr_to_cypher(expr),
+            "[x IN [1,2,3] WHERE x > 1 | x * 10]"
+        );
+
+        let query = single(parse_statement("RETURN [(x IN [1,2])]").unwrap());
+        let ProjectionItem::Expr { expr, .. } = &query.ret.unwrap().items[0] else {
+            panic!("expected expression projection");
+        };
+        assert!(matches!(expr, Expr::List(_)));
     }
 
     #[test]

@@ -7,9 +7,9 @@ use crate::continuation::normalize_continuations;
 use crate::history::{HistoryController, KokoHistory};
 use crate::registry::{COMMAND_REGISTRY, CommandId, CompletionKind};
 use crate::runner::{RunSummary, RunnerError, SessionState, SourceRunner};
-use koko::{
-    CatalogSnapshot, CursorContextKind, FunctionKind, SyntaxStatus, TokenKind, TransactionMode,
-    analyze_cypher,
+use koko::tooling::{
+    CatalogSnapshot, CursorContextKind, FunctionKind, GraphKind, SyntaxStatus, TokenKind,
+    TransactionMode, analyze_cypher, cypher_keywords, version,
 };
 use nu_ansi_term::{Color, Style};
 use reedline::{
@@ -80,8 +80,9 @@ impl CompletionCatalog {
                     graph.name(),
                     "graph",
                     Some(match graph.kind() {
-                        koko::GraphKind::Typed => "typed".to_string(),
-                        koko::GraphKind::Any => "ANY".to_string(),
+                        GraphKind::Typed => "typed".to_string(),
+                        GraphKind::Any => "ANY".to_string(),
+                        _ => "unknown".to_string(),
                     }),
                     1,
                 )
@@ -129,6 +130,7 @@ impl CompletionCatalog {
                         FunctionKind::Aggregate => "aggregate",
                         FunctionKind::Table => "table function",
                         FunctionKind::Macro => "scalar function",
+                        _ => "function",
                     },
                     Some(format!(
                         "{} -> {}",
@@ -240,7 +242,7 @@ pub fn run_interactive(
             .unwrap_or_else(|_| "?".to_string());
         runner.diagnostic(&format!(
             "Koko {} · in-memory · graph {graph}\nType :help for help; Ctrl-D or :quit to exit.\n",
-            koko::version()
+            version()
         ))?;
     }
     refresh_editor_state(&runner, &shared, color_allowed);
@@ -604,6 +606,7 @@ impl Highlighter for KokoHighlighter {
                 TokenKind::Number => Style::new().fg(Color::Yellow),
                 TokenKind::Comment => Style::new().fg(Color::DarkGray).italic(),
                 TokenKind::Punctuation | TokenKind::Operator => Style::new().fg(Color::LightGray),
+                _ => Style::new(),
             };
             let span = token.span();
             styled.style_range(span.start(), span.end(), style);
@@ -755,7 +758,7 @@ fn complete_cypher(line: &str, pos: usize, state: &DynamicEditorState) -> Vec<Su
         );
     }
     let mut candidates = match context.kind() {
-        CursorContextKind::Keyword => koko::cypher_keywords()
+        CursorContextKind::Keyword => cypher_keywords()
             .iter()
             .map(|keyword| Candidate::new(*keyword, "keyword", None, 5))
             .collect(),
@@ -772,10 +775,11 @@ fn complete_cypher(line: &str, pos: usize, state: &DynamicEditorState) -> Vec<Su
         CursorContextKind::Setting => state.catalog.settings.clone(),
         CursorContextKind::Variable => variables_in_scope(line, pos),
         CursorContextKind::Path => unreachable!("path handled above"),
+        _ => Vec::new(),
     };
     if context.kind() != CursorContextKind::Keyword {
         candidates.extend(
-            koko::cypher_keywords()
+            cypher_keywords()
                 .iter()
                 .map(|keyword| Candidate::new(*keyword, "keyword", None, 6)),
         );
@@ -1001,6 +1005,7 @@ impl KokoPrompt {
             TransactionMode::None => "",
             TransactionMode::ReadOnly => "|ro-tx",
             TransactionMode::ReadWrite => "|tx",
+            _ => "",
         };
         format!("koko[{}{transaction}]", self.graph)
     }

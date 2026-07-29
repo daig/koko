@@ -1,0 +1,44 @@
+// ===== aggregate legality (baseline) =====
+MATCH (a:person) RETURN count(*) AS c
+MATCH (a:person) RETURN count(a) AS c
+MATCH (a:person) RETURN count(DISTINCT a.gender) AS c
+MATCH (a:person) RETURN sum(a.age) AS c
+MATCH (a:person) RETURN min(a.age) AS c
+MATCH (a:person) RETURN max(a.age) AS c
+MATCH (a:person) RETURN size(collect(a.age)) AS c
+MATCH (a:person) RETURN avg(a.age) AS c
+// ===== aggregate inside WHERE (should error) =====
+MATCH (a:person) WHERE count(*) > 1 RETURN a.fName AS n
+MATCH (a:person) WHERE sum(a.age) > 100 RETURN a.fName AS n
+MATCH (a:person) WHERE a.age > avg(a.age) RETURN a.fName AS n
+MATCH (a:person) WHERE count(a) = 8 RETURN a.fName AS n
+// ===== nested aggregates (should error) =====
+MATCH (a:person) RETURN sum(count(*)) AS c
+MATCH (a:person) RETURN count(sum(a.age)) AS c
+MATCH (a:person) RETURN max(min(a.age)) AS c
+MATCH (a:person) RETURN avg(count(a)) AS c
+// ===== aggregate combined (legal) =====
+MATCH (a:person) RETURN sum(a.age) + count(*) AS c
+MATCH (a:person) RETURN count(*) + 1 AS c
+MATCH (a:person) RETURN count(*) * 2 AS c
+MATCH (a:person) RETURN CASE WHEN count(*) > 5 THEN 'many' ELSE 'few' END AS c
+MATCH (a:person) RETURN abs(count(*)) AS c
+MATCH (a:person) RETURN count(*) / 2 AS c
+// ===== aggregate in ORDER BY =====
+#ORDER# MATCH (a:person) RETURN count(*) AS c ORDER BY c
+#ORDER# MATCH (a:person) RETURN a.gender AS g, count(*) AS c ORDER BY c
+#ORDER# MATCH (a:person) RETURN a.gender AS g, count(*) AS c ORDER BY count(*) DESC
+#ORDER# MATCH (a:person) RETURN a.gender AS g ORDER BY count(*)
+#ORDER# MATCH (a:person) RETURN a.gender AS g ORDER BY sum(a.age) DESC
+// ===== aggregate via WITH (legal) =====
+MATCH (a:person) WITH count(*) AS c WHERE c > 1 RETURN c
+MATCH (a:person) WITH count(*) AS c RETURN c + 1 AS d
+MATCH (a:person) WITH a.gender AS g, count(*) AS c WHERE c > 1 RETURN g, c
+MATCH (a:person) WITH a.gender AS g, count(*) AS c RETURN sum(c) AS total
+// ===== aggregate in WITH WHERE using aggregate directly (should error) =====
+MATCH (a:person) WITH a.gender AS g WHERE count(*) > 1 RETURN g
+// ===== DISTINCT =====
+MATCH (a:person) RETURN DISTINCT a.gender AS g
+MATCH (a:person) RETURN DISTINCT a.isStudent AS s
+// ===== aggregate with no match column grouping =====
+MATCH (a:person) RETURN a.gender AS g, sum(a.age) AS s

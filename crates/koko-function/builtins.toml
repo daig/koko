@@ -1,0 +1,1326 @@
+# Sole called-name to semantic-ID and bind-policy manifest.
+# Entries are sorted by ASCII-folded called name.
+
+[[builtin]]
+name = "%"
+kind = "scalar"
+semantic = "Modulo"
+bindable = false
+
+[[builtin]]
+name = "*"
+kind = "scalar"
+semantic = "Multiply"
+bindable = false
+
+[[builtin]]
+name = "+"
+kind = "scalar"
+semantic = "Add"
+bindable = false
+
+[[builtin]]
+name = "-"
+kind = "scalar"
+semantic = "Subtract"
+bindable = false
+
+[[builtin]]
+name = "/"
+kind = "scalar"
+semantic = "Divide"
+bindable = false
+
+[[builtin]]
+name = "^"
+kind = "scalar"
+semantic = "PowerOperator"
+bindable = false
+
+[[builtin]]
+name = "abs"
+kind = "scalar"
+semantic = "Abs"
+
+[[builtin]]
+name = "acos"
+kind = "scalar"
+semantic = "Acos"
+
+[[builtin]]
+name = "all"
+kind = "scalar"
+semantic = "All"
+bindable = false
+
+[[builtin]]
+name = "any"
+kind = "scalar"
+semantic = "Any"
+bindable = false
+
+[[builtin]]
+name = "array_append"
+kind = "scalar"
+semantic = "ListAppend"
+canonical_name = "list_append"
+
+[[builtin]]
+name = "array_cat"
+kind = "scalar"
+semantic = "ListConcat"
+canonical_name = "list_concat"
+
+[[builtin]]
+name = "array_concat"
+kind = "scalar"
+semantic = "ListConcat"
+canonical_name = "list_concat"
+
+[[builtin]]
+name = "array_contains"
+kind = "scalar"
+semantic = "ListContains"
+canonical_name = "list_contains"
+
+[[builtin]]
+name = "array_cosine_similarity"
+kind = "scalar"
+semantic = "ArrayCosineSimilarity"
+
+[[builtin]]
+name = "array_cross_product"
+kind = "scalar"
+semantic = "ArrayCrossProduct"
+
+[[builtin]]
+name = "array_distance"
+kind = "scalar"
+semantic = "ArrayDistance"
+
+[[builtin]]
+name = "array_distinct"
+kind = "scalar"
+semantic = "ListDistinct"
+canonical_name = "list_distinct"
+overload_source = "list_distinct"
+
+[[builtin]]
+name = "array_dot_product"
+kind = "scalar"
+semantic = "ArrayDotProduct"
+
+[[builtin]]
+name = "array_extract"
+kind = "scalar"
+semantic = "ArrayExtract"
+
+[[builtin]]
+name = "array_has"
+kind = "scalar"
+semantic = "ListContains"
+canonical_name = "list_contains"
+
+[[builtin]]
+name = "array_indexof"
+kind = "scalar"
+semantic = "ListPosition"
+canonical_name = "list_position"
+
+[[builtin]]
+name = "array_inner_product"
+kind = "scalar"
+semantic = "ArrayInnerProduct"
+
+[[builtin]]
+name = "array_position"
+kind = "scalar"
+semantic = "ListPosition"
+canonical_name = "list_position"
+
+[[builtin]]
+name = "array_prepend"
+kind = "scalar"
+semantic = "ListPrepend"
+canonical_name = "list_prepend"
+
+[[builtin]]
+name = "array_push_back"
+kind = "scalar"
+semantic = "ListAppend"
+canonical_name = "list_append"
+
+[[builtin]]
+name = "array_push_front"
+kind = "scalar"
+semantic = "ListPrepend"
+canonical_name = "list_prepend"
+
+[[builtin]]
+name = "array_reverse"
+kind = "scalar"
+semantic = "ListReverse"
+canonical_name = "list_reverse"
+overload_source = "list_reverse"
+
+[[builtin]]
+name = "array_slice"
+kind = "scalar"
+semantic = "ArraySlice"
+
+[[builtin]]
+name = "array_sort"
+kind = "scalar"
+semantic = "ListSort"
+canonical_name = "list_sort"
+overload_source = "list_sort"
+
+[[builtin]]
+name = "array_squared_distance"
+kind = "scalar"
+semantic = "ArraySquaredDistance"
+
+[[builtin]]
+name = "array_to_string"
+kind = "scalar"
+semantic = "ListToString"
+canonical_name = "list_to_string"
+overload_source = "list_to_string"
+
+[[builtin]]
+name = "array_value"
+kind = "scalar"
+semantic = "ArrayValue"
+variable_arity = true
+
+[[builtin]]
+name = "asin"
+kind = "scalar"
+semantic = "Asin"
+
+[[builtin]]
+name = "atan"
+kind = "scalar"
+semantic = "Atan"
+
+[[builtin]]
+name = "atan2"
+kind = "scalar"
+semantic = "Atan2"
+
+[[builtin]]
+name = "avg"
+kind = "aggregate"
+semantic = "Avg"
+
+[[builtin]]
+name = "bitshift_left"
+kind = "scalar"
+semantic = "BitshiftLeft"
+
+[[builtin]]
+name = "bitshift_right"
+kind = "scalar"
+semantic = "BitshiftRight"
+
+[[builtin]]
+name = "bitwise_and"
+kind = "scalar"
+semantic = "BitwiseAnd"
+
+[[builtin]]
+name = "bitwise_or"
+kind = "scalar"
+semantic = "BitwiseOr"
+
+[[builtin]]
+name = "bitwise_xor"
+kind = "scalar"
+semantic = "BitwiseXor"
+
+[[builtin]]
+name = "blob"
+kind = "scalar"
+semantic = "Blob"
+
+[[builtin]]
+name = "cardinality"
+kind = "scalar"
+semantic = "Size"
+canonical_name = "size"
+
+[[builtin]]
+name = "cast"
+kind = "scalar"
+semantic = "CastFunction"
+bindable = false
+
+[[builtin]]
+name = "cbrt"
+kind = "scalar"
+semantic = "Cbrt"
+
+[[builtin]]
+name = "ceil"
+kind = "scalar"
+semantic = "Ceil"
+
+[[builtin]]
+name = "ceiling"
+kind = "scalar"
+semantic = "Ceil"
+canonical_name = "ceil"
+
+[[builtin]]
+name = "century"
+kind = "scalar"
+semantic = "Century"
+
+[[builtin]]
+name = "coalesce"
+kind = "scalar"
+semantic = "Coalesce"
+variable_arity = true
+
+[[builtin]]
+name = "collect"
+kind = "aggregate"
+semantic = "Collect"
+
+[[builtin]]
+name = "concat"
+kind = "scalar"
+semantic = "Concat"
+variable_arity = true
+
+[[builtin]]
+name = "concat_ws"
+kind = "scalar"
+semantic = "ConcatWs"
+variable_arity = true
+
+[[builtin]]
+name = "constant_or_null"
+kind = "scalar"
+semantic = "ConstantOrNull"
+
+[[builtin]]
+name = "contains"
+kind = "scalar"
+semantic = "Contains"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "cos"
+kind = "scalar"
+semantic = "Cos"
+
+[[builtin]]
+name = "cost"
+kind = "rewrite"
+semantic = "Cost"
+
+[[builtin]]
+name = "cot"
+kind = "scalar"
+semantic = "Cot"
+
+[[builtin]]
+name = "count"
+kind = "aggregate"
+semantic = "Count"
+
+[[builtin]]
+name = "count_if"
+kind = "scalar"
+semantic = "CountIf"
+
+[[builtin]]
+name = "count_star"
+kind = "aggregate"
+semantic = "CountStar"
+
+[[builtin]]
+name = "current_date"
+kind = "scalar"
+semantic = "CurrentDate"
+
+[[builtin]]
+name = "current_timestamp"
+kind = "scalar"
+semantic = "CurrentTimestamp"
+
+[[builtin]]
+name = "currval"
+kind = "scalar"
+semantic = "Currval"
+bindable = false
+
+[[builtin]]
+name = "date"
+kind = "scalar"
+semantic = "Date"
+
+[[builtin]]
+name = "date_part"
+kind = "scalar"
+semantic = "DatePart"
+
+[[builtin]]
+name = "date_trunc"
+kind = "scalar"
+semantic = "DateTrunc"
+
+[[builtin]]
+name = "datepart"
+kind = "scalar"
+semantic = "DatePart"
+canonical_name = "date_part"
+
+[[builtin]]
+name = "datetrunc"
+kind = "scalar"
+semantic = "DateTrunc"
+canonical_name = "date_trunc"
+
+[[builtin]]
+name = "dayname"
+kind = "scalar"
+semantic = "Dayname"
+
+[[builtin]]
+name = "decode"
+kind = "scalar"
+semantic = "Decode"
+
+[[builtin]]
+name = "degrees"
+kind = "scalar"
+semantic = "Degrees"
+
+[[builtin]]
+name = "duration"
+kind = "scalar"
+semantic = "Interval"
+canonical_name = "interval"
+
+[[builtin]]
+name = "element_at"
+kind = "scalar"
+semantic = "ElementAt"
+
+[[builtin]]
+name = "encode"
+kind = "scalar"
+semantic = "Encode"
+
+[[builtin]]
+name = "end_node"
+kind = "rewrite"
+semantic = "EndNode"
+
+[[builtin]]
+name = "ends_with"
+kind = "scalar"
+semantic = "Suffix"
+canonical_name = "suffix"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "epoch_ms"
+kind = "scalar"
+semantic = "EpochMs"
+
+[[builtin]]
+name = "equals"
+kind = "scalar"
+semantic = "Equals"
+
+[[builtin]]
+name = "error"
+kind = "scalar"
+semantic = "Error"
+
+[[builtin]]
+name = "even"
+kind = "scalar"
+semantic = "Even"
+
+[[builtin]]
+name = "exp"
+kind = "scalar"
+semantic = "Exp"
+overload_source = "ln"
+
+[[builtin]]
+name = "factorial"
+kind = "scalar"
+semantic = "Factorial"
+
+[[builtin]]
+name = "floor"
+kind = "scalar"
+semantic = "Floor"
+
+[[builtin]]
+name = "gamma"
+kind = "scalar"
+semantic = "Gamma"
+
+[[builtin]]
+name = "gen_random_uuid"
+kind = "scalar"
+semantic = "GenRandomUuid"
+
+[[builtin]]
+name = "greater_than"
+kind = "scalar"
+semantic = "GreaterThan"
+
+[[builtin]]
+name = "greater_than_equals"
+kind = "scalar"
+semantic = "GreaterThanEquals"
+
+[[builtin]]
+name = "greatest"
+kind = "scalar"
+semantic = "Greatest"
+koko_overloads = ["(NUMERIC,NUMERIC,...) -> NUMERIC"]
+
+[[builtin]]
+name = "hash"
+kind = "scalar"
+semantic = "Hash"
+
+[[builtin]]
+name = "id"
+kind = "rewrite"
+semantic = "Id"
+
+[[builtin]]
+name = "ifnull"
+kind = "scalar"
+semantic = "Ifnull"
+
+[[builtin]]
+name = "initcap"
+kind = "scalar"
+semantic = "Initcap"
+string_coerce = [0]
+
+[[builtin]]
+name = "internal_id"
+kind = "scalar"
+semantic = "InternalId"
+
+[[builtin]]
+name = "interval"
+kind = "scalar"
+semantic = "Interval"
+
+[[builtin]]
+name = "is_acyclic"
+kind = "scalar"
+semantic = "IsAcyclic"
+
+[[builtin]]
+name = "is_trail"
+kind = "scalar"
+semantic = "IsTrail"
+
+[[builtin]]
+name = "keys"
+kind = "rewrite"
+semantic = "Keys"
+bindable = false
+
+[[builtin]]
+name = "label"
+kind = "rewrite"
+semantic = "Label"
+
+[[builtin]]
+name = "labels"
+kind = "rewrite"
+semantic = "Labels"
+
+[[builtin]]
+name = "last_day"
+kind = "scalar"
+semantic = "LastDay"
+
+[[builtin]]
+name = "lcase"
+kind = "scalar"
+semantic = "Lower"
+canonical_name = "lower"
+string_coerce = [0]
+
+[[builtin]]
+name = "least"
+kind = "scalar"
+semantic = "Least"
+koko_overloads = ["(NUMERIC,NUMERIC,...) -> NUMERIC"]
+
+[[builtin]]
+name = "left"
+kind = "scalar"
+semantic = "Left"
+string_coerce = [0]
+
+[[builtin]]
+name = "length"
+kind = "rewrite"
+semantic = "Length"
+
+[[builtin]]
+name = "less_than"
+kind = "scalar"
+semantic = "LessThan"
+
+[[builtin]]
+name = "less_than_equals"
+kind = "scalar"
+semantic = "LessThanEquals"
+
+[[builtin]]
+name = "levenshtein"
+kind = "scalar"
+semantic = "Levenshtein"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "lgamma"
+kind = "scalar"
+semantic = "Lgamma"
+
+[[builtin]]
+name = "list_any_value"
+kind = "scalar"
+semantic = "ListAnyValue"
+
+[[builtin]]
+name = "list_append"
+kind = "scalar"
+semantic = "ListAppend"
+
+[[builtin]]
+name = "list_cat"
+kind = "scalar"
+semantic = "ListConcat"
+canonical_name = "list_concat"
+
+[[builtin]]
+name = "list_concat"
+kind = "scalar"
+semantic = "ListConcat"
+
+[[builtin]]
+name = "list_contains"
+kind = "scalar"
+semantic = "ListContains"
+
+[[builtin]]
+name = "list_creation"
+kind = "scalar"
+semantic = "ListCreation"
+variable_arity = true
+
+[[builtin]]
+name = "list_distinct"
+kind = "scalar"
+semantic = "ListDistinct"
+
+[[builtin]]
+name = "list_element"
+kind = "scalar"
+semantic = "ListExtract"
+canonical_name = "list_extract"
+
+[[builtin]]
+name = "list_extract"
+kind = "scalar"
+semantic = "ListExtract"
+
+[[builtin]]
+name = "list_filter"
+kind = "scalar"
+semantic = "ListFilter"
+bindable = false
+
+[[builtin]]
+name = "list_has"
+kind = "scalar"
+semantic = "ListContains"
+canonical_name = "list_contains"
+
+[[builtin]]
+name = "list_has_all"
+kind = "scalar"
+semantic = "ListHasAll"
+
+[[builtin]]
+name = "list_indexof"
+kind = "scalar"
+semantic = "ListPosition"
+canonical_name = "list_position"
+
+[[builtin]]
+name = "list_position"
+kind = "scalar"
+semantic = "ListPosition"
+
+[[builtin]]
+name = "list_prepend"
+kind = "scalar"
+semantic = "ListPrepend"
+
+[[builtin]]
+name = "list_product"
+kind = "scalar"
+semantic = "ListProduct"
+
+[[builtin]]
+name = "list_reduce"
+kind = "scalar"
+semantic = "ListReduce"
+bindable = false
+
+[[builtin]]
+name = "list_reverse"
+kind = "scalar"
+semantic = "ListReverse"
+
+[[builtin]]
+name = "list_reverse_sort"
+kind = "scalar"
+semantic = "ListReverseSort"
+
+[[builtin]]
+name = "list_slice"
+kind = "scalar"
+semantic = "ListSlice"
+
+[[builtin]]
+name = "list_sort"
+kind = "scalar"
+semantic = "ListSort"
+
+[[builtin]]
+name = "list_sum"
+kind = "scalar"
+semantic = "ListSum"
+
+[[builtin]]
+name = "list_to_string"
+kind = "scalar"
+semantic = "ListToString"
+string_coerce = [0]
+
+[[builtin]]
+name = "list_transform"
+kind = "scalar"
+semantic = "ListTransform"
+bindable = false
+
+[[builtin]]
+name = "list_unique"
+kind = "scalar"
+semantic = "ListUnique"
+
+[[builtin]]
+name = "ln"
+kind = "scalar"
+semantic = "Ln"
+
+[[builtin]]
+name = "log"
+kind = "scalar"
+semantic = "Log"
+
+[[builtin]]
+name = "log10"
+kind = "scalar"
+semantic = "Log10"
+
+[[builtin]]
+name = "log2"
+kind = "scalar"
+semantic = "Log2"
+
+[[builtin]]
+name = "lower"
+kind = "scalar"
+semantic = "Lower"
+string_coerce = [0]
+
+[[builtin]]
+name = "lpad"
+kind = "scalar"
+semantic = "Lpad"
+string_coerce = [0, 2]
+
+[[builtin]]
+name = "ltrim"
+kind = "scalar"
+semantic = "Ltrim"
+string_coerce = [0]
+
+[[builtin]]
+name = "make_date"
+kind = "scalar"
+semantic = "MakeDate"
+
+[[builtin]]
+name = "map"
+kind = "scalar"
+semantic = "Map"
+
+[[builtin]]
+name = "map_extract"
+kind = "scalar"
+semantic = "MapExtract"
+
+[[builtin]]
+name = "map_keys"
+kind = "scalar"
+semantic = "MapKeys"
+
+[[builtin]]
+name = "map_values"
+kind = "scalar"
+semantic = "MapValues"
+
+[[builtin]]
+name = "max"
+kind = "aggregate"
+semantic = "Max"
+
+[[builtin]]
+name = "md5"
+kind = "scalar"
+semantic = "Md5"
+string_coerce = [0]
+
+[[builtin]]
+name = "min"
+kind = "aggregate"
+semantic = "Min"
+
+[[builtin]]
+name = "monthname"
+kind = "scalar"
+semantic = "Monthname"
+
+[[builtin]]
+name = "negate"
+kind = "scalar"
+semantic = "Negate"
+
+[[builtin]]
+name = "nextval"
+kind = "scalar"
+semantic = "Nextval"
+bindable = false
+
+[[builtin]]
+name = "nodes"
+kind = "scalar"
+semantic = "Nodes"
+
+[[builtin]]
+name = "none"
+kind = "scalar"
+semantic = "None"
+bindable = false
+
+[[builtin]]
+name = "not_equals"
+kind = "scalar"
+semantic = "NotEquals"
+
+[[builtin]]
+name = "nullif"
+kind = "rewrite"
+semantic = "Nullif"
+
+[[builtin]]
+name = "octet_length"
+kind = "scalar"
+semantic = "OctetLength"
+
+[[builtin]]
+name = "offset"
+kind = "scalar"
+semantic = "Offset"
+
+[[builtin]]
+name = "percentiledisc"
+kind = "aggregate"
+semantic = "PercentileDisc"
+
+[[builtin]]
+name = "pi"
+kind = "scalar"
+semantic = "Pi"
+
+[[builtin]]
+name = "pow"
+kind = "scalar"
+semantic = "Pow"
+
+[[builtin]]
+name = "power"
+kind = "scalar"
+semantic = "Pow"
+canonical_name = "pow"
+overload_source = "pow"
+
+[[builtin]]
+name = "prefix"
+kind = "scalar"
+semantic = "Prefix"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "properties"
+kind = "scalar"
+semantic = "Properties"
+
+[[builtin]]
+name = "radians"
+kind = "scalar"
+semantic = "Radians"
+
+[[builtin]]
+name = "random"
+kind = "scalar"
+semantic = "Random"
+
+[[builtin]]
+name = "range"
+kind = "scalar"
+semantic = "Range"
+
+[[builtin]]
+name = "regexp_extract"
+kind = "scalar"
+semantic = "RegexpExtract"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "regexp_extract_all"
+kind = "scalar"
+semantic = "RegexpExtractAll"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "regexp_full_match"
+kind = "scalar"
+semantic = "RegexpFullMatch"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "regexp_matches"
+kind = "scalar"
+semantic = "RegexpMatches"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "regexp_replace"
+kind = "scalar"
+semantic = "RegexpReplace"
+string_coerce = [0, 1, 2]
+
+[[builtin]]
+name = "regexp_split_to_array"
+kind = "scalar"
+semantic = "RegexpSplitToArray"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "relationships"
+kind = "scalar"
+semantic = "Rels"
+canonical_name = "rels"
+
+[[builtin]]
+name = "rels"
+kind = "scalar"
+semantic = "Rels"
+
+[[builtin]]
+name = "repeat"
+kind = "scalar"
+semantic = "Repeat"
+string_coerce = [0]
+
+[[builtin]]
+name = "replace"
+kind = "scalar"
+semantic = "Replace"
+string_coerce = [0, 1, 2]
+
+[[builtin]]
+name = "reverse"
+kind = "scalar"
+semantic = "Reverse"
+string_coerce = [0]
+
+[[builtin]]
+name = "right"
+kind = "scalar"
+semantic = "Right"
+string_coerce = [0]
+
+[[builtin]]
+name = "round"
+kind = "scalar"
+semantic = "Round"
+
+[[builtin]]
+name = "rowid"
+kind = "rewrite"
+semantic = "Rowid"
+
+[[builtin]]
+name = "rpad"
+kind = "scalar"
+semantic = "Rpad"
+string_coerce = [0, 2]
+
+[[builtin]]
+name = "rtrim"
+kind = "scalar"
+semantic = "Rtrim"
+string_coerce = [0]
+
+[[builtin]]
+name = "setseed"
+kind = "scalar"
+semantic = "Setseed"
+
+[[builtin]]
+name = "sha256"
+kind = "scalar"
+semantic = "Sha256"
+string_coerce = [0]
+
+[[builtin]]
+name = "sign"
+kind = "scalar"
+semantic = "Sign"
+
+[[builtin]]
+name = "sin"
+kind = "scalar"
+semantic = "Sin"
+
+[[builtin]]
+name = "single"
+kind = "scalar"
+semantic = "Single"
+bindable = false
+
+[[builtin]]
+name = "size"
+kind = "scalar"
+semantic = "Size"
+
+[[builtin]]
+name = "split_part"
+kind = "scalar"
+semantic = "SplitPart"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "sqrt"
+kind = "scalar"
+semantic = "Sqrt"
+
+[[builtin]]
+name = "start_node"
+kind = "rewrite"
+semantic = "StartNode"
+
+[[builtin]]
+name = "starts_with"
+kind = "scalar"
+semantic = "Prefix"
+canonical_name = "prefix"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "str_split"
+kind = "scalar"
+semantic = "StringSplit"
+canonical_name = "string_split"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "string"
+kind = "scalar"
+semantic = "String"
+
+[[builtin]]
+name = "string_split"
+kind = "scalar"
+semantic = "StringSplit"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "string_to_array"
+kind = "scalar"
+semantic = "StringSplit"
+canonical_name = "string_split"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "struct_extract"
+kind = "scalar"
+semantic = "StructExtract"
+
+[[builtin]]
+name = "struct_pack"
+kind = "scalar"
+semantic = "StructPack"
+variable_arity = true
+bindable = false
+
+[[builtin]]
+name = "substr"
+kind = "scalar"
+semantic = "Substr"
+string_coerce = [0]
+
+[[builtin]]
+name = "substring"
+kind = "scalar"
+semantic = "Substr"
+canonical_name = "substr"
+string_coerce = [0]
+
+[[builtin]]
+name = "suffix"
+kind = "scalar"
+semantic = "Suffix"
+string_coerce = [0, 1]
+
+[[builtin]]
+name = "sum"
+kind = "aggregate"
+semantic = "Sum"
+
+[[builtin]]
+name = "tan"
+kind = "scalar"
+semantic = "Tan"
+
+[[builtin]]
+name = "timestamp"
+kind = "scalar"
+semantic = "Timestamp"
+
+[[builtin]]
+name = "to_blob"
+kind = "scalar"
+semantic = "ToBlob"
+
+[[builtin]]
+name = "to_bool"
+kind = "scalar"
+semantic = "ToBool"
+
+[[builtin]]
+name = "to_date"
+kind = "scalar"
+semantic = "ToDate"
+
+[[builtin]]
+name = "to_days"
+kind = "scalar"
+semantic = "ToDays"
+
+[[builtin]]
+name = "to_double"
+kind = "scalar"
+semantic = "ToDouble"
+
+[[builtin]]
+name = "to_epoch_ms"
+kind = "scalar"
+semantic = "ToEpochMs"
+
+[[builtin]]
+name = "to_float"
+kind = "scalar"
+semantic = "ToFloat"
+
+[[builtin]]
+name = "to_hours"
+kind = "scalar"
+semantic = "ToHours"
+
+[[builtin]]
+name = "to_int128"
+kind = "scalar"
+semantic = "ToInt128"
+
+[[builtin]]
+name = "to_int16"
+kind = "scalar"
+semantic = "ToInt16"
+
+[[builtin]]
+name = "to_int32"
+kind = "scalar"
+semantic = "ToInt32"
+
+[[builtin]]
+name = "to_int64"
+kind = "scalar"
+semantic = "ToInt64"
+
+[[builtin]]
+name = "to_int8"
+kind = "scalar"
+semantic = "ToInt8"
+
+[[builtin]]
+name = "to_interval"
+kind = "scalar"
+semantic = "Interval"
+canonical_name = "interval"
+
+[[builtin]]
+name = "to_microseconds"
+kind = "scalar"
+semantic = "ToMicroseconds"
+
+[[builtin]]
+name = "to_milliseconds"
+kind = "scalar"
+semantic = "ToMilliseconds"
+
+[[builtin]]
+name = "to_minutes"
+kind = "scalar"
+semantic = "ToMinutes"
+
+[[builtin]]
+name = "to_months"
+kind = "scalar"
+semantic = "ToMonths"
+
+[[builtin]]
+name = "to_seconds"
+kind = "scalar"
+semantic = "ToSeconds"
+
+[[builtin]]
+name = "to_serial"
+kind = "scalar"
+semantic = "ToSerial"
+
+[[builtin]]
+name = "to_string"
+kind = "scalar"
+semantic = "ToString"
+
+[[builtin]]
+name = "to_timestamp"
+kind = "scalar"
+semantic = "ToTimestamp"
+
+[[builtin]]
+name = "to_uint128"
+kind = "scalar"
+semantic = "ToUint128"
+
+[[builtin]]
+name = "to_uint16"
+kind = "scalar"
+semantic = "ToUint16"
+
+[[builtin]]
+name = "to_uint32"
+kind = "scalar"
+semantic = "ToUint32"
+
+[[builtin]]
+name = "to_uint64"
+kind = "scalar"
+semantic = "ToUint64"
+
+[[builtin]]
+name = "to_uint8"
+kind = "scalar"
+semantic = "ToUint8"
+
+[[builtin]]
+name = "to_uuid"
+kind = "scalar"
+semantic = "ToUuid"
+
+[[builtin]]
+name = "to_years"
+kind = "scalar"
+semantic = "ToYears"
+
+[[builtin]]
+name = "tolower"
+kind = "scalar"
+semantic = "Lower"
+canonical_name = "lower"
+
+[[builtin]]
+name = "toupper"
+kind = "scalar"
+semantic = "Upper"
+canonical_name = "upper"
+
+[[builtin]]
+name = "trim"
+kind = "scalar"
+semantic = "Trim"
+string_coerce = [0]
+
+[[builtin]]
+name = "typeof"
+kind = "scalar"
+semantic = "Typeof"
+
+[[builtin]]
+name = "ucase"
+kind = "scalar"
+semantic = "Upper"
+canonical_name = "upper"
+string_coerce = [0]
+
+[[builtin]]
+name = "union_extract"
+kind = "scalar"
+semantic = "UnionExtract"
+
+[[builtin]]
+name = "union_tag"
+kind = "scalar"
+semantic = "UnionTag"
+
+[[builtin]]
+name = "union_value"
+kind = "scalar"
+semantic = "UnionValue"
+bindable = false
+
+[[builtin]]
+name = "upper"
+kind = "scalar"
+semantic = "Upper"
+string_coerce = [0]
+
+[[builtin]]
+name = "uuid"
+kind = "scalar"
+semantic = "Uuid"

@@ -1,0 +1,22 @@
+// equality/hash proxies via IN
+RETURN 1 IN [1.0]
+RETURN 1.0 IN [1]
+RETURN CAST(1 AS INT8) IN [1]
+RETURN 1 IN [CAST(1 AS INT8)]
+RETURN 1 IN [1, 2, 3]
+RETURN 1.5 IN [1, 2]
+RETURN 0.0 IN [-0.0]
+// DISTINCT / count
+RETURN count(DISTINCT x) AS c
+#ORDER# UNWIND [1,1,2,3,3,3] AS x RETURN count(DISTINCT x)
+#ORDER# UNWIND [0.0, -0.0] AS x RETURN count(DISTINCT x)
+#ORDER# UNWIND [CAST('nan' AS DOUBLE), CAST('nan' AS DOUBLE)] AS x RETURN count(DISTINCT x)
+#ORDER# UNWIND ['a','A','a'] AS x RETURN count(DISTINCT x)
+#ORDER# UNWIND [1.0,1.0,2.0] AS x RETURN count(DISTINCT x)
+// GROUP BY
+#ORDER# UNWIND [1,2,1,3,2,1] AS x RETURN x, count(*) ORDER BY x
+#ORDER# UNWIND ['a','b','a'] AS x RETURN x, count(*) ORDER BY x
+#ORDER# UNWIND [1.5,1.5,2.5] AS x RETURN x, count(*) ORDER BY x
+// distinct with nulls
+#ORDER# UNWIND [1,null,1,null] AS x RETURN count(DISTINCT x)
+#ORDER# UNWIND [1,null,1,null] AS x RETURN count(x)
