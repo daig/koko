@@ -5,6 +5,7 @@ use super::*;
 #[derive(Default)]
 pub(crate) struct ReadVisibilityCache {
     pub(crate) rel_rows: Mutex<HashMap<TableId, bool>>,
+    pub(crate) graph_algorithms: GraphAlgorithmCache,
 }
 
 impl ReadVisibilityCache {
@@ -28,6 +29,7 @@ impl ReadVisibilityCache {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
+        self.graph_algorithms.clear();
     }
 }
 

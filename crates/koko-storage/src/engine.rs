@@ -1186,6 +1186,223 @@ impl InMemStorage {
             .all(|(&begin, &end)| view.row_visible(begin, end))
     }
 
+    /// Whether every physical row in `node_table` is visible to this statement.
+    pub fn node_rows_all_visible(&self, read: StorageReadHandle, node_table: TableId) -> bool {
+        let Some(store) = self.nodes.get(&node_table) else {
+            return true;
+        };
+        let view = read.view();
+        store
+            .begin_ts
+            .iter()
+            .zip(&store.end_ts)
+            .all(|(&begin, &end)| view.row_visible(begin, end))
+    }
+
+    /// Visit visible physical node offsets without constructing a [`DataChunk`].
+    pub fn visit_node_offsets(
+        &self,
+        read: StorageReadHandle,
+        node_table: TableId,
+        visit: impl FnMut(u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_node_offsets_impl(read, node_table, visit, false)
+    }
+
+    /// Visit physical node offsets after [`Self::node_rows_all_visible`] returned
+    /// true for the same table and statement view.
+    pub fn visit_node_offsets_all_visible(
+        &self,
+        read: StorageReadHandle,
+        node_table: TableId,
+        visit: impl FnMut(u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_node_offsets_impl(read, node_table, visit, true)
+    }
+
+    fn visit_node_offsets_impl(
+        &self,
+        read: StorageReadHandle,
+        node_table: TableId,
+        mut visit: impl FnMut(u64) -> Result<()>,
+        all_visible: bool,
+    ) -> Result<()> {
+        let Some(store) = self.nodes.get(&node_table) else {
+            return Ok(());
+        };
+        let view = read.view();
+        for offset in 0..store.count {
+            let physical = offset as usize;
+            if all_visible || view.row_visible(store.begin_ts[physical], store.end_ts[physical]) {
+                visit(offset)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Visit visible relationship rows as primitive
+    /// `(relationship_offset, source_offset, destination_offset)` triples.
+    pub fn visit_rel_endpoints(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        visit: impl FnMut(u64, u64, u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_rel_endpoints_impl(read, rel_table, visit, false)
+    }
+
+    /// Visit relationship endpoints after [`Self::rel_rows_all_visible`] returned
+    /// true for the same table and statement view.
+    pub fn visit_rel_endpoints_all_visible(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        visit: impl FnMut(u64, u64, u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_rel_endpoints_impl(read, rel_table, visit, true)
+    }
+
+    fn visit_rel_endpoints_impl(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        mut visit: impl FnMut(u64, u64, u64) -> Result<()>,
+        all_visible: bool,
+    ) -> Result<()> {
+        let Some(store) = self.rels.get(&rel_table) else {
+            return Ok(());
+        };
+        let view = read.view();
+        for offset in 0..store.count {
+            let physical = offset as usize;
+            if !all_visible && !view.row_visible(store.begin_ts[physical], store.end_ts[physical]) {
+                continue;
+            }
+            visit(
+                offset,
+                store.src[physical].offset.0,
+                store.dst[physical].offset.0,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Visit visible adjacency entries as primitive
+    /// `(relationship_offset, neighbor_offset)` pairs.
+    pub fn visit_neighbors(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        visit: impl FnMut(u64, u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_neighbors_impl(read, rel_table, node, direction, visit, false)
+    }
+
+    /// Visit adjacency entries after [`Self::rel_rows_all_visible`] returned true
+    /// for the same table and statement view.
+    pub fn visit_neighbors_all_visible(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        visit: impl FnMut(u64, u64) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_neighbors_impl(read, rel_table, node, direction, visit, true)
+    }
+
+    /// Return the next visible adjacency entry and advance the physical
+    /// adjacency `cursor`. A new scan starts with cursor zero.
+    pub fn next_neighbor(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        cursor: &mut usize,
+    ) -> Option<(u64, u64)> {
+        self.next_neighbor_impl(read, rel_table, node, direction, cursor, false)
+    }
+
+    /// Return the next adjacency entry after [`Self::rel_rows_all_visible`]
+    /// returned true for this table and statement view.
+    pub fn next_neighbor_all_visible(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        cursor: &mut usize,
+    ) -> Option<(u64, u64)> {
+        self.next_neighbor_impl(read, rel_table, node, direction, cursor, true)
+    }
+
+    fn next_neighbor_impl(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        cursor: &mut usize,
+        all_visible: bool,
+    ) -> Option<(u64, u64)> {
+        let store = self.rels.get(&rel_table)?;
+        let (adjacency, keyed_table, forward) = match direction {
+            EdgeDir::Fwd => (&store.fwd_adj, store.from_table, true),
+            EdgeDir::Bwd => (&store.bwd_adj, store.to_table, false),
+        };
+        let offsets = adj_at(adjacency, node, keyed_table);
+        let view = read.view();
+        while let Some(&offset) = offsets.get(*cursor) {
+            *cursor += 1;
+            let physical = offset as usize;
+            if !all_visible && !view.row_visible(store.begin_ts[physical], store.end_ts[physical]) {
+                continue;
+            }
+            let neighbor = if forward {
+                store.dst[physical]
+            } else {
+                store.src[physical]
+            };
+            return Some((offset, neighbor.offset.0));
+        }
+        None
+    }
+
+    fn visit_neighbors_impl(
+        &self,
+        read: StorageReadHandle,
+        rel_table: TableId,
+        node: InternalId,
+        direction: EdgeDir,
+        mut visit: impl FnMut(u64, u64) -> Result<()>,
+        all_visible: bool,
+    ) -> Result<()> {
+        let Some(store) = self.rels.get(&rel_table) else {
+            return Ok(());
+        };
+        let (adjacency, keyed_table, forward) = match direction {
+            EdgeDir::Fwd => (&store.fwd_adj, store.from_table, true),
+            EdgeDir::Bwd => (&store.bwd_adj, store.to_table, false),
+        };
+        let view = read.view();
+        for &offset in adj_at(adjacency, node, keyed_table) {
+            let physical = offset as usize;
+            if !all_visible && !view.row_visible(store.begin_ts[physical], store.end_ts[physical]) {
+                continue;
+            }
+            let neighbor = if forward {
+                store.dst[physical]
+            } else {
+                store.src[physical]
+            };
+            visit(offset, neighbor.offset.0)?;
+        }
+        Ok(())
+    }
+
     /// Count visible neighbors without materializing [`BatchNeighbor`] records.
     /// Valid only after [`Self::rel_rows_all_visible`] returned true for this table
     /// and statement view. `allow_neighbor_table` applies a polymorphic endpoint gate.
@@ -2212,6 +2429,135 @@ mod tests {
         // Backward over (P,C): x is the TO endpoint, b is not.
         assert_eq!(extend(&s, kpc, x, ExtendDir::Backward)[0].nbr, a);
         assert!(extend(&s, kpc, b, ExtendDir::Backward).is_empty());
+    }
+
+    #[test]
+    fn narrow_graph_visitors_preserve_visibility_and_direction() {
+        let mut storage = InMemStorage::new();
+        let node_table = TableId(0);
+        let rel_table = TableId(1);
+        storage.create_node_table(test_write(), node_table, &[LogicalType::Int64], 0);
+        storage.create_rel_table(
+            test_write(),
+            rel_table,
+            node_table,
+            node_table,
+            &[],
+            "R",
+            RelMultiplicity::default(),
+        );
+        let a = storage
+            .insert_node(test_write(), node_table, vec![Value::Int64(0)])
+            .unwrap();
+        let b = storage
+            .insert_node(test_write(), node_table, vec![Value::Int64(1)])
+            .unwrap();
+        let c = storage
+            .insert_node(test_write(), node_table, vec![Value::Int64(2)])
+            .unwrap();
+        storage
+            .insert_rel(test_write(), rel_table, a, b, vec![])
+            .unwrap();
+        storage
+            .insert_rel(test_write(), rel_table, a, c, vec![])
+            .unwrap();
+
+        assert!(storage.node_rows_all_visible(test_read(), node_table));
+        assert!(storage.rel_rows_all_visible(test_read(), rel_table));
+
+        let mut nodes = Vec::new();
+        storage
+            .visit_node_offsets_all_visible(test_read(), node_table, |offset| {
+                nodes.push(offset);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(nodes, [0, 1, 2]);
+
+        let mut edges = Vec::new();
+        storage
+            .visit_rel_endpoints_all_visible(
+                test_read(),
+                rel_table,
+                |rel_offset, src_offset, dst_offset| {
+                    edges.push((rel_offset, src_offset, dst_offset));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(edges, [(0, 0, 1), (1, 0, 2)]);
+
+        let mut forward = Vec::new();
+        storage
+            .visit_neighbors_all_visible(
+                test_read(),
+                rel_table,
+                a,
+                EdgeDir::Fwd,
+                |rel_offset, neighbor_offset| {
+                    forward.push((rel_offset, neighbor_offset));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(forward, [(0, 1), (1, 2)]);
+
+        let mut backward = Vec::new();
+        storage
+            .visit_neighbors_all_visible(
+                test_read(),
+                rel_table,
+                c,
+                EdgeDir::Bwd,
+                |rel_offset, neighbor_offset| {
+                    backward.push((rel_offset, neighbor_offset));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(backward, [(1, 0)]);
+
+        storage.delete_rel(test_write(), rel_table, 1).unwrap();
+        storage.delete_node(test_write(), node_table, 2).unwrap();
+        assert!(!storage.node_rows_all_visible(test_read(), node_table));
+        assert!(!storage.rel_rows_all_visible(test_read(), rel_table));
+
+        nodes.clear();
+        storage
+            .visit_node_offsets(test_read(), node_table, |offset| {
+                nodes.push(offset);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(nodes, [0, 1]);
+
+        edges.clear();
+        storage
+            .visit_rel_endpoints(
+                test_read(),
+                rel_table,
+                |rel_offset, src_offset, dst_offset| {
+                    edges.push((rel_offset, src_offset, dst_offset));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(edges, [(0, 0, 1)]);
+
+        forward.clear();
+        storage
+            .visit_neighbors(
+                test_read(),
+                rel_table,
+                a,
+                EdgeDir::Fwd,
+                |rel_offset, neighbor_offset| {
+                    forward.push((rel_offset, neighbor_offset));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(forward, [(0, 1)]);
     }
 
     #[test]

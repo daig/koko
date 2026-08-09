@@ -24,6 +24,25 @@ CATALOG_KINDS = {
     "SCALAR FUNCTION": "Scalar",
     "REWRITE FUNCTION": "Rewrite",
     "AGGREGATE FUNCTION": "Aggregate",
+    "TABLE FUNCTION": "Table",
+    "STANDALONE TABLE FUNCTION": "StandaloneTable",
+    "ALGORITHM FUNCTION": "Algorithm",
+}
+MANIFEST_TO_CATALOG_KIND = {
+    "scalar": "SCALAR FUNCTION",
+    "rewrite": "REWRITE FUNCTION",
+    "aggregate": "AGGREGATE FUNCTION",
+    "table": "TABLE FUNCTION",
+    "standalone_table": "STANDALONE TABLE FUNCTION",
+    "algorithm": "ALGORITHM FUNCTION",
+}
+MANIFEST_KIND_VARIANT = {
+    "scalar": "Scalar",
+    "rewrite": "Rewrite",
+    "aggregate": "Aggregate",
+    "table": "Table",
+    "standalone_table": "StandaloneTable",
+    "algorithm": "Algorithm",
 }
 TYPE_IDS = {
     "ANY": "Any",
@@ -154,7 +173,7 @@ def parse_manifest(text: str) -> list[dict[str, object]]:
             raise ValueError(f"duplicate manifest name {name!r}")
         if name != name.lower() or not name.isascii():
             raise ValueError(f"manifest name must be lower-case ASCII: {name!r}")
-        if entry["kind"] not in ("scalar", "rewrite", "aggregate"):
+        if entry["kind"] not in MANIFEST_TO_CATALOG_KIND:
             raise ValueError(f"manifest name {name!r} has invalid kind {entry['kind']!r}")
         koko_overloads = entry.get("koko_overloads", [])
         if not isinstance(koko_overloads, list) or any(
@@ -164,6 +183,31 @@ def parse_manifest(text: str) -> list[dict[str, object]]:
             raise ValueError(f"manifest name {name!r} has invalid koko_overloads")
         if koko_overloads and entry["kind"] != "scalar":
             raise ValueError(f"manifest name {name!r} has non-scalar Koko overloads")
+        signatures = entry.get("signatures", [])
+        if not isinstance(signatures, list) or any(
+            not isinstance(signature, str) for signature in signatures
+        ):
+            raise ValueError(f"manifest name {name!r} has invalid signatures")
+        catalog_signatures = entry.get("catalog_signatures", [])
+        if not isinstance(catalog_signatures, list) or any(
+            not isinstance(signature, str) for signature in catalog_signatures
+        ):
+            raise ValueError(f"manifest name {name!r} has invalid catalog_signatures")
+        if catalog_signatures and "catalog_signature" in entry:
+            raise ValueError(
+                f"manifest name {name!r} has both catalog_signature and catalog_signatures"
+            )
+        if entry["kind"] == "algorithm" and not signatures:
+            raise ValueError(f"algorithm manifest name {name!r} has no signatures")
+        catalog_signatures = entry.get("catalog_signatures", [])
+        if not isinstance(catalog_signatures, list) or any(
+            not isinstance(signature, str) for signature in catalog_signatures
+        ):
+            raise ValueError(f"manifest name {name!r} has invalid catalog_signatures")
+        if "catalog_signature" in entry and catalog_signatures:
+            raise ValueError(
+                f"manifest name {name!r} cannot define both catalog_signature and catalog_signatures"
+            )
     if entries != sorted(entries, key=lambda entry: str(entry["name"]).lower()):
         raise ValueError("manifest entries must be sorted by ASCII-folded called name")
     return entries
@@ -192,15 +236,14 @@ def scalar_expression(semantic: str) -> str:
 
 
 def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> str:
-    runtime_rows = [row for row in rows if row[1] in CATALOG_KINDS]
-    kind_variants = {
-        "SCALAR FUNCTION": "Scalar",
-        "REWRITE FUNCTION": "Rewrite",
-        "AGGREGATE FUNCTION": "Aggregate",
-        "TABLE FUNCTION": "Table",
-        "STANDALONE TABLE FUNCTION": "StandaloneTable",
-        "COPY FUNCTION": "Copy",
-    }
+    manifest_names = {str(entry["name"]) for entry in entries}
+    runtime_rows = [
+        row
+        for row in rows
+        if row[1] in ("SCALAR FUNCTION", "REWRITE FUNCTION", "AGGREGATE FUNCTION")
+        or row[0].lower() in manifest_names
+    ]
+    kind_variants = {**CATALOG_KINDS, "COPY FUNCTION": "Copy"}
     rows_by_name: dict[str, list[tuple[str, str, str]]] = {}
     for row in runtime_rows:
         rows_by_name.setdefault(row[0].lower(), []).append(row)
@@ -211,7 +254,7 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         raise ValueError(f"catalog builtin names missing from manifest: {', '.join(missing)}")
     for name, entry in entries_by_name.items():
         source = str(entry.get("overload_source", name))
-        if source not in rows_by_name:
+        if not entry.get("signatures") and source not in rows_by_name:
             raise ValueError(f"manifest name {name!r} has no catalog rows and invalid overload_source {source!r}")
         canonical = str(entry.get("canonical_name", name))
         if canonical not in entries_by_name:
@@ -222,30 +265,44 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
             raise ValueError(
                 f"manifest alias {name!r} does not share {canonical!r}'s semantic ID"
             )
-        row_kinds = {row[1] for row in rows_by_name[source]}
-        expected_kind = {
-            "scalar": "SCALAR FUNCTION",
-            "rewrite": "REWRITE FUNCTION",
-            "aggregate": "AGGREGATE FUNCTION",
-        }[str(entry["kind"])]
+        expected_kind = MANIFEST_TO_CATALOG_KIND[str(entry["kind"])]
+        row_kinds = (
+            {expected_kind}
+            if entry.get("signatures")
+            else {row[1] for row in rows_by_name[source]}
+        )
         if expected_kind not in row_kinds and not (
             entry["kind"] == "scalar" and "REWRITE FUNCTION" in row_kinds
         ):
             raise ValueError(f"manifest kind for {name!r} does not match overload source {source!r}")
 
-    unit_semantics = sorted(
+    scalar_semantics = sorted(
         {
             str(entry["semantic"])
             for entry in entries
-            if entry["kind"] != "aggregate"
+            if entry["kind"] in ("scalar", "rewrite")
             and str(entry["semantic"]) not in CAST_SEMANTICS
             and str(entry["semantic"]) not in ROUND_SEMANTICS
             and str(entry["semantic"]) not in DIGEST_SEMANTICS
         }
     )
+    table_semantics = sorted(
+        {
+            str(entry["semantic"])
+            for entry in entries
+            if entry["kind"] in ("table", "standalone_table")
+        }
+    )
+    algorithm_semantics = sorted(
+        {
+            str(entry["semantic"])
+            for entry in entries
+            if entry["kind"] == "algorithm"
+        }
+    )
     canonical_by_function: dict[str, str] = {}
     for entry in entries:
-        if entry["kind"] == "aggregate":
+        if entry["kind"] not in ("scalar", "rewrite"):
             continue
         expression = scalar_expression(str(entry["semantic"]))
         canonical = str(entry.get("canonical_name", entry["name"]))
@@ -264,11 +321,11 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         "use std::cmp::Ordering;",
         "",
         "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
-        "pub enum FunctionCatalogKind { Scalar, Rewrite, Aggregate, Table, StandaloneTable, Copy }",
+        "pub enum FunctionCatalogKind { Scalar, Rewrite, Aggregate, Table, StandaloneTable, Algorithm, Copy }",
         "",
         "impl FunctionCatalogKind {",
         "    pub const fn as_str(self) -> &'static str {",
-        "        match self { Self::Scalar => \"SCALAR FUNCTION\", Self::Rewrite => \"REWRITE FUNCTION\", Self::Aggregate => \"AGGREGATE FUNCTION\", Self::Table => \"TABLE FUNCTION\", Self::StandaloneTable => \"STANDALONE TABLE FUNCTION\", Self::Copy => \"COPY FUNCTION\" }",
+        "        match self { Self::Scalar => \"SCALAR FUNCTION\", Self::Rewrite => \"REWRITE FUNCTION\", Self::Aggregate => \"AGGREGATE FUNCTION\", Self::Table => \"TABLE FUNCTION\", Self::StandaloneTable => \"STANDALONE TABLE FUNCTION\", Self::Algorithm => \"ALGORITHM FUNCTION\", Self::Copy => \"COPY FUNCTION\" }",
         "    }",
         "}",
         "",
@@ -290,7 +347,7 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         "    Round(RoundMode),",
         "    Digest(DigestAlgorithm),",
     ]
-    out.extend(f"    {semantic}," for semantic in unit_semantics)
+    out.extend(f"    {semantic}," for semantic in scalar_semantics)
     out += [
         "}",
         "",
@@ -307,9 +364,36 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         "    }",
         "}",
         "",
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
-        "pub enum BuiltinFunction { Scalar(BuiltinScalar), Aggregate(AggOp), CatalogOnly }",
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+        "pub enum BuiltinTableFunction {",
+    ]
+    out.extend(f"    {semantic}," for semantic in table_semantics)
+    out += [
+        "}",
         "",
+        "impl BuiltinTableFunction {",
+        "    pub const fn canonical_name(self) -> &'static str {",
+        "        match self {",
+    ]
+    out.extend(
+        f"            Self::{entry['semantic']} => {json.dumps(str(entry['name']).upper())},"
+        for entry in entries
+        if entry["kind"] in ("table", "standalone_table")
+    )
+    out += [
+        "        }",
+        "    }",
+        "}",
+        "",
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+        "pub enum BuiltinGraphAlgorithm {",
+    ]
+    out.extend(f"    {semantic}," for semantic in algorithm_semantics)
+    out += [
+        "}",
+        "",
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+        "pub enum BuiltinFunction { Scalar(BuiltinScalar), Aggregate(AggOp), Table(BuiltinTableFunction), GraphAlgorithm(BuiltinGraphAlgorithm), CatalogOnly }",
         "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
         "pub enum CatalogTypeId { Any, Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, Serial, Decimal, Double, Float, String, Date, Timestamp, TimestampNs, TimestampMs, TimestampSec, TimestampTz, Interval, Uuid, Blob, List, Array, Struct, Map, Union, Node, Rel, RecursiveRel, InternalId, Json }",
         "",
@@ -341,8 +425,14 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
     descriptor_rows: list[tuple[dict[str, object], list[tuple[str, str, str]]]] = []
     for index, entry in enumerate(entries):
         name = str(entry["name"])
-        source = str(entry.get("overload_source", name))
-        source_rows = rows_by_name[source]
+        if entry.get("signatures"):
+            source_rows = [
+                (name, MANIFEST_TO_CATALOG_KIND[str(entry["kind"])], str(signature))
+                for signature in entry["signatures"]
+            ]
+        else:
+            source = str(entry.get("overload_source", name))
+            source_rows = rows_by_name[source]
         overloads: list[tuple[str, str, str, bool]] = []
         if entry["kind"] == "aggregate":
             i = 0
@@ -404,6 +494,10 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
                 "PercentileDisc": "AggOp::PercentileDisc(0)",
             }[semantic]
             function = f"BuiltinFunction::Aggregate({agg})"
+        elif kind in ("table", "standalone_table"):
+            function = f"BuiltinFunction::Table(BuiltinTableFunction::{semantic})"
+        elif kind == "algorithm":
+            function = f"BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::{semantic})"
         else:
             function = f"BuiltinFunction::Scalar({scalar_expression(semantic)})"
         name = str(entry["name"])
@@ -415,7 +509,7 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
             name,
             "    BuiltinDescriptor { called_name: "
             + json.dumps(name)
-            + f", function: {function}, catalog_kind: FunctionCatalogKind::{kind.capitalize()}, overloads: OVERLOADS_{index}, koko_overloads: {koko_overloads}, string_coerce: &[{positions}], variable_arity: {str(bool(entry.get('variable_arity', False))).lower()}, bindable: {str(bool(entry.get('bindable', True))).lower()} }},",
+            + f", function: {function}, catalog_kind: FunctionCatalogKind::{MANIFEST_KIND_VARIANT[kind]}, overloads: OVERLOADS_{index}, koko_overloads: {koko_overloads}, string_coerce: &[{positions}], variable_arity: {str(bool(entry.get('variable_arity', False))).lower()}, bindable: {str(bool(entry.get('bindable', True))).lower()} }},",
         ))
     manifest_names = {str(entry["name"]).lower() for entry in entries}
     catalog_only: dict[str, tuple[str, str]] = {}
@@ -443,6 +537,19 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         for entry in entries
         for signature in entry.get("koko_overloads", [])
     ]
+    koko_catalog_rows.extend(
+        (
+            str(entry["name"]).upper(),
+            MANIFEST_TO_CATALOG_KIND[str(entry["kind"])],
+            str(signature),
+        )
+        for entry in entries
+        for signature in (
+            [entry["catalog_signature"]]
+            if "catalog_signature" in entry
+            else entry.get("catalog_signatures", [])
+        )
+    )
     out += [
         "#[rustfmt::skip]",
         "pub static BUILTIN_DESCRIPTORS: &[BuiltinDescriptor] = &[",
@@ -466,7 +573,7 @@ def emit(rows: list[tuple[str, str, str]], entries: list[dict[str, object]]) -> 
         "pub fn resolve_builtin_scalar(called_name: &str) -> Option<BuiltinScalar> {",
         "    let descriptor = resolve_builtin(called_name)?;",
         "    if !descriptor.bindable { return None; }",
-        "    match descriptor.function { BuiltinFunction::Scalar(function) => Some(function), BuiltinFunction::Aggregate(_) | BuiltinFunction::CatalogOnly => None }",
+        "    match descriptor.function { BuiltinFunction::Scalar(function) => Some(function), BuiltinFunction::Aggregate(_) | BuiltinFunction::Table(_) | BuiltinFunction::GraphAlgorithm(_) | BuiltinFunction::CatalogOnly => None }",
         "}",
         "",
         "/// `CALL show_functions()` rows: the Ladybug-derived source order followed by Koko-only overloads.",

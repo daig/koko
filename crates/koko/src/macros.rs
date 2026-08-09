@@ -81,9 +81,12 @@ fn expand_reading(clauses: &mut [ReadingClause], macros: &MacroRegistry, depth: 
                 }
             }
             ReadingClause::Unwind(u) => expand_expr(&mut u.expr, macros, depth)?,
-            ReadingClause::TableFuncScan(t) => {
-                if let Some(w) = &mut t.where_clause {
-                    expand_expr(w, macros, depth)?;
+            ReadingClause::Call(call) => {
+                for argument in &mut call.args {
+                    expand_expr(argument, macros, depth)?;
+                }
+                if let Some(where_clause) = &mut call.where_clause {
+                    expand_expr(where_clause, macros, depth)?;
                 }
             }
             // `LOAD FROM`'s only macro-expandable expression is a trailing `WHERE`

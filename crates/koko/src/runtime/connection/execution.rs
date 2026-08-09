@@ -18,7 +18,7 @@ use koko_common::{DataChunk, InternalId, MemoryTracker, MemoryUsage, TableId};
 use koko_common::{ReadView, Ts, VECTOR_CAPACITY};
 use koko_ir::bound::{
     BoundAlterOp, BoundColumn, BoundColumnDefault, BoundColumnGeneration, BoundRegularQuery,
-    BoundStatement,
+    BoundStatement, BoundTableFunctionCall,
 };
 use koko_loader::icebug::IcebugQuerySources;
 use koko_storage::{SharedStorage, StorageReadHandle, StorageWriteHandle};
@@ -1174,8 +1174,8 @@ impl GraphData {
         )))
     }
 
-    /// Handle a standalone `CALL`: set a session/config option, or read one with
-    /// `current_setting`.
+    /// Handle a standalone `CALL`: set a session option or execute a function
+    /// explicitly declared as a standalone action.
     fn handle_call(
         &mut self,
         call: &koko_parser::ast::CallStmt,
@@ -1185,8 +1185,6 @@ impl GraphData {
         match call {
             CallStmt::SetConfig { key, value } => {
                 let (key, value) = self.bind_config_update(key, value, query)?;
-                // This compatibility test control changes database-wide writer
-                // admission; every graph observes the same atomic policy.
                 if let Some(enabled) = (key == "debug_enable_multi_writes")
                     .then(|| value.as_bool())
                     .flatten()
@@ -1196,19 +1194,14 @@ impl GraphData {
                 query.setting_update = Some((key, value));
                 Ok(QueryResult::default())
             }
-            CallStmt::TableFunc {
-                func,
-                arg,
-                extra_args,
-                has_return,
-            } => {
-                Self::validate_table_func_form(*func, *has_return)?;
-                self.run_table_func(*func, arg.as_deref(), extra_args, query)
+            CallStmt::Function(call) => {
+                let bound = self.bind_standalone_function_call(call, query)?;
+                self.run_standalone_function_call(&bound, query)
             }
         }
     }
 
-    /// Validate a standalone `CALL` without applying settings or running a table function.
+    /// Validate a standalone `CALL` without applying its action.
     fn validate_call(
         &self,
         call: &koko_parser::ast::CallStmt,
@@ -1219,21 +1212,8 @@ impl GraphData {
             CallStmt::SetConfig { key, value } => {
                 self.bind_config_update(key, value, query)?;
             }
-            CallStmt::TableFunc {
-                func,
-                arg,
-                extra_args,
-                has_return,
-            } => {
-                Self::validate_table_func_form(*func, *has_return)?;
-                let compilation_started = Instant::now();
-                koko_binder::table_func_schema(
-                    &self.catalog,
-                    koko_binder::bound_table_func(*func),
-                    arg.as_deref(),
-                    extra_args,
-                )?;
-                query.compilation_time += compilation_started.elapsed();
+            CallStmt::Function(call) => {
+                self.bind_standalone_function_call(call, query)?;
             }
         }
         Ok(())
@@ -1286,53 +1266,43 @@ impl GraphData {
         Ok((key, value))
     }
 
-    fn validate_table_func_form(func: koko_parser::ast::TableFunc, has_return: bool) -> Result<()> {
-        if !has_return
-            && !matches!(
-                func,
-                koko_parser::ast::TableFunc::CacheArrayColumn
-                    | koko_parser::ast::TableFunc::ClearWarnings
-            )
-        {
-            return Err(Error::binder(
-                "Only standalone table functions can be called without return statement."
-                    .to_string(),
-            ));
-        }
-        Ok(())
+    fn bind_standalone_function_call(
+        &self,
+        call: &koko_parser::ast::CallClause,
+        query: &mut QueryContext,
+    ) -> Result<BoundTableFunctionCall> {
+        let compilation_started = Instant::now();
+        let config = query.binder_config();
+        let bound = koko_binder::bind_standalone_table_call(
+            &self.catalog,
+            call,
+            &query.parameters,
+            &config,
+        )?;
+        koko_binder::table_func_schema(&self.catalog, bound.function, &bound.arguments)?;
+        query.compilation_time += compilation_started.elapsed();
+        Ok(bound)
     }
 
-    /// Run a catalog-introspection table function (the standalone `CALL` form),
-    /// producing a row-set from catalog metadata. (`RETURN *` / `ORDER BY` are
-    /// handled by the runner, which sorts rows.) The catalog-backed functions
-    /// delegate their column schema and rows to the shared `koko-binder` helpers,
-    /// so the standalone form and the in-query scan stay byte-exact;
-    /// `show_macros` is produced inline (its rows live in the macro registry).
-    fn run_table_func(
+    fn run_standalone_function_call(
         &self,
-        func: koko_parser::ast::TableFunc,
-        arg: Option<&str>,
-        extra_args: &[String],
+        call: &BoundTableFunctionCall,
         query: &mut QueryContext,
     ) -> Result<QueryResult> {
-        let bound_func = koko_binder::bound_table_func(func);
-        let compilation_started = Instant::now();
-        let schema = koko_binder::table_func_schema(&self.catalog, bound_func, arg, extra_args)?;
-        query.compilation_time += compilation_started.elapsed();
-        let (names, types): (Vec<_>, Vec<_>) = schema.into_iter().unzip();
         let runtime = TableFunctionContext {
             query,
             macros: &self.macros,
             memory: &self.memory,
-            stats: collect_stats(&self.catalog, &self.storage, query.storage_read()),
+            stats: koko_planner::StatsMap::new(),
         };
         let rows = koko_processor::table_function::produce_table_function_rows(
             &self.catalog,
-            bound_func,
-            arg,
+            call.function,
+            &call.arguments,
             &runtime,
         )?;
-        QueryResult::from_typed_rows(names, types, rows)
+        debug_assert!(rows.is_empty(), "standalone actions do not expose rows");
+        Ok(QueryResult::default())
     }
 }
 
@@ -1633,9 +1603,8 @@ pub(super) fn statement_writes(stmt: &koko_parser::ast::Statement) -> bool {
         Statement::ImportDatabase(_) => true,
         Statement::Query(rq) => query_has_updating(rq) || query_calls_nextval(rq),
         Statement::Call(CallStmt::SetConfig { value, .. }) => expr_calls_nextval(value),
-        Statement::Call(CallStmt::TableFunc { .. })
-        | Statement::Transaction(_)
-        | Statement::UseGraph { .. } => false,
+        Statement::Call(CallStmt::Function(call)) => call.args.iter().any(expr_calls_nextval),
+        Statement::Transaction(_) | Statement::UseGraph { .. } => false,
         Statement::CopyTo(_) | Statement::ExportDatabase(_) => false,
     }
 }
@@ -1663,10 +1632,10 @@ pub(super) fn statement_touches_catalog(stmt: &koko_parser::ast::Statement) -> b
         Statement::ImportDatabase(_) => true,
         Statement::Query(rq) => query_calls_nextval(rq),
         Statement::Call(CallStmt::SetConfig { value, .. }) => expr_calls_nextval(value),
+        Statement::Call(CallStmt::Function(call)) => call.args.iter().any(expr_calls_nextval),
         Statement::Copy(_)
         | Statement::CopyTo(_)
         | Statement::ExportDatabase(_)
-        | Statement::Call(CallStmt::TableFunc { .. })
         | Statement::Transaction(_)
         | Statement::UseGraph { .. } => false,
     }
@@ -1706,7 +1675,10 @@ fn reading_calls_nextval(c: &koko_parser::ast::ReadingClause) -> bool {
                 || m.where_clause.as_ref().is_some_and(expr_calls_nextval)
         }
         ReadingClause::Unwind(u) => expr_calls_nextval(&u.expr),
-        ReadingClause::TableFuncScan(t) => t.where_clause.as_ref().is_some_and(expr_calls_nextval),
+        ReadingClause::Call(call) => {
+            call.args.iter().any(expr_calls_nextval)
+                || call.where_clause.as_ref().is_some_and(expr_calls_nextval)
+        }
         ReadingClause::LoadFrom(l) => l.where_clause.as_ref().is_some_and(expr_calls_nextval),
     }
 }

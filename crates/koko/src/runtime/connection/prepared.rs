@@ -189,22 +189,10 @@ fn prepared_bind_metadata(
         Statement::Transaction(_) | Statement::Call(CallStmt::SetConfig { .. }) => {
             return Ok((unconstrained_parameters(), Vec::new()));
         }
-        Statement::Call(CallStmt::TableFunc {
-            func,
-            arg,
-            extra_args,
-            ..
-        }) => {
-            let columns = koko_binder::table_func_schema(
-                catalog,
-                koko_binder::bound_table_func(*func),
-                arg.as_deref(),
-                extra_args,
-            )?
-            .into_iter()
-            .map(|(name, logical_type)| Column::new(name, logical_type))
-            .collect();
-            return Ok((unconstrained_parameters(), columns));
+        Statement::Call(CallStmt::Function(call)) => {
+            let values = HashMap::new();
+            koko_binder::bind_standalone_table_call(catalog, call, &values, config)?;
+            return Ok((unconstrained_parameters(), Vec::new()));
         }
         Statement::CreateMacro(_)
         | Statement::DropMacro { .. }

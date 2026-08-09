@@ -174,9 +174,12 @@ impl RowLayout {
         }
     }
 
-    pub fn add_sequence_column(&mut self, ty: LogicalType) -> usize {
+    pub fn add_sequence_column(&mut self, id: usize, ty: LogicalType) -> usize {
         let col = self.allocate(ty);
-        self.sequence_cols.push(col);
+        if self.sequence_cols.len() <= id {
+            self.sequence_cols.resize(id + 1, usize::MAX);
+        }
+        self.sequence_cols[id] = col;
         col
     }
 

@@ -422,17 +422,17 @@ mod tests {
             parse_statement("CALL auto_checkpoint=false").unwrap(),
             Call(CallStmt::SetConfig { .. })
         ));
-        // `current_setting` is now a table function; a standalone `RETURN *`
-        // form parses as a `CallStmt::TableFunc` with the setting key as its arg.
-        match parse_statement("CALL current_setting('timeout') RETURN *").unwrap() {
-            Call(CallStmt::TableFunc {
-                arg, has_return, ..
-            }) => {
-                assert_eq!(arg.as_deref(), Some("timeout"));
-                assert!(has_return);
-            }
-            _ => panic!("expected current_setting table function"),
-        }
+        // Read calls with a projection enter the ordinary query pipeline and
+        // retain typed arguments until binding.
+        let query = single(parse_statement("CALL current_setting('timeout') RETURN *").unwrap());
+        let ReadingClause::Call(call) = &query.reading[0] else {
+            panic!("expected typed CALL reading clause");
+        };
+        assert_eq!(call.name, "current_setting");
+        assert_eq!(
+            call.args,
+            vec![Expr::Literal(Value::String("timeout".to_string()))]
+        );
     }
 
     #[test]

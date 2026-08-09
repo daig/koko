@@ -10,7 +10,7 @@ deferred unless the project owner explicitly restores it. Migration plans and th
 corpus are historical evidence, not sequencing authority. Extracted C++ semantics (test format,
 value formatting, execution model, front-end shapes) remain in `docs/cpp-reference/`.
 
-## Status & where truth lives (2026-07-29)
+## Status & where truth lives (2026-08-08)
 
 **Koko is an independent in-memory product with a first-party CLI and idiomatic Rust API.**
 Supported behavior is a Koko non-regression contract. Ladybug 0.17 and the differential tools are
@@ -19,10 +19,11 @@ but not automatic specifications or universal release gates.
 
 The product provides graph/database/connection/query/storage ownership; typed and `ANY` graphs
 through one execution pipeline; ordered JSON; graph-scoped HASH/ART DDL; atomic database-wide
-logical interchange; validated query-time local read-only `icebug-disk`; and connection-local
-native scalar UDFs. The `koko` crate is a small composition root over a private runtime capsule and
-explicit adapters. Historical closure counts and performance measurements live in
-`docs/PROGRESS.md` and `docs/PERF_GATE.md`, not in this current-status section.
+logical interchange; validated query-time local read-only `icebug-disk`; connection-local native
+scalar UDFs; and built-in directed topological-level scans. The `koko` crate is a small composition
+root over a private runtime capsule and explicit adapters. Historical closure counts and
+performance measurements live in `docs/PROGRESS.md` and `docs/PERF_GATE.md`, not in this
+current-status section.
 
 **Scope rule:** never start native persistence or work justified only as a prerequisite for it
 without a new explicit project-owner decision. `Database::new()` and
@@ -37,6 +38,8 @@ decision.
   limitations, evidence-gated opportunities, intentional behavioral decisions, and deferred scope.
 - **`docs/FACADE_ARCHITECTURE.md`** — implemented facade/module boundaries, state ownership,
   dependency direction, execution flow, and public API.
+- **`docs/GRAPH_ALGORITHMS.md`** — supported path/topological algorithms, graph-selection and
+  execution contracts, physical lowerings, and selected planned analytics.
 - **`docs/CLI_UX.md`** — authoritative user-visible CLI behavior and acceptance criteria.
 - **`docs/CLI_ARCHITECTURE.md`** — implemented CLI component boundaries, ownership, and data flow.
 - **`docs/TESTING.md`** — standing regression taxonomy, fixture ownership rules, commands, and
@@ -85,6 +88,7 @@ Keep every commit `clippy`- and `fmt`-clean. End commit messages with the
 koko-common      types · Value · typed chunks/vectors · memory/statistics primitives       (leaf)
 koko-catalog     private node/rel schema and catalog invariants                       → common
 koko-storage     versioned typed/chunked MVCC columns/adjacency/PK/undo                → common,catalog
+koko-algorithm   allocation-accounted whole-graph kernels over narrow typed contracts       → common
 koko-parser      hand-written lexer + recursive-descent/Pratt parser → AST             → common
 koko-function    generated function identities/signatures + scalar/aggregate execution → common
 koko-ir          bound semantics · typed variable IDs · row layouts · logical plans    → common,function
@@ -92,7 +96,7 @@ koko-binder      name/type resolution and query graph                           
 koko-expr        compile bound expressions → column evaluator                          → common,function,ir
 koko-planner     planning + pushdown/join/cost optimization                            → common,catalog,function,ir
 koko-loader      CSV/Parquet/NPY input · CSV/Parquet output · external scan protocols  → common,catalog,function,storage
-koko-processor   pull execution · typed chunks · controls/accounting · parallelism     → common,catalog,expr,function,ir,loader,storage
+koko-processor   pull execution · typed chunks · controls/accounting · parallelism     → common,algorithm,catalog,expr,function,ir,loader,storage
 koko             public Database/Connection/Transaction/Prepared/Result facade         → all engine crates
 koko-test-runner `.test` parser + hermetic/external corpus runners                      → koko,common
 koko-cli         first-party interactive/batch `koko` terminal client                  → koko

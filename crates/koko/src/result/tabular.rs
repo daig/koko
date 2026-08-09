@@ -197,6 +197,7 @@ impl QueryResult {
         Self::from_tabular(TabularData::new(columns, batches)?)
     }
 
+    #[cfg(test)]
     pub(crate) fn from_typed_rows(
         column_names: Vec<String>,
         column_types: Vec<LogicalType>,
@@ -204,7 +205,7 @@ impl QueryResult {
     ) -> Result<Self> {
         if column_names.len() != column_types.len() {
             return Err(Error::conversion(format!(
-                "tooling result has {} names but {} types",
+                "tooling result has {} column names but {} column types",
                 column_names.len(),
                 column_types.len()
             )));

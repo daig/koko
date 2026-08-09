@@ -1,4 +1,4 @@
-use super::{DECORRELATE_MIN_PROBE_ROWS, PlanBuilder};
+use super::{DECORRELATE_MIN_PROBE_ROWS, PlanBuilder, materialize_expression_values};
 use koko_common::{LogicalType, Result};
 use koko_ir::{
     bound::{BoundExpr, BoundSubquery, SubqueryKind},
@@ -8,11 +8,15 @@ use koko_ir::{
 /// Plan one lifted subquery onto `root`, decorrelating only when the cost gate allows it.
 pub(super) fn plan_subquery(
     builder: &mut PlanBuilder<'_>,
-    root: PlanOp,
+    mut root: PlanOp,
     subquery: &BoundSubquery,
     result_column: usize,
     all: &[BoundSubquery],
 ) -> Result<PlanOp> {
+    if let Some(predicate) = &subquery.where_predicate {
+        root = materialize_expression_values(builder, root, predicate);
+    }
+
     let inner_ids = subquery
         .where_predicate
         .as_ref()
@@ -49,6 +53,7 @@ pub(super) fn plan_subquery(
         pattern = plan_subquery(builder, pattern, inner, column, all)?;
     }
     if let Some(predicate) = &subquery.where_predicate {
+        pattern = materialize_expression_values(builder, pattern, predicate);
         pattern = PlanOp::Filter {
             input: Box::new(pattern),
             predicate: predicate.clone(),

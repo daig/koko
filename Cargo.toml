@@ -15,6 +15,7 @@ description = "An in-memory, embeddable property-graph database written in Rust.
 koko-common = { path = "crates/koko-common" }
 koko-catalog = { path = "crates/koko-catalog" }
 koko-storage = { path = "crates/koko-storage" }
+koko-algorithm = { path = "crates/koko-algorithm" }
 koko-parser = { path = "crates/koko-parser" }
 koko-function = { path = "crates/koko-function" }
 koko-ir = { path = "crates/koko-ir" }

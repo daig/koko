@@ -12,6 +12,7 @@ pub enum FunctionCatalogKind {
     Aggregate,
     Table,
     StandaloneTable,
+    Algorithm,
     Copy,
 }
 
@@ -23,6 +24,7 @@ impl FunctionCatalogKind {
             Self::Aggregate => "AGGREGATE FUNCTION",
             Self::Table => "TABLE FUNCTION",
             Self::StandaloneTable => "STANDALONE TABLE FUNCTION",
+            Self::Algorithm => "ALGORITHM FUNCTION",
             Self::Copy => "COPY FUNCTION",
         }
     }
@@ -463,13 +465,69 @@ impl BuiltinScalar {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinTableFunction {
+    BmInfo,
+    CacheArrayColumn,
+    ClearWarnings,
+    CurrentSetting,
+    DbVersion,
+    ShowConnection,
+    ShowFunctions,
+    ShowIndexes,
+    ShowLoadedExtensions,
+    ShowMacros,
+    ShowOfficialExtensions,
+    ShowSequences,
+    ShowTables,
+    ShowWarnings,
+    StatsInfo,
+    StorageInfo,
+    TableInfo,
+}
+
+impl BuiltinTableFunction {
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Self::CacheArrayColumn => "_CACHE_ARRAY_COLUMN_LOCALLY",
+            Self::BmInfo => "BM_INFO",
+            Self::ClearWarnings => "CLEAR_WARNINGS",
+            Self::CurrentSetting => "CURRENT_SETTING",
+            Self::DbVersion => "DB_VERSION",
+            Self::ShowConnection => "SHOW_CONNECTION",
+            Self::ShowFunctions => "SHOW_FUNCTIONS",
+            Self::ShowIndexes => "SHOW_INDEXES",
+            Self::ShowLoadedExtensions => "SHOW_LOADED_EXTENSIONS",
+            Self::ShowMacros => "SHOW_MACROS",
+            Self::ShowOfficialExtensions => "SHOW_OFFICIAL_EXTENSIONS",
+            Self::ShowSequences => "SHOW_SEQUENCES",
+            Self::ShowTables => "SHOW_TABLES",
+            Self::ShowWarnings => "SHOW_WARNINGS",
+            Self::StatsInfo => "STATS_INFO",
+            Self::StorageInfo => "STORAGE_INFO",
+            Self::TableInfo => "TABLE_INFO",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinGraphAlgorithm {
+    KCoreDecomposition,
+    Louvain,
+    PageRank,
+    StronglyConnectedComponents,
+    TopologicalLevels,
+    WeaklyConnectedComponents,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinFunction {
     Scalar(BuiltinScalar),
     Aggregate(AggOp),
+    Table(BuiltinTableFunction),
+    GraphAlgorithm(BuiltinGraphAlgorithm),
     CatalogOnly,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CatalogTypeId {
     Any,
@@ -1117,7 +1175,14 @@ static OVERLOADS_5: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(DOUBLE,DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_6: &[OverloadDescriptor] = &[
+static OVERLOADS_6: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String, CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING,STRING)",
+}];
+
+static OVERLOADS_7: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -1204,18 +1269,11 @@ static OVERLOADS_6: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_7: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_8: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
-}];
-
-static OVERLOADS_8: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::Any],
-    result: Some(CatalogTypeId::Bool),
-    distinct: false,
-    display_signature: "(LIST,ANY) -> BOOL",
 }];
 
 static OVERLOADS_9: &[OverloadDescriptor] = &[OverloadDescriptor {
@@ -1227,16 +1285,16 @@ static OVERLOADS_9: &[OverloadDescriptor] = &[OverloadDescriptor {
 
 static OVERLOADS_10: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
-    result: Some(CatalogTypeId::List),
+    result: Some(CatalogTypeId::Bool),
     distinct: false,
-    display_signature: "(LIST,ANY) -> LIST",
+    display_signature: "(LIST,ANY) -> BOOL",
 }];
 
 static OVERLOADS_11: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
-    display_signature: "(LIST,LIST) -> LIST",
+    display_signature: "(LIST,ANY) -> LIST",
 }];
 
 static OVERLOADS_12: &[OverloadDescriptor] = &[OverloadDescriptor {
@@ -1247,87 +1305,87 @@ static OVERLOADS_12: &[OverloadDescriptor] = &[OverloadDescriptor {
 }];
 
 static OVERLOADS_13: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    result: Some(CatalogTypeId::List),
+    distinct: false,
+    display_signature: "(LIST,LIST) -> LIST",
+}];
+
+static OVERLOADS_14: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(LIST,ANY) -> BOOL",
 }];
 
-static OVERLOADS_14: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_15: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ANY",
 }];
 
-static OVERLOADS_15: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_16: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Array),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ARRAY",
 }];
 
-static OVERLOADS_16: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_17: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ANY",
 }];
 
-static OVERLOADS_17: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_18: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST) -> LIST",
 }];
 
-static OVERLOADS_18: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_19: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ANY",
 }];
 
-static OVERLOADS_19: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_20: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::Int64],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,INT64) -> STRING",
 }];
 
-static OVERLOADS_20: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_21: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(LIST,ANY) -> BOOL",
 }];
 
-static OVERLOADS_21: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_22: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST,ANY) -> INT64",
 }];
 
-static OVERLOADS_22: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_23: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ANY",
 }];
 
-static OVERLOADS_23: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_24: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST,ANY) -> INT64",
-}];
-
-static OVERLOADS_24: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::Any],
-    result: Some(CatalogTypeId::List),
-    distinct: false,
-    display_signature: "(LIST,ANY) -> LIST",
 }];
 
 static OVERLOADS_25: &[OverloadDescriptor] = &[OverloadDescriptor {
@@ -1345,13 +1403,20 @@ static OVERLOADS_26: &[OverloadDescriptor] = &[OverloadDescriptor {
 }];
 
 static OVERLOADS_27: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::Any],
+    result: Some(CatalogTypeId::List),
+    distinct: false,
+    display_signature: "(LIST,ANY) -> LIST",
+}];
+
+static OVERLOADS_28: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(LIST) -> ANY",
 }];
 
-static OVERLOADS_28: &[OverloadDescriptor] = &[
+static OVERLOADS_29: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[
             CatalogTypeId::List,
@@ -1384,7 +1449,7 @@ static OVERLOADS_28: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_29: &[OverloadDescriptor] = &[
+static OVERLOADS_30: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::List],
         result: Some(CatalogTypeId::List),
@@ -1409,32 +1474,25 @@ static OVERLOADS_29: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_30: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_31: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Array, CatalogTypeId::Array],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ARRAY,ARRAY) -> ANY",
 }];
 
-static OVERLOADS_31: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_32: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::List],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,LIST) -> STRING",
 }];
 
-static OVERLOADS_32: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_33: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::Array),
     distinct: false,
     display_signature: "(ANY) -> ARRAY",
-}];
-
-static OVERLOADS_33: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::Double],
-    result: Some(CatalogTypeId::Double),
-    distinct: false,
-    display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
 static OVERLOADS_34: &[OverloadDescriptor] = &[OverloadDescriptor {
@@ -1445,13 +1503,20 @@ static OVERLOADS_34: &[OverloadDescriptor] = &[OverloadDescriptor {
 }];
 
 static OVERLOADS_35: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::Double],
+    result: Some(CatalogTypeId::Double),
+    distinct: false,
+    display_signature: "(DOUBLE) -> DOUBLE",
+}];
+
+static OVERLOADS_36: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double, CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE,DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_36: &[OverloadDescriptor] = &[
+static OVERLOADS_37: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Double),
@@ -1609,13 +1674,6 @@ static OVERLOADS_36: &[OverloadDescriptor] = &[
         display_signature: "(FLOAT) -> DOUBLE",
     },
 ];
-
-static OVERLOADS_37: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::Int64, CatalogTypeId::Int64],
-    result: Some(CatalogTypeId::Int64),
-    distinct: false,
-    display_signature: "(INT64,INT64) -> INT64",
-}];
 
 static OVERLOADS_38: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64, CatalogTypeId::Int64],
@@ -1646,13 +1704,27 @@ static OVERLOADS_41: &[OverloadDescriptor] = &[OverloadDescriptor {
 }];
 
 static OVERLOADS_42: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::Int64, CatalogTypeId::Int64],
+    result: Some(CatalogTypeId::Int64),
+    distinct: false,
+    display_signature: "(INT64,INT64) -> INT64",
+}];
+
+static OVERLOADS_43: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Blob),
     distinct: false,
     display_signature: "(STRING) -> BLOB",
 }];
 
-static OVERLOADS_43: &[OverloadDescriptor] = &[
+static OVERLOADS_44: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_45: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::List],
         result: Some(CatalogTypeId::Int64),
@@ -1679,21 +1751,21 @@ static OVERLOADS_43: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_44: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_46: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any, CatalogTypeId::String],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ANY,STRING) -> ANY",
 }];
 
-static OVERLOADS_45: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_47: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_46: &[OverloadDescriptor] = &[
+static OVERLOADS_48: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -1780,7 +1852,7 @@ static OVERLOADS_46: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_47: &[OverloadDescriptor] = &[
+static OVERLOADS_49: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -1867,21 +1939,28 @@ static OVERLOADS_47: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_48: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_50: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Timestamp],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(TIMESTAMP) -> INT64",
 }];
 
-static OVERLOADS_49: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_51: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_52: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ANY) -> ANY",
 }];
 
-static OVERLOADS_50: &[OverloadDescriptor] = &[
+static OVERLOADS_53: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Any],
         result: Some(CatalogTypeId::List),
@@ -1896,56 +1975,56 @@ static OVERLOADS_50: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_51: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_54: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_52: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_55: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_53: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_56: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ANY,ANY) -> ANY",
 }];
 
-static OVERLOADS_54: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_57: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_55: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_58: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_56: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_59: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: None,
     distinct: false,
     display_signature: "(RECURSIVE_REL)",
 }];
 
-static OVERLOADS_57: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_60: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_58: &[OverloadDescriptor] = &[
+static OVERLOADS_61: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Int64),
@@ -2356,7 +2435,7 @@ static OVERLOADS_58: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_59: &[OverloadDescriptor] = &[
+static OVERLOADS_62: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt8),
@@ -2443,114 +2522,121 @@ static OVERLOADS_59: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_60: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_63: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "() -> INT64",
 }];
 
-static OVERLOADS_61: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_64: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Date),
     distinct: false,
     display_signature: "() -> DATE",
 }];
 
-static OVERLOADS_62: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_65: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING)",
+}];
+
+static OVERLOADS_66: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Timestamp),
     distinct: false,
     display_signature: "() -> TIMESTAMP",
 }];
 
-static OVERLOADS_63: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_67: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(STRING) -> INT64",
 }];
 
-static OVERLOADS_64: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_68: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Date),
     distinct: false,
     display_signature: "(STRING) -> DATE",
 }];
 
-static OVERLOADS_65: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Date],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,DATE) -> INT64",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,TIMESTAMP) -> INT64",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Interval],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,INTERVAL) -> INT64",
-    },
-];
-
-static OVERLOADS_66: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Date],
-        result: Some(CatalogTypeId::Date),
-        distinct: false,
-        display_signature: "(STRING,DATE) -> DATE",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
-        result: Some(CatalogTypeId::Timestamp),
-        distinct: false,
-        display_signature: "(STRING,TIMESTAMP) -> TIMESTAMP",
-    },
-];
-
-static OVERLOADS_67: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Date],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,DATE) -> INT64",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,TIMESTAMP) -> INT64",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Interval],
-        result: Some(CatalogTypeId::Int64),
-        distinct: false,
-        display_signature: "(STRING,INTERVAL) -> INT64",
-    },
-];
-
-static OVERLOADS_68: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Date],
-        result: Some(CatalogTypeId::Date),
-        distinct: false,
-        display_signature: "(STRING,DATE) -> DATE",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
-        result: Some(CatalogTypeId::Timestamp),
-        distinct: false,
-        display_signature: "(STRING,TIMESTAMP) -> TIMESTAMP",
-    },
-];
-
 static OVERLOADS_69: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Date],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,DATE) -> INT64",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,TIMESTAMP) -> INT64",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Interval],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,INTERVAL) -> INT64",
+    },
+];
+
+static OVERLOADS_70: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Date],
+        result: Some(CatalogTypeId::Date),
+        distinct: false,
+        display_signature: "(STRING,DATE) -> DATE",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
+        result: Some(CatalogTypeId::Timestamp),
+        distinct: false,
+        display_signature: "(STRING,TIMESTAMP) -> TIMESTAMP",
+    },
+];
+
+static OVERLOADS_71: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Date],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,DATE) -> INT64",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,TIMESTAMP) -> INT64",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Interval],
+        result: Some(CatalogTypeId::Int64),
+        distinct: false,
+        display_signature: "(STRING,INTERVAL) -> INT64",
+    },
+];
+
+static OVERLOADS_72: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Date],
+        result: Some(CatalogTypeId::Date),
+        distinct: false,
+        display_signature: "(STRING,DATE) -> DATE",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Timestamp],
+        result: Some(CatalogTypeId::Timestamp),
+        distinct: false,
+        display_signature: "(STRING,TIMESTAMP) -> TIMESTAMP",
+    },
+];
+
+static OVERLOADS_73: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Date],
         result: Some(CatalogTypeId::String),
@@ -2565,63 +2651,70 @@ static OVERLOADS_69: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_70: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_74: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_75: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Blob],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(BLOB) -> STRING",
 }];
 
-static OVERLOADS_71: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_76: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_72: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_77: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(STRING) -> INTERVAL",
 }];
 
-static OVERLOADS_73: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_78: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Map, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(MAP,ANY) -> LIST",
 }];
 
-static OVERLOADS_74: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_79: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Blob),
     distinct: false,
     display_signature: "(STRING) -> BLOB",
 }];
 
-static OVERLOADS_75: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_80: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Rel],
     result: None,
     distinct: false,
     display_signature: "(REL)",
 }];
 
-static OVERLOADS_76: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_81: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_77: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_82: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Timestamp),
     distinct: false,
     display_signature: "(INT64) -> TIMESTAMP",
 }];
 
-static OVERLOADS_78: &[OverloadDescriptor] = &[
+static OVERLOADS_83: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -2834,35 +2927,35 @@ static OVERLOADS_78: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_79: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_84: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Int32),
     distinct: false,
     display_signature: "(STRING) -> INT32",
 }];
 
-static OVERLOADS_80: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_85: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_81: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_86: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_82: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_87: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(INT64) -> INT64",
 }];
 
-static OVERLOADS_83: &[OverloadDescriptor] = &[
+static OVERLOADS_88: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -2949,21 +3042,21 @@ static OVERLOADS_83: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_84: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_89: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_85: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_90: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Uuid),
     distinct: false,
     display_signature: "() -> UUID",
 }];
 
-static OVERLOADS_86: &[OverloadDescriptor] = &[
+static OVERLOADS_91: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -3176,7 +3269,7 @@ static OVERLOADS_86: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_87: &[OverloadDescriptor] = &[
+static OVERLOADS_92: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -3389,7 +3482,7 @@ static OVERLOADS_87: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_88: &[OverloadDescriptor] = &[
+static OVERLOADS_93: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Date, CatalogTypeId::Date],
         result: Some(CatalogTypeId::Date),
@@ -3404,20 +3497,20 @@ static OVERLOADS_88: &[OverloadDescriptor] = &[
     },
 ];
 
-static KOKO_OVERLOADS_88: &[KokoOverloadDescriptor] = &[KokoOverloadDescriptor {
+static KOKO_OVERLOADS_93: &[KokoOverloadDescriptor] = &[KokoOverloadDescriptor {
     family: KokoOverloadFamily::Numeric,
     min_arity: 2,
     display_signature: "(NUMERIC,NUMERIC,...) -> NUMERIC",
 }];
 
-static OVERLOADS_89: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_94: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::UInt64),
     distinct: false,
     display_signature: "(ANY) -> UINT64",
 }];
 
-static OVERLOADS_90: &[OverloadDescriptor] = &[
+static OVERLOADS_95: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Node],
         result: None,
@@ -3438,21 +3531,21 @@ static OVERLOADS_90: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_91: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_96: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(ANY,ANY) -> ANY",
 }];
 
-static OVERLOADS_92: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_97: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_93: &[OverloadDescriptor] = &[
+static OVERLOADS_98: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128, CatalogTypeId::Int128],
         result: Some(CatalogTypeId::InternalId),
@@ -3533,28 +3626,35 @@ static OVERLOADS_93: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_94: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_99: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(STRING) -> INTERVAL",
 }];
 
-static OVERLOADS_95: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_100: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(RECURSIVE_REL) -> BOOL",
 }];
 
-static OVERLOADS_96: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_101: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(RECURSIVE_REL) -> BOOL",
 }];
 
-static OVERLOADS_97: &[OverloadDescriptor] = &[
+static OVERLOADS_102: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    result: None,
+    distinct: false,
+    display_signature: "(LIST,LIST)",
+}];
+
+static OVERLOADS_103: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Node],
         result: None,
@@ -3569,7 +3669,7 @@ static OVERLOADS_97: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_98: &[OverloadDescriptor] = &[
+static OVERLOADS_104: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Node],
         result: None,
@@ -3590,7 +3690,7 @@ static OVERLOADS_98: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_99: &[OverloadDescriptor] = &[
+static OVERLOADS_105: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Node],
         result: None,
@@ -3611,7 +3711,7 @@ static OVERLOADS_99: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_100: &[OverloadDescriptor] = &[
+static OVERLOADS_106: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Date],
         result: Some(CatalogTypeId::Date),
@@ -3626,14 +3726,14 @@ static OVERLOADS_100: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_101: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_107: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_102: &[OverloadDescriptor] = &[
+static OVERLOADS_108: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Date, CatalogTypeId::Date],
         result: Some(CatalogTypeId::Date),
@@ -3648,27 +3748,27 @@ static OVERLOADS_102: &[OverloadDescriptor] = &[
     },
 ];
 
-static KOKO_OVERLOADS_102: &[KokoOverloadDescriptor] = &[KokoOverloadDescriptor {
+static KOKO_OVERLOADS_108: &[KokoOverloadDescriptor] = &[KokoOverloadDescriptor {
     family: KokoOverloadFamily::Numeric,
     min_arity: 2,
     display_signature: "(NUMERIC,NUMERIC,...) -> NUMERIC",
 }];
 
-static OVERLOADS_103: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_109: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::Int64],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,INT64) -> STRING",
 }];
 
-static OVERLOADS_104: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_110: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: None,
     distinct: false,
     display_signature: "(RECURSIVE_REL)",
 }];
 
-static OVERLOADS_105: &[OverloadDescriptor] = &[
+static OVERLOADS_111: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -3881,7 +3981,7 @@ static OVERLOADS_105: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_106: &[OverloadDescriptor] = &[
+static OVERLOADS_112: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -4094,116 +4194,46 @@ static OVERLOADS_106: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_107: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_113: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(STRING,STRING) -> INT64",
 }];
 
-static OVERLOADS_108: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_114: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_109: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_115: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(LIST) -> ANY",
 }];
 
-static OVERLOADS_110: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_116: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST,ANY) -> LIST",
 }];
 
-static OVERLOADS_111: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_117: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::List],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST,LIST) -> LIST",
 }];
-
-static OVERLOADS_112: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::List],
-    result: Some(CatalogTypeId::List),
-    distinct: false,
-    display_signature: "(LIST,LIST) -> LIST",
-}];
-
-static OVERLOADS_113: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::Any],
-    result: Some(CatalogTypeId::Bool),
-    distinct: false,
-    display_signature: "(LIST,ANY) -> BOOL",
-}];
-
-static OVERLOADS_114: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::Any],
-    result: Some(CatalogTypeId::List),
-    distinct: false,
-    display_signature: "(ANY) -> LIST",
-}];
-
-static OVERLOADS_115: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List],
-    result: Some(CatalogTypeId::List),
-    distinct: false,
-    display_signature: "(LIST) -> LIST",
-}];
-
-static OVERLOADS_116: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::List, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::Any),
-        distinct: false,
-        display_signature: "(LIST,INT64) -> ANY",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::String),
-        distinct: false,
-        display_signature: "(STRING,INT64) -> STRING",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::Array, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::Any),
-        distinct: false,
-        display_signature: "(ARRAY,INT64) -> ANY",
-    },
-];
-
-static OVERLOADS_117: &[OverloadDescriptor] = &[
-    OverloadDescriptor {
-        params: &[CatalogTypeId::List, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::Any),
-        distinct: false,
-        display_signature: "(LIST,INT64) -> ANY",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::String, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::String),
-        distinct: false,
-        display_signature: "(STRING,INT64) -> STRING",
-    },
-    OverloadDescriptor {
-        params: &[CatalogTypeId::Array, CatalogTypeId::Int64],
-        result: Some(CatalogTypeId::Any),
-        distinct: false,
-        display_signature: "(ARRAY,INT64) -> ANY",
-    },
-];
 
 static OVERLOADS_118: &[OverloadDescriptor] = &[OverloadDescriptor {
-    params: &[CatalogTypeId::List, CatalogTypeId::Any],
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
     result: Some(CatalogTypeId::List),
     distinct: false,
-    display_signature: "(LIST,ANY) -> LIST",
+    display_signature: "(LIST,LIST) -> LIST",
 }];
 
 static OVERLOADS_119: &[OverloadDescriptor] = &[OverloadDescriptor {
@@ -4214,55 +4244,125 @@ static OVERLOADS_119: &[OverloadDescriptor] = &[OverloadDescriptor {
 }];
 
 static OVERLOADS_120: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::Any],
+    result: Some(CatalogTypeId::List),
+    distinct: false,
+    display_signature: "(ANY) -> LIST",
+}];
+
+static OVERLOADS_121: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List],
+    result: Some(CatalogTypeId::List),
+    distinct: false,
+    display_signature: "(LIST) -> LIST",
+}];
+
+static OVERLOADS_122: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::List, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::Any),
+        distinct: false,
+        display_signature: "(LIST,INT64) -> ANY",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::String),
+        distinct: false,
+        display_signature: "(STRING,INT64) -> STRING",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::Array, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::Any),
+        distinct: false,
+        display_signature: "(ARRAY,INT64) -> ANY",
+    },
+];
+
+static OVERLOADS_123: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::List, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::Any),
+        distinct: false,
+        display_signature: "(LIST,INT64) -> ANY",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::String, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::String),
+        distinct: false,
+        display_signature: "(STRING,INT64) -> STRING",
+    },
+    OverloadDescriptor {
+        params: &[CatalogTypeId::Array, CatalogTypeId::Int64],
+        result: Some(CatalogTypeId::Any),
+        distinct: false,
+        display_signature: "(ARRAY,INT64) -> ANY",
+    },
+];
+
+static OVERLOADS_124: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::Any],
+    result: Some(CatalogTypeId::List),
+    distinct: false,
+    display_signature: "(LIST,ANY) -> LIST",
+}];
+
+static OVERLOADS_125: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::Any],
+    result: Some(CatalogTypeId::Bool),
+    distinct: false,
+    display_signature: "(LIST,ANY) -> BOOL",
+}];
+
+static OVERLOADS_126: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::List],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(LIST,LIST) -> BOOL",
 }];
 
-static OVERLOADS_121: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_127: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST,ANY) -> INT64",
 }];
 
-static OVERLOADS_122: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_128: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST,ANY) -> INT64",
 }];
 
-static OVERLOADS_123: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_129: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST,ANY) -> LIST",
 }];
 
-static OVERLOADS_124: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_130: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST) -> INT64",
 }];
 
-static OVERLOADS_125: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_131: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST,ANY) -> LIST",
 }];
 
-static OVERLOADS_126: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_132: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(LIST) -> ANY",
 }];
 
-static OVERLOADS_127: &[OverloadDescriptor] = &[
+static OVERLOADS_133: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::List],
         result: Some(CatalogTypeId::List),
@@ -4277,7 +4377,7 @@ static OVERLOADS_127: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_128: &[OverloadDescriptor] = &[
+static OVERLOADS_134: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[
             CatalogTypeId::List,
@@ -4310,7 +4410,7 @@ static OVERLOADS_128: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_129: &[OverloadDescriptor] = &[
+static OVERLOADS_135: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::List],
         result: Some(CatalogTypeId::List),
@@ -4335,70 +4435,90 @@ static OVERLOADS_129: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_130: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_136: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST) -> INT64",
 }];
 
-static OVERLOADS_131: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_137: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::List],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,LIST) -> STRING",
 }];
 
-static OVERLOADS_132: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_138: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(LIST,ANY) -> LIST",
 }];
 
-static OVERLOADS_133: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_139: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(LIST) -> INT64",
 }];
 
-static OVERLOADS_134: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_140: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_135: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_141: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_136: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_142: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_137: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_143: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_138: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_144: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::List, CatalogTypeId::List],
+        result: None,
+        distinct: false,
+        display_signature: "(LIST,LIST)",
+    },
+    OverloadDescriptor {
+        params: &[
+            CatalogTypeId::List,
+            CatalogTypeId::List,
+            CatalogTypeId::Int64,
+            CatalogTypeId::Int64,
+        ],
+        result: None,
+        distinct: false,
+        display_signature: "(LIST,LIST,INT64,INT64)",
+    },
+];
+
+static OVERLOADS_145: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_139: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_146: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::Int64,
@@ -4409,14 +4529,14 @@ static OVERLOADS_139: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,INT64,STRING) -> STRING",
 }];
 
-static OVERLOADS_140: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_147: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_141: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_148: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::Int64,
         CatalogTypeId::Int64,
@@ -4427,35 +4547,35 @@ static OVERLOADS_141: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(INT64,INT64,INT64) -> DATE",
 }];
 
-static OVERLOADS_142: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_149: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::List],
     result: Some(CatalogTypeId::Map),
     distinct: false,
     display_signature: "(LIST,LIST) -> MAP",
 }];
 
-static OVERLOADS_143: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_150: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Map, CatalogTypeId::Any],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(MAP,ANY) -> LIST",
 }];
 
-static OVERLOADS_144: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_151: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Map],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(MAP) -> LIST",
 }];
 
-static OVERLOADS_145: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_152: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Map],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(MAP) -> LIST",
 }];
 
-static OVERLOADS_146: &[OverloadDescriptor] = &[
+static OVERLOADS_153: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Bool],
         result: Some(CatalogTypeId::Bool),
@@ -4746,14 +4866,14 @@ static OVERLOADS_146: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_147: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_154: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_148: &[OverloadDescriptor] = &[
+static OVERLOADS_155: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Bool],
         result: Some(CatalogTypeId::Bool),
@@ -5044,7 +5164,7 @@ static OVERLOADS_148: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_149: &[OverloadDescriptor] = &[
+static OVERLOADS_156: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Date],
         result: Some(CatalogTypeId::String),
@@ -5059,7 +5179,7 @@ static OVERLOADS_149: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_150: &[OverloadDescriptor] = &[
+static OVERLOADS_157: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -5146,28 +5266,28 @@ static OVERLOADS_150: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_151: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_158: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(STRING) -> INT64",
 }];
 
-static OVERLOADS_152: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_159: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(RECURSIVE_REL) -> ANY",
 }];
 
-static OVERLOADS_153: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_160: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(LIST,ANY) -> BOOL",
 }];
 
-static OVERLOADS_154: &[OverloadDescriptor] = &[
+static OVERLOADS_161: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::Bool),
@@ -5380,7 +5500,7 @@ static OVERLOADS_154: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_155: &[OverloadDescriptor] = &[
+static OVERLOADS_162: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId, CatalogTypeId::InternalId],
         result: None,
@@ -5587,21 +5707,43 @@ static OVERLOADS_155: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_156: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_163: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Blob],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(BLOB) -> INT64",
 }];
 
-static OVERLOADS_157: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_164: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::InternalId],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(INTERNAL_ID) -> INT64",
 }];
 
-static OVERLOADS_158: &[OverloadDescriptor] = &[
+static OVERLOADS_165: &[OverloadDescriptor] = &[
+    OverloadDescriptor {
+        params: &[CatalogTypeId::List, CatalogTypeId::List],
+        result: None,
+        distinct: false,
+        display_signature: "(LIST,LIST)",
+    },
+    OverloadDescriptor {
+        params: &[
+            CatalogTypeId::List,
+            CatalogTypeId::List,
+            CatalogTypeId::Double,
+            CatalogTypeId::Double,
+            CatalogTypeId::Int64,
+            CatalogTypeId::Bool,
+        ],
+        result: None,
+        distinct: false,
+        display_signature: "(LIST,LIST,DOUBLE,DOUBLE,INT64,BOOL)",
+    },
+];
+
+static OVERLOADS_166: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128, CatalogTypeId::Double],
         result: Some(CatalogTypeId::Int128),
@@ -5760,56 +5902,56 @@ static OVERLOADS_158: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_159: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_167: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "() -> DOUBLE",
 }];
 
-static OVERLOADS_160: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_168: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double, CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE,DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_161: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_169: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double, CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE,DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_162: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_170: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_163: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_171: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::String],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(LIST,STRING) -> ANY",
 }];
 
-static OVERLOADS_164: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_172: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_165: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_173: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "() -> DOUBLE",
 }];
 
-static OVERLOADS_166: &[OverloadDescriptor] = &[
+static OVERLOADS_174: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128, CatalogTypeId::Int128],
         result: Some(CatalogTypeId::List),
@@ -5988,7 +6130,7 @@ static OVERLOADS_166: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_167: &[OverloadDescriptor] = &[
+static OVERLOADS_175: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::String, CatalogTypeId::String],
         result: Some(CatalogTypeId::String),
@@ -6007,7 +6149,7 @@ static OVERLOADS_167: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_168: &[OverloadDescriptor] = &[
+static OVERLOADS_176: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::String, CatalogTypeId::String],
         result: Some(CatalogTypeId::List),
@@ -6026,21 +6168,21 @@ static OVERLOADS_168: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_169: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_177: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_170: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_178: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_171: &[OverloadDescriptor] = &[
+static OVERLOADS_179: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[
             CatalogTypeId::String,
@@ -6064,35 +6206,35 @@ static OVERLOADS_171: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_172: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_180: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(STRING,STRING) -> LIST",
 }];
 
-static OVERLOADS_173: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_181: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(RECURSIVE_REL) -> ANY",
 }];
 
-static OVERLOADS_174: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_182: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::RecursiveRel],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(RECURSIVE_REL) -> ANY",
 }];
 
-static OVERLOADS_175: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_183: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::Int64],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,INT64) -> STRING",
 }];
 
-static OVERLOADS_176: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_184: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::String,
@@ -6103,28 +6245,28 @@ static OVERLOADS_176: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,STRING,STRING) -> STRING",
 }];
 
-static OVERLOADS_177: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_185: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_178: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_186: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::Int64],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING,INT64) -> STRING",
 }];
 
-static OVERLOADS_179: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_187: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double, CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE,INT64) -> DOUBLE",
 }];
 
-static OVERLOADS_180: &[OverloadDescriptor] = &[
+static OVERLOADS_188: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Node],
         result: None,
@@ -6139,7 +6281,7 @@ static OVERLOADS_180: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_181: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_189: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::Int64,
@@ -6150,28 +6292,91 @@ static OVERLOADS_181: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,INT64,STRING) -> STRING",
 }];
 
-static OVERLOADS_182: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_190: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_183: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_191: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Int32),
     distinct: false,
     display_signature: "(DOUBLE) -> INT32",
 }];
 
-static OVERLOADS_184: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_192: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_185: &[OverloadDescriptor] = &[
+static OVERLOADS_193: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING)",
+}];
+
+static OVERLOADS_194: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_195: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_196: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_197: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_198: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_199: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_200: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_201: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[],
+    result: None,
+    distinct: false,
+    display_signature: "()",
+}];
+
+static OVERLOADS_202: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int64],
         result: Some(CatalogTypeId::Int64),
@@ -6192,21 +6397,21 @@ static OVERLOADS_185: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_186: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_203: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_187: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_204: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::List, CatalogTypeId::Any],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(LIST,ANY) -> BOOL",
 }];
 
-static OVERLOADS_188: &[OverloadDescriptor] = &[
+static OVERLOADS_205: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::List],
         result: Some(CatalogTypeId::Int64),
@@ -6233,7 +6438,7 @@ static OVERLOADS_188: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_189: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_206: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::String,
@@ -6244,35 +6449,49 @@ static OVERLOADS_189: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,STRING,INT64) -> STRING",
 }];
 
-static OVERLOADS_190: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_207: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_191: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_208: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Rel],
     result: None,
     distinct: false,
     display_signature: "(REL)",
 }];
 
-static OVERLOADS_192: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_209: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_193: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_210: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING)",
+}];
+
+static OVERLOADS_211: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING)",
+}];
+
+static OVERLOADS_212: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(STRING,STRING) -> LIST",
 }];
 
-static OVERLOADS_194: &[OverloadDescriptor] = &[
+static OVERLOADS_213: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::String),
@@ -6473,21 +6692,28 @@ static OVERLOADS_194: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_195: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_214: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(STRING,STRING) -> LIST",
 }];
 
-static OVERLOADS_196: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_215: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::List),
     distinct: false,
     display_signature: "(STRING,STRING) -> LIST",
 }];
 
-static OVERLOADS_197: &[OverloadDescriptor] = &[
+static OVERLOADS_216: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    result: None,
+    distinct: false,
+    display_signature: "(LIST,LIST)",
+}];
+
+static OVERLOADS_217: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Struct, CatalogTypeId::String],
         result: Some(CatalogTypeId::Any),
@@ -6508,14 +6734,14 @@ static OVERLOADS_197: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_198: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_218: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::Struct),
     distinct: false,
     display_signature: "(ANY) -> STRUCT",
 }];
 
-static OVERLOADS_199: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_219: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::Int64,
@@ -6526,7 +6752,7 @@ static OVERLOADS_199: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,INT64,INT64) -> STRING",
 }];
 
-static OVERLOADS_200: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_220: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[
         CatalogTypeId::String,
         CatalogTypeId::Int64,
@@ -6537,14 +6763,14 @@ static OVERLOADS_200: &[OverloadDescriptor] = &[OverloadDescriptor {
     display_signature: "(STRING,INT64,INT64) -> STRING",
 }];
 
-static OVERLOADS_201: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_221: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String, CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING,STRING) -> BOOL",
 }];
 
-static OVERLOADS_202: &[OverloadDescriptor] = &[
+static OVERLOADS_222: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -6703,49 +6929,56 @@ static OVERLOADS_202: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_203: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_223: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::String],
+    result: None,
+    distinct: false,
+    display_signature: "(STRING)",
+}];
+
+static OVERLOADS_224: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Double),
     distinct: false,
     display_signature: "(DOUBLE) -> DOUBLE",
 }];
 
-static OVERLOADS_204: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_225: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Timestamp),
     distinct: false,
     display_signature: "(STRING) -> TIMESTAMP",
 }];
 
-static OVERLOADS_205: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_226: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Blob),
     distinct: false,
     display_signature: "(STRING) -> BLOB",
 }];
 
-static OVERLOADS_206: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_227: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Bool),
     distinct: false,
     display_signature: "(STRING) -> BOOL",
 }];
 
-static OVERLOADS_207: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_228: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Date),
     distinct: false,
     display_signature: "(STRING) -> DATE",
 }];
 
-static OVERLOADS_208: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_229: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_209: &[OverloadDescriptor] = &[
+static OVERLOADS_230: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Double),
@@ -6832,14 +7065,14 @@ static OVERLOADS_209: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_210: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_231: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Timestamp],
     result: Some(CatalogTypeId::Int64),
     distinct: false,
     display_signature: "(TIMESTAMP) -> INT64",
 }];
 
-static OVERLOADS_211: &[OverloadDescriptor] = &[
+static OVERLOADS_232: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Float),
@@ -6926,14 +7159,14 @@ static OVERLOADS_211: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_212: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_233: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_213: &[OverloadDescriptor] = &[
+static OVERLOADS_234: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int128),
@@ -7020,7 +7253,7 @@ static OVERLOADS_213: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_214: &[OverloadDescriptor] = &[
+static OVERLOADS_235: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int16),
@@ -7107,7 +7340,7 @@ static OVERLOADS_214: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_215: &[OverloadDescriptor] = &[
+static OVERLOADS_236: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int32),
@@ -7194,7 +7427,7 @@ static OVERLOADS_215: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_216: &[OverloadDescriptor] = &[
+static OVERLOADS_237: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int64),
@@ -7281,7 +7514,7 @@ static OVERLOADS_216: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_217: &[OverloadDescriptor] = &[
+static OVERLOADS_238: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Int8),
@@ -7368,49 +7601,49 @@ static OVERLOADS_217: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_218: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_239: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(STRING) -> INTERVAL",
 }];
 
-static OVERLOADS_219: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_240: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_220: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_241: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_221: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_242: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_222: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_243: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_223: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_244: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_224: &[OverloadDescriptor] = &[
+static OVERLOADS_245: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::Serial),
@@ -7497,7 +7730,7 @@ static OVERLOADS_224: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_225: &[OverloadDescriptor] = &[
+static OVERLOADS_246: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::InternalId],
         result: Some(CatalogTypeId::String),
@@ -7698,14 +7931,14 @@ static OVERLOADS_225: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_226: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_247: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Double],
     result: Some(CatalogTypeId::Timestamp),
     distinct: false,
     display_signature: "(DOUBLE) -> TIMESTAMP",
 }];
 
-static OVERLOADS_227: &[OverloadDescriptor] = &[
+static OVERLOADS_248: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt128),
@@ -7792,7 +8025,7 @@ static OVERLOADS_227: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_228: &[OverloadDescriptor] = &[
+static OVERLOADS_249: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt16),
@@ -7879,7 +8112,7 @@ static OVERLOADS_228: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_229: &[OverloadDescriptor] = &[
+static OVERLOADS_250: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt32),
@@ -7966,7 +8199,7 @@ static OVERLOADS_229: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_230: &[OverloadDescriptor] = &[
+static OVERLOADS_251: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt64),
@@ -8053,7 +8286,7 @@ static OVERLOADS_230: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_231: &[OverloadDescriptor] = &[
+static OVERLOADS_252: &[OverloadDescriptor] = &[
     OverloadDescriptor {
         params: &[CatalogTypeId::Int128],
         result: Some(CatalogTypeId::UInt8),
@@ -8140,88 +8373,102 @@ static OVERLOADS_231: &[OverloadDescriptor] = &[
     },
 ];
 
-static OVERLOADS_232: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_253: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Uuid),
     distinct: false,
     display_signature: "(STRING) -> UUID",
 }];
 
-static OVERLOADS_233: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_254: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Int64],
     result: Some(CatalogTypeId::Interval),
     distinct: false,
     display_signature: "(INT64) -> INTERVAL",
 }];
 
-static OVERLOADS_234: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_255: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_235: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_256: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    result: None,
+    distinct: false,
+    display_signature: "(LIST,LIST)",
+}];
+
+static OVERLOADS_257: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_236: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_258: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_237: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_259: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(ANY) -> STRING",
 }];
 
-static OVERLOADS_238: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_260: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_239: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_261: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Union, CatalogTypeId::String],
     result: Some(CatalogTypeId::Any),
     distinct: false,
     display_signature: "(UNION,STRING) -> ANY",
 }];
 
-static OVERLOADS_240: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_262: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Union],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(UNION) -> STRING",
 }];
 
-static OVERLOADS_241: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_263: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::Any],
     result: Some(CatalogTypeId::Union),
     distinct: false,
     display_signature: "(ANY) -> UNION",
 }];
 
-static OVERLOADS_242: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_264: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::String),
     distinct: false,
     display_signature: "(STRING) -> STRING",
 }];
 
-static OVERLOADS_243: &[OverloadDescriptor] = &[OverloadDescriptor {
+static OVERLOADS_265: &[OverloadDescriptor] = &[OverloadDescriptor {
     params: &[CatalogTypeId::String],
     result: Some(CatalogTypeId::Uuid),
     distinct: false,
     display_signature: "(STRING) -> UUID",
+}];
+
+static OVERLOADS_266: &[OverloadDescriptor] = &[OverloadDescriptor {
+    params: &[CatalogTypeId::List, CatalogTypeId::List],
+    result: None,
+    distinct: false,
+    display_signature: "(LIST,LIST)",
 }];
 
 #[rustfmt::skip]
@@ -8232,279 +8479,285 @@ pub static BUILTIN_DESCRIPTORS: &[BuiltinDescriptor] = &[
     BuiltinDescriptor { called_name: "-", function: BuiltinFunction::Scalar(BuiltinScalar::Subtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_3, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "/", function: BuiltinFunction::Scalar(BuiltinScalar::Divide), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_4, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "^", function: BuiltinFunction::Scalar(BuiltinScalar::PowerOperator), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_5, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "_CACHE_ARRAY_COLUMN_LOCALLY", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "abs", function: BuiltinFunction::Scalar(BuiltinScalar::Abs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_6, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "acos", function: BuiltinFunction::Scalar(BuiltinScalar::Acos), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_7, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "all", function: BuiltinFunction::Scalar(BuiltinScalar::All), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_8, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "any", function: BuiltinFunction::Scalar(BuiltinScalar::Any), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_9, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "array_append", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_10, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_cat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_11, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_concat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_12, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_contains", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_13, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_cosine_similarity", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayCosineSimilarity), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_14, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_cross_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayCrossProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_15, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_distance", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayDistance), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_16, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_distinct", function: BuiltinFunction::Scalar(BuiltinScalar::ListDistinct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_17, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_dot_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayDotProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_18, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_extract", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_19, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_has", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_20, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_indexof", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_21, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_inner_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayInnerProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_22, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_position", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_23, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_prepend", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_24, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_push_back", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_25, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_push_front", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_26, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_reverse", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_27, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_slice", function: BuiltinFunction::Scalar(BuiltinScalar::ArraySlice), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_28, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_29, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_squared_distance", function: BuiltinFunction::Scalar(BuiltinScalar::ArraySquaredDistance), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_30, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_to_string", function: BuiltinFunction::Scalar(BuiltinScalar::ListToString), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_31, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "array_value", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_32, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
-    BuiltinDescriptor { called_name: "asin", function: BuiltinFunction::Scalar(BuiltinScalar::Asin), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_33, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "atan", function: BuiltinFunction::Scalar(BuiltinScalar::Atan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_34, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "atan2", function: BuiltinFunction::Scalar(BuiltinScalar::Atan2), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_35, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "avg", function: BuiltinFunction::Aggregate(AggOp::Avg), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_36, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "bitshift_left", function: BuiltinFunction::Scalar(BuiltinScalar::BitshiftLeft), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_37, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "bitshift_right", function: BuiltinFunction::Scalar(BuiltinScalar::BitshiftRight), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_38, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "bitwise_and", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseAnd), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_39, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "bitwise_or", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseOr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_40, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "bitwise_xor", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseXor), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_41, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "blob", function: BuiltinFunction::Scalar(BuiltinScalar::Blob), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_42, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "BM_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "cardinality", function: BuiltinFunction::Scalar(BuiltinScalar::Size), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_43, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "cast", function: BuiltinFunction::Scalar(BuiltinScalar::CastFunction), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_44, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "_cache_array_column_locally", function: BuiltinFunction::Table(BuiltinTableFunction::CacheArrayColumn), catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: OVERLOADS_6, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "abs", function: BuiltinFunction::Scalar(BuiltinScalar::Abs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_7, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "acos", function: BuiltinFunction::Scalar(BuiltinScalar::Acos), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_8, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "all", function: BuiltinFunction::Scalar(BuiltinScalar::All), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_9, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "any", function: BuiltinFunction::Scalar(BuiltinScalar::Any), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_10, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "array_append", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_11, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_cat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_12, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_concat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_13, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_contains", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_14, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_cosine_similarity", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayCosineSimilarity), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_15, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_cross_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayCrossProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_16, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_distance", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayDistance), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_17, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_distinct", function: BuiltinFunction::Scalar(BuiltinScalar::ListDistinct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_18, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_dot_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayDotProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_19, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_extract", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_20, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_has", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_21, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_indexof", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_22, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_inner_product", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayInnerProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_23, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_position", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_24, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_prepend", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_25, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_push_back", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_26, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_push_front", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_27, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_reverse", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_28, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_slice", function: BuiltinFunction::Scalar(BuiltinScalar::ArraySlice), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_29, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_30, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_squared_distance", function: BuiltinFunction::Scalar(BuiltinScalar::ArraySquaredDistance), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_31, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_to_string", function: BuiltinFunction::Scalar(BuiltinScalar::ListToString), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_32, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "array_value", function: BuiltinFunction::Scalar(BuiltinScalar::ArrayValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_33, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
+    BuiltinDescriptor { called_name: "asin", function: BuiltinFunction::Scalar(BuiltinScalar::Asin), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_34, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "atan", function: BuiltinFunction::Scalar(BuiltinScalar::Atan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_35, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "atan2", function: BuiltinFunction::Scalar(BuiltinScalar::Atan2), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_36, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "avg", function: BuiltinFunction::Aggregate(AggOp::Avg), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_37, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bitshift_left", function: BuiltinFunction::Scalar(BuiltinScalar::BitshiftLeft), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_38, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bitshift_right", function: BuiltinFunction::Scalar(BuiltinScalar::BitshiftRight), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_39, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bitwise_and", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseAnd), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_40, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bitwise_or", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseOr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_41, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bitwise_xor", function: BuiltinFunction::Scalar(BuiltinScalar::BitwiseXor), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_42, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "blob", function: BuiltinFunction::Scalar(BuiltinScalar::Blob), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_43, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "bm_info", function: BuiltinFunction::Table(BuiltinTableFunction::BmInfo), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_44, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cardinality", function: BuiltinFunction::Scalar(BuiltinScalar::Size), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_45, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cast", function: BuiltinFunction::Scalar(BuiltinScalar::CastFunction), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_46, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "CATALOG_VERSION", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "cbrt", function: BuiltinFunction::Scalar(BuiltinScalar::Cbrt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_45, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ceil", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Ceil)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_46, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ceiling", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Ceil)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_47, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "century", function: BuiltinFunction::Scalar(BuiltinScalar::Century), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_48, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "CLEAR_WARNINGS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "coalesce", function: BuiltinFunction::Scalar(BuiltinScalar::Coalesce), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_49, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
-    BuiltinDescriptor { called_name: "collect", function: BuiltinFunction::Aggregate(AggOp::Collect), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_50, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "concat", function: BuiltinFunction::Scalar(BuiltinScalar::Concat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_51, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
-    BuiltinDescriptor { called_name: "concat_ws", function: BuiltinFunction::Scalar(BuiltinScalar::ConcatWs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_52, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
-    BuiltinDescriptor { called_name: "constant_or_null", function: BuiltinFunction::Scalar(BuiltinScalar::ConstantOrNull), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_53, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "contains", function: BuiltinFunction::Scalar(BuiltinScalar::Contains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_54, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cbrt", function: BuiltinFunction::Scalar(BuiltinScalar::Cbrt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_47, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ceil", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Ceil)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_48, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ceiling", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Ceil)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_49, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "century", function: BuiltinFunction::Scalar(BuiltinScalar::Century), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_50, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "clear_warnings", function: BuiltinFunction::Table(BuiltinTableFunction::ClearWarnings), catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: OVERLOADS_51, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "coalesce", function: BuiltinFunction::Scalar(BuiltinScalar::Coalesce), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_52, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
+    BuiltinDescriptor { called_name: "collect", function: BuiltinFunction::Aggregate(AggOp::Collect), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_53, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "concat", function: BuiltinFunction::Scalar(BuiltinScalar::Concat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_54, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
+    BuiltinDescriptor { called_name: "concat_ws", function: BuiltinFunction::Scalar(BuiltinScalar::ConcatWs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_55, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
+    BuiltinDescriptor { called_name: "constant_or_null", function: BuiltinFunction::Scalar(BuiltinScalar::ConstantOrNull), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_56, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "contains", function: BuiltinFunction::Scalar(BuiltinScalar::Contains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_57, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "COPY_CSV", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Copy, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "COPY_PARQUET", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Copy, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "cos", function: BuiltinFunction::Scalar(BuiltinScalar::Cos), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_55, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "cost", function: BuiltinFunction::Scalar(BuiltinScalar::Cost), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_56, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "cot", function: BuiltinFunction::Scalar(BuiltinScalar::Cot), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_57, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "count", function: BuiltinFunction::Aggregate(AggOp::Count), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_58, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "count_if", function: BuiltinFunction::Scalar(BuiltinScalar::CountIf), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_59, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "count_star", function: BuiltinFunction::Aggregate(AggOp::CountStar), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_60, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "current_date", function: BuiltinFunction::Scalar(BuiltinScalar::CurrentDate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_61, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "CURRENT_SETTING", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "current_timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::CurrentTimestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_62, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "currval", function: BuiltinFunction::Scalar(BuiltinScalar::Currval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_63, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "date", function: BuiltinFunction::Scalar(BuiltinScalar::Date), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_64, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "date_part", function: BuiltinFunction::Scalar(BuiltinScalar::DatePart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_65, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "date_trunc", function: BuiltinFunction::Scalar(BuiltinScalar::DateTrunc), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_66, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "datepart", function: BuiltinFunction::Scalar(BuiltinScalar::DatePart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_67, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "datetrunc", function: BuiltinFunction::Scalar(BuiltinScalar::DateTrunc), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_68, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "dayname", function: BuiltinFunction::Scalar(BuiltinScalar::Dayname), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_69, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "DB_VERSION", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "decode", function: BuiltinFunction::Scalar(BuiltinScalar::Decode), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_70, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "degrees", function: BuiltinFunction::Scalar(BuiltinScalar::Degrees), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_71, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cos", function: BuiltinFunction::Scalar(BuiltinScalar::Cos), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_58, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cost", function: BuiltinFunction::Scalar(BuiltinScalar::Cost), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_59, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "cot", function: BuiltinFunction::Scalar(BuiltinScalar::Cot), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_60, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "count", function: BuiltinFunction::Aggregate(AggOp::Count), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_61, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "count_if", function: BuiltinFunction::Scalar(BuiltinScalar::CountIf), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_62, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "count_star", function: BuiltinFunction::Aggregate(AggOp::CountStar), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_63, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "current_date", function: BuiltinFunction::Scalar(BuiltinScalar::CurrentDate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_64, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "current_setting", function: BuiltinFunction::Table(BuiltinTableFunction::CurrentSetting), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_65, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "current_timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::CurrentTimestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_66, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "currval", function: BuiltinFunction::Scalar(BuiltinScalar::Currval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_67, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "date", function: BuiltinFunction::Scalar(BuiltinScalar::Date), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_68, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "date_part", function: BuiltinFunction::Scalar(BuiltinScalar::DatePart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_69, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "date_trunc", function: BuiltinFunction::Scalar(BuiltinScalar::DateTrunc), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_70, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "datepart", function: BuiltinFunction::Scalar(BuiltinScalar::DatePart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_71, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "datetrunc", function: BuiltinFunction::Scalar(BuiltinScalar::DateTrunc), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_72, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "dayname", function: BuiltinFunction::Scalar(BuiltinScalar::Dayname), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_73, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "db_version", function: BuiltinFunction::Table(BuiltinTableFunction::DbVersion), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_74, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "decode", function: BuiltinFunction::Scalar(BuiltinScalar::Decode), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_75, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "degrees", function: BuiltinFunction::Scalar(BuiltinScalar::Degrees), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_76, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "DISK_SIZE_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "DROP_PROJECTED_GRAPH", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "duration", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_72, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "element_at", function: BuiltinFunction::Scalar(BuiltinScalar::ElementAt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_73, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "encode", function: BuiltinFunction::Scalar(BuiltinScalar::Encode), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_74, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "end_node", function: BuiltinFunction::Scalar(BuiltinScalar::EndNode), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_75, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ends_with", function: BuiltinFunction::Scalar(BuiltinScalar::Suffix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_76, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "epoch_ms", function: BuiltinFunction::Scalar(BuiltinScalar::EpochMs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_77, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "equals", function: BuiltinFunction::Scalar(BuiltinScalar::Equals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_78, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "error", function: BuiltinFunction::Scalar(BuiltinScalar::Error), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_79, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "even", function: BuiltinFunction::Scalar(BuiltinScalar::Even), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_80, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "exp", function: BuiltinFunction::Scalar(BuiltinScalar::Exp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_81, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "factorial", function: BuiltinFunction::Scalar(BuiltinScalar::Factorial), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_82, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "duration", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_77, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "element_at", function: BuiltinFunction::Scalar(BuiltinScalar::ElementAt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_78, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "encode", function: BuiltinFunction::Scalar(BuiltinScalar::Encode), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_79, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "end_node", function: BuiltinFunction::Scalar(BuiltinScalar::EndNode), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_80, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ends_with", function: BuiltinFunction::Scalar(BuiltinScalar::Suffix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_81, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "epoch_ms", function: BuiltinFunction::Scalar(BuiltinScalar::EpochMs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_82, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "equals", function: BuiltinFunction::Scalar(BuiltinScalar::Equals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_83, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "error", function: BuiltinFunction::Scalar(BuiltinScalar::Error), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_84, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "even", function: BuiltinFunction::Scalar(BuiltinScalar::Even), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_85, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "exp", function: BuiltinFunction::Scalar(BuiltinScalar::Exp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_86, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "factorial", function: BuiltinFunction::Scalar(BuiltinScalar::Factorial), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_87, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "FILE_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "floor", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Floor)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_83, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "floor", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Floor)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_88, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "FSM_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "gamma", function: BuiltinFunction::Scalar(BuiltinScalar::Gamma), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_84, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "gen_random_uuid", function: BuiltinFunction::Scalar(BuiltinScalar::GenRandomUuid), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_85, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "greater_than", function: BuiltinFunction::Scalar(BuiltinScalar::GreaterThan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_86, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "greater_than_equals", function: BuiltinFunction::Scalar(BuiltinScalar::GreaterThanEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_87, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "greatest", function: BuiltinFunction::Scalar(BuiltinScalar::Greatest), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_88, koko_overloads: KOKO_OVERLOADS_88, string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "hash", function: BuiltinFunction::Scalar(BuiltinScalar::Hash), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_89, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "id", function: BuiltinFunction::Scalar(BuiltinScalar::Id), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_90, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ifnull", function: BuiltinFunction::Scalar(BuiltinScalar::Ifnull), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_91, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "initcap", function: BuiltinFunction::Scalar(BuiltinScalar::Initcap), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_92, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "internal_id", function: BuiltinFunction::Scalar(BuiltinScalar::InternalId), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_93, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "interval", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_94, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "is_acyclic", function: BuiltinFunction::Scalar(BuiltinScalar::IsAcyclic), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_95, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "is_trail", function: BuiltinFunction::Scalar(BuiltinScalar::IsTrail), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_96, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "keys", function: BuiltinFunction::Scalar(BuiltinScalar::Keys), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_97, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "label", function: BuiltinFunction::Scalar(BuiltinScalar::Label), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_98, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "labels", function: BuiltinFunction::Scalar(BuiltinScalar::Labels), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_99, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "last_day", function: BuiltinFunction::Scalar(BuiltinScalar::LastDay), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_100, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "lcase", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_101, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "least", function: BuiltinFunction::Scalar(BuiltinScalar::Least), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_102, koko_overloads: KOKO_OVERLOADS_102, string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "left", function: BuiltinFunction::Scalar(BuiltinScalar::Left), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_103, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "length", function: BuiltinFunction::Scalar(BuiltinScalar::Length), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_104, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "less_than", function: BuiltinFunction::Scalar(BuiltinScalar::LessThan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_105, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "less_than_equals", function: BuiltinFunction::Scalar(BuiltinScalar::LessThanEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_106, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "levenshtein", function: BuiltinFunction::Scalar(BuiltinScalar::Levenshtein), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_107, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "lgamma", function: BuiltinFunction::Scalar(BuiltinScalar::Lgamma), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_108, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_any_value", function: BuiltinFunction::Scalar(BuiltinScalar::ListAnyValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_109, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_append", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_110, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_cat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_111, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_concat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_112, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_contains", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_113, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_creation", function: BuiltinFunction::Scalar(BuiltinScalar::ListCreation), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_114, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
-    BuiltinDescriptor { called_name: "list_distinct", function: BuiltinFunction::Scalar(BuiltinScalar::ListDistinct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_115, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_element", function: BuiltinFunction::Scalar(BuiltinScalar::ListExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_116, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_extract", function: BuiltinFunction::Scalar(BuiltinScalar::ListExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_117, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_filter", function: BuiltinFunction::Scalar(BuiltinScalar::ListFilter), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_118, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "list_has", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_119, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_has_all", function: BuiltinFunction::Scalar(BuiltinScalar::ListHasAll), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_120, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_indexof", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_121, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_position", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_122, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_prepend", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_123, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_product", function: BuiltinFunction::Scalar(BuiltinScalar::ListProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_124, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_reduce", function: BuiltinFunction::Scalar(BuiltinScalar::ListReduce), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_125, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "list_reverse", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_126, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_reverse_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverseSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_127, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_slice", function: BuiltinFunction::Scalar(BuiltinScalar::ListSlice), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_128, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_129, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_sum", function: BuiltinFunction::Scalar(BuiltinScalar::ListSum), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_130, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_to_string", function: BuiltinFunction::Scalar(BuiltinScalar::ListToString), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_131, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "list_transform", function: BuiltinFunction::Scalar(BuiltinScalar::ListTransform), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_132, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "list_unique", function: BuiltinFunction::Scalar(BuiltinScalar::ListUnique), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_133, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ln", function: BuiltinFunction::Scalar(BuiltinScalar::Ln), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_134, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "log", function: BuiltinFunction::Scalar(BuiltinScalar::Log), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_135, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "log10", function: BuiltinFunction::Scalar(BuiltinScalar::Log10), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_136, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "log2", function: BuiltinFunction::Scalar(BuiltinScalar::Log2), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_137, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "lower", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_138, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "lpad", function: BuiltinFunction::Scalar(BuiltinScalar::Lpad), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_139, koko_overloads: &[], string_coerce: &[0, 2], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ltrim", function: BuiltinFunction::Scalar(BuiltinScalar::Ltrim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_140, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "make_date", function: BuiltinFunction::Scalar(BuiltinScalar::MakeDate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_141, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "map", function: BuiltinFunction::Scalar(BuiltinScalar::Map), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_142, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "map_extract", function: BuiltinFunction::Scalar(BuiltinScalar::MapExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_143, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "map_keys", function: BuiltinFunction::Scalar(BuiltinScalar::MapKeys), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_144, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "map_values", function: BuiltinFunction::Scalar(BuiltinScalar::MapValues), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_145, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "max", function: BuiltinFunction::Aggregate(AggOp::Max), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_146, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "md5", function: BuiltinFunction::Scalar(BuiltinScalar::Digest(DigestAlgorithm::Md5)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_147, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "min", function: BuiltinFunction::Aggregate(AggOp::Min), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_148, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "monthname", function: BuiltinFunction::Scalar(BuiltinScalar::Monthname), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_149, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "negate", function: BuiltinFunction::Scalar(BuiltinScalar::Negate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_150, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "nextval", function: BuiltinFunction::Scalar(BuiltinScalar::Nextval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_151, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "nodes", function: BuiltinFunction::Scalar(BuiltinScalar::Nodes), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_152, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "none", function: BuiltinFunction::Scalar(BuiltinScalar::None), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_153, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "not_equals", function: BuiltinFunction::Scalar(BuiltinScalar::NotEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_154, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "nullif", function: BuiltinFunction::Scalar(BuiltinScalar::Nullif), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_155, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "octet_length", function: BuiltinFunction::Scalar(BuiltinScalar::OctetLength), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_156, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "offset", function: BuiltinFunction::Scalar(BuiltinScalar::Offset), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_157, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "percentiledisc", function: BuiltinFunction::Aggregate(AggOp::PercentileDisc(0)), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_158, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "pi", function: BuiltinFunction::Scalar(BuiltinScalar::Pi), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_159, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "pow", function: BuiltinFunction::Scalar(BuiltinScalar::Pow), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_160, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "power", function: BuiltinFunction::Scalar(BuiltinScalar::Pow), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_161, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "prefix", function: BuiltinFunction::Scalar(BuiltinScalar::Prefix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_162, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "gamma", function: BuiltinFunction::Scalar(BuiltinScalar::Gamma), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_89, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "gen_random_uuid", function: BuiltinFunction::Scalar(BuiltinScalar::GenRandomUuid), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_90, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "greater_than", function: BuiltinFunction::Scalar(BuiltinScalar::GreaterThan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_91, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "greater_than_equals", function: BuiltinFunction::Scalar(BuiltinScalar::GreaterThanEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_92, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "greatest", function: BuiltinFunction::Scalar(BuiltinScalar::Greatest), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_93, koko_overloads: KOKO_OVERLOADS_93, string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "hash", function: BuiltinFunction::Scalar(BuiltinScalar::Hash), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_94, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "id", function: BuiltinFunction::Scalar(BuiltinScalar::Id), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_95, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ifnull", function: BuiltinFunction::Scalar(BuiltinScalar::Ifnull), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_96, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "initcap", function: BuiltinFunction::Scalar(BuiltinScalar::Initcap), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_97, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "internal_id", function: BuiltinFunction::Scalar(BuiltinScalar::InternalId), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_98, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "interval", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_99, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "is_acyclic", function: BuiltinFunction::Scalar(BuiltinScalar::IsAcyclic), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_100, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "is_trail", function: BuiltinFunction::Scalar(BuiltinScalar::IsTrail), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_101, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "k_core_decomposition", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::KCoreDecomposition), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_102, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "keys", function: BuiltinFunction::Scalar(BuiltinScalar::Keys), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_103, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "label", function: BuiltinFunction::Scalar(BuiltinScalar::Label), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_104, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "labels", function: BuiltinFunction::Scalar(BuiltinScalar::Labels), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_105, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "last_day", function: BuiltinFunction::Scalar(BuiltinScalar::LastDay), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_106, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "lcase", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_107, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "least", function: BuiltinFunction::Scalar(BuiltinScalar::Least), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_108, koko_overloads: KOKO_OVERLOADS_108, string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "left", function: BuiltinFunction::Scalar(BuiltinScalar::Left), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_109, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "length", function: BuiltinFunction::Scalar(BuiltinScalar::Length), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_110, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "less_than", function: BuiltinFunction::Scalar(BuiltinScalar::LessThan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_111, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "less_than_equals", function: BuiltinFunction::Scalar(BuiltinScalar::LessThanEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_112, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "levenshtein", function: BuiltinFunction::Scalar(BuiltinScalar::Levenshtein), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_113, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "lgamma", function: BuiltinFunction::Scalar(BuiltinScalar::Lgamma), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_114, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_any_value", function: BuiltinFunction::Scalar(BuiltinScalar::ListAnyValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_115, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_append", function: BuiltinFunction::Scalar(BuiltinScalar::ListAppend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_116, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_cat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_117, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_concat", function: BuiltinFunction::Scalar(BuiltinScalar::ListConcat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_118, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_contains", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_119, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_creation", function: BuiltinFunction::Scalar(BuiltinScalar::ListCreation), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_120, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: true },
+    BuiltinDescriptor { called_name: "list_distinct", function: BuiltinFunction::Scalar(BuiltinScalar::ListDistinct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_121, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_element", function: BuiltinFunction::Scalar(BuiltinScalar::ListExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_122, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_extract", function: BuiltinFunction::Scalar(BuiltinScalar::ListExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_123, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_filter", function: BuiltinFunction::Scalar(BuiltinScalar::ListFilter), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_124, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "list_has", function: BuiltinFunction::Scalar(BuiltinScalar::ListContains), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_125, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_has_all", function: BuiltinFunction::Scalar(BuiltinScalar::ListHasAll), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_126, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_indexof", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_127, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_position", function: BuiltinFunction::Scalar(BuiltinScalar::ListPosition), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_128, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_prepend", function: BuiltinFunction::Scalar(BuiltinScalar::ListPrepend), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_129, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_product", function: BuiltinFunction::Scalar(BuiltinScalar::ListProduct), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_130, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_reduce", function: BuiltinFunction::Scalar(BuiltinScalar::ListReduce), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_131, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "list_reverse", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_132, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_reverse_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListReverseSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_133, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_slice", function: BuiltinFunction::Scalar(BuiltinScalar::ListSlice), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_134, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_sort", function: BuiltinFunction::Scalar(BuiltinScalar::ListSort), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_135, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_sum", function: BuiltinFunction::Scalar(BuiltinScalar::ListSum), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_136, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_to_string", function: BuiltinFunction::Scalar(BuiltinScalar::ListToString), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_137, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "list_transform", function: BuiltinFunction::Scalar(BuiltinScalar::ListTransform), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_138, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "list_unique", function: BuiltinFunction::Scalar(BuiltinScalar::ListUnique), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_139, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ln", function: BuiltinFunction::Scalar(BuiltinScalar::Ln), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_140, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "log", function: BuiltinFunction::Scalar(BuiltinScalar::Log), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_141, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "log10", function: BuiltinFunction::Scalar(BuiltinScalar::Log10), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_142, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "log2", function: BuiltinFunction::Scalar(BuiltinScalar::Log2), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_143, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "louvain", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::Louvain), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_144, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "lower", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_145, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "lpad", function: BuiltinFunction::Scalar(BuiltinScalar::Lpad), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_146, koko_overloads: &[], string_coerce: &[0, 2], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ltrim", function: BuiltinFunction::Scalar(BuiltinScalar::Ltrim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_147, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "make_date", function: BuiltinFunction::Scalar(BuiltinScalar::MakeDate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_148, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "map", function: BuiltinFunction::Scalar(BuiltinScalar::Map), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_149, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "map_extract", function: BuiltinFunction::Scalar(BuiltinScalar::MapExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_150, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "map_keys", function: BuiltinFunction::Scalar(BuiltinScalar::MapKeys), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_151, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "map_values", function: BuiltinFunction::Scalar(BuiltinScalar::MapValues), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_152, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "max", function: BuiltinFunction::Aggregate(AggOp::Max), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_153, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "md5", function: BuiltinFunction::Scalar(BuiltinScalar::Digest(DigestAlgorithm::Md5)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_154, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "min", function: BuiltinFunction::Aggregate(AggOp::Min), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_155, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "monthname", function: BuiltinFunction::Scalar(BuiltinScalar::Monthname), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_156, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "negate", function: BuiltinFunction::Scalar(BuiltinScalar::Negate), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_157, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "nextval", function: BuiltinFunction::Scalar(BuiltinScalar::Nextval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_158, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "nodes", function: BuiltinFunction::Scalar(BuiltinScalar::Nodes), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_159, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "none", function: BuiltinFunction::Scalar(BuiltinScalar::None), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_160, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "not_equals", function: BuiltinFunction::Scalar(BuiltinScalar::NotEquals), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_161, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "nullif", function: BuiltinFunction::Scalar(BuiltinScalar::Nullif), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_162, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "octet_length", function: BuiltinFunction::Scalar(BuiltinScalar::OctetLength), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_163, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "offset", function: BuiltinFunction::Scalar(BuiltinScalar::Offset), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_164, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "page_rank", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::PageRank), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_165, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "percentiledisc", function: BuiltinFunction::Aggregate(AggOp::PercentileDisc(0)), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_166, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "pi", function: BuiltinFunction::Scalar(BuiltinScalar::Pi), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_167, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "pow", function: BuiltinFunction::Scalar(BuiltinScalar::Pow), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_168, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "power", function: BuiltinFunction::Scalar(BuiltinScalar::Pow), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_169, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "prefix", function: BuiltinFunction::Scalar(BuiltinScalar::Prefix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_170, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "PROJECT_GRAPH", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "PROJECT_GRAPH_CYPHER", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::StandaloneTable, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "PROJECTED_GRAPH_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "properties", function: BuiltinFunction::Scalar(BuiltinScalar::Properties), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_163, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "radians", function: BuiltinFunction::Scalar(BuiltinScalar::Radians), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_164, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "random", function: BuiltinFunction::Scalar(BuiltinScalar::Random), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_165, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "range", function: BuiltinFunction::Scalar(BuiltinScalar::Range), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_166, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "properties", function: BuiltinFunction::Scalar(BuiltinScalar::Properties), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_171, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "radians", function: BuiltinFunction::Scalar(BuiltinScalar::Radians), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_172, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "random", function: BuiltinFunction::Scalar(BuiltinScalar::Random), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_173, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "range", function: BuiltinFunction::Scalar(BuiltinScalar::Range), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_174, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "READ_CSV_PARALLEL", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "READ_CSV_SERIAL", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "READ_NPY", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
     BuiltinDescriptor { called_name: "READ_PARQUET", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "regexp_extract", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_167, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "regexp_extract_all", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpExtractAll), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_168, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "regexp_full_match", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpFullMatch), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_169, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "regexp_matches", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpMatches), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_170, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "regexp_replace", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpReplace), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_171, koko_overloads: &[], string_coerce: &[0, 1, 2], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "regexp_split_to_array", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpSplitToArray), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_172, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "relationships", function: BuiltinFunction::Scalar(BuiltinScalar::Rels), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_173, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "rels", function: BuiltinFunction::Scalar(BuiltinScalar::Rels), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_174, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "repeat", function: BuiltinFunction::Scalar(BuiltinScalar::Repeat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_175, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "replace", function: BuiltinFunction::Scalar(BuiltinScalar::Replace), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_176, koko_overloads: &[], string_coerce: &[0, 1, 2], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "reverse", function: BuiltinFunction::Scalar(BuiltinScalar::Reverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_177, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "right", function: BuiltinFunction::Scalar(BuiltinScalar::Right), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_178, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "round", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Round)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_179, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "rowid", function: BuiltinFunction::Scalar(BuiltinScalar::Rowid), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_180, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "rpad", function: BuiltinFunction::Scalar(BuiltinScalar::Rpad), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_181, koko_overloads: &[], string_coerce: &[0, 2], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "rtrim", function: BuiltinFunction::Scalar(BuiltinScalar::Rtrim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_182, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "setseed", function: BuiltinFunction::Scalar(BuiltinScalar::Setseed), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_183, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "sha256", function: BuiltinFunction::Scalar(BuiltinScalar::Digest(DigestAlgorithm::Sha256)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_184, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_extract", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_175, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_extract_all", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpExtractAll), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_176, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_full_match", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpFullMatch), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_177, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_matches", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpMatches), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_178, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_replace", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpReplace), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_179, koko_overloads: &[], string_coerce: &[0, 1, 2], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "regexp_split_to_array", function: BuiltinFunction::Scalar(BuiltinScalar::RegexpSplitToArray), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_180, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "relationships", function: BuiltinFunction::Scalar(BuiltinScalar::Rels), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_181, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "rels", function: BuiltinFunction::Scalar(BuiltinScalar::Rels), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_182, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "repeat", function: BuiltinFunction::Scalar(BuiltinScalar::Repeat), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_183, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "replace", function: BuiltinFunction::Scalar(BuiltinScalar::Replace), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_184, koko_overloads: &[], string_coerce: &[0, 1, 2], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "reverse", function: BuiltinFunction::Scalar(BuiltinScalar::Reverse), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_185, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "right", function: BuiltinFunction::Scalar(BuiltinScalar::Right), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_186, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "round", function: BuiltinFunction::Scalar(BuiltinScalar::Round(RoundMode::Round)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_187, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "rowid", function: BuiltinFunction::Scalar(BuiltinScalar::Rowid), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_188, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "rpad", function: BuiltinFunction::Scalar(BuiltinScalar::Rpad), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_189, koko_overloads: &[], string_coerce: &[0, 2], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "rtrim", function: BuiltinFunction::Scalar(BuiltinScalar::Rtrim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_190, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "setseed", function: BuiltinFunction::Scalar(BuiltinScalar::Setseed), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_191, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "sha256", function: BuiltinFunction::Scalar(BuiltinScalar::Digest(DigestAlgorithm::Sha256)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_192, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "SHOW_ATTACHED_DATABASES", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_CONNECTION", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_FUNCTIONS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "show_connection", function: BuiltinFunction::Table(BuiltinTableFunction::ShowConnection), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_193, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_functions", function: BuiltinFunction::Table(BuiltinTableFunction::ShowFunctions), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_194, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "SHOW_GRAPHS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_INDEXES", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_LOADED_EXTENSIONS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_MACROS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_OFFICIAL_EXTENSIONS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "show_indexes", function: BuiltinFunction::Table(BuiltinTableFunction::ShowIndexes), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_195, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_loaded_extensions", function: BuiltinFunction::Table(BuiltinTableFunction::ShowLoadedExtensions), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_196, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_macros", function: BuiltinFunction::Table(BuiltinTableFunction::ShowMacros), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_197, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_official_extensions", function: BuiltinFunction::Table(BuiltinTableFunction::ShowOfficialExtensions), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_198, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "SHOW_PROJECTED_GRAPHS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_SEQUENCES", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_TABLES", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "SHOW_WARNINGS", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "sign", function: BuiltinFunction::Scalar(BuiltinScalar::Sign), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_185, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "sin", function: BuiltinFunction::Scalar(BuiltinScalar::Sin), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_186, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "single", function: BuiltinFunction::Scalar(BuiltinScalar::Single), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_187, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "size", function: BuiltinFunction::Scalar(BuiltinScalar::Size), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_188, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "split_part", function: BuiltinFunction::Scalar(BuiltinScalar::SplitPart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_189, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "sqrt", function: BuiltinFunction::Scalar(BuiltinScalar::Sqrt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_190, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "start_node", function: BuiltinFunction::Scalar(BuiltinScalar::StartNode), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_191, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "starts_with", function: BuiltinFunction::Scalar(BuiltinScalar::Prefix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_192, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "STATS_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "STORAGE_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "show_sequences", function: BuiltinFunction::Table(BuiltinTableFunction::ShowSequences), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_199, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_tables", function: BuiltinFunction::Table(BuiltinTableFunction::ShowTables), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_200, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "show_warnings", function: BuiltinFunction::Table(BuiltinTableFunction::ShowWarnings), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_201, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "sign", function: BuiltinFunction::Scalar(BuiltinScalar::Sign), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_202, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "sin", function: BuiltinFunction::Scalar(BuiltinScalar::Sin), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_203, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "single", function: BuiltinFunction::Scalar(BuiltinScalar::Single), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_204, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "size", function: BuiltinFunction::Scalar(BuiltinScalar::Size), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_205, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "split_part", function: BuiltinFunction::Scalar(BuiltinScalar::SplitPart), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_206, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "sqrt", function: BuiltinFunction::Scalar(BuiltinScalar::Sqrt), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_207, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "start_node", function: BuiltinFunction::Scalar(BuiltinScalar::StartNode), catalog_kind: FunctionCatalogKind::Rewrite, overloads: OVERLOADS_208, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "starts_with", function: BuiltinFunction::Scalar(BuiltinScalar::Prefix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_209, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "stats_info", function: BuiltinFunction::Table(BuiltinTableFunction::StatsInfo), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_210, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "storage_info", function: BuiltinFunction::Table(BuiltinTableFunction::StorageInfo), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_211, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
     BuiltinDescriptor { called_name: "STORAGE_VERSION", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "str_split", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_193, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "string", function: BuiltinFunction::Scalar(BuiltinScalar::String), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_194, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "string_split", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_195, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "string_to_array", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_196, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "struct_extract", function: BuiltinFunction::Scalar(BuiltinScalar::StructExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_197, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "struct_pack", function: BuiltinFunction::Scalar(BuiltinScalar::StructPack), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_198, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: false },
-    BuiltinDescriptor { called_name: "substr", function: BuiltinFunction::Scalar(BuiltinScalar::Substr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_199, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "substring", function: BuiltinFunction::Scalar(BuiltinScalar::Substr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_200, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "suffix", function: BuiltinFunction::Scalar(BuiltinScalar::Suffix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_201, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "sum", function: BuiltinFunction::Aggregate(AggOp::Sum), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_202, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "TABLE_INFO", function: BuiltinFunction::CatalogOnly, catalog_kind: FunctionCatalogKind::Table, overloads: &[], koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "tan", function: BuiltinFunction::Scalar(BuiltinScalar::Tan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_203, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::Timestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_204, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_blob", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Blob)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_205, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_bool", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Bool)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_206, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_date", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Date)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_207, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_days", function: BuiltinFunction::Scalar(BuiltinScalar::ToDays), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_208, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_double", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Double)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_209, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_epoch_ms", function: BuiltinFunction::Scalar(BuiltinScalar::ToEpochMs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_210, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_float", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Float)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_211, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_hours", function: BuiltinFunction::Scalar(BuiltinScalar::ToHours), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_212, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_int128", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int128)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_213, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_int16", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int16)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_214, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_int32", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int32)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_215, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_int64", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int64)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_216, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_int8", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int8)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_217, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_interval", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_218, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_microseconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToMicroseconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_219, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_milliseconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToMilliseconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_220, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_minutes", function: BuiltinFunction::Scalar(BuiltinScalar::ToMinutes), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_221, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_months", function: BuiltinFunction::Scalar(BuiltinScalar::ToMonths), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_222, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_seconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToSeconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_223, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_serial", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Serial)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_224, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_string", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::String)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_225, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::ToTimestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_226, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uint128", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt128)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_227, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uint16", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt16)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_228, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uint32", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt32)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_229, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uint64", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt64)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_230, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uint8", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt8)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_231, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_uuid", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Uuid)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_232, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "to_years", function: BuiltinFunction::Scalar(BuiltinScalar::ToYears), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_233, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "tolower", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_234, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "toupper", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_235, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "trim", function: BuiltinFunction::Scalar(BuiltinScalar::Trim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_236, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "typeof", function: BuiltinFunction::Scalar(BuiltinScalar::Typeof), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_237, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "ucase", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_238, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "union_extract", function: BuiltinFunction::Scalar(BuiltinScalar::UnionExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_239, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "union_tag", function: BuiltinFunction::Scalar(BuiltinScalar::UnionTag), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_240, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "union_value", function: BuiltinFunction::Scalar(BuiltinScalar::UnionValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_241, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
-    BuiltinDescriptor { called_name: "upper", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_242, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
-    BuiltinDescriptor { called_name: "uuid", function: BuiltinFunction::Scalar(BuiltinScalar::Uuid), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_243, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "str_split", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_212, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "string", function: BuiltinFunction::Scalar(BuiltinScalar::String), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_213, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "string_split", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_214, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "string_to_array", function: BuiltinFunction::Scalar(BuiltinScalar::StringSplit), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_215, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "strongly_connected_components", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::StronglyConnectedComponents), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_216, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "struct_extract", function: BuiltinFunction::Scalar(BuiltinScalar::StructExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_217, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "struct_pack", function: BuiltinFunction::Scalar(BuiltinScalar::StructPack), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_218, koko_overloads: &[], string_coerce: &[], variable_arity: true, bindable: false },
+    BuiltinDescriptor { called_name: "substr", function: BuiltinFunction::Scalar(BuiltinScalar::Substr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_219, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "substring", function: BuiltinFunction::Scalar(BuiltinScalar::Substr), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_220, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "suffix", function: BuiltinFunction::Scalar(BuiltinScalar::Suffix), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_221, koko_overloads: &[], string_coerce: &[0, 1], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "sum", function: BuiltinFunction::Aggregate(AggOp::Sum), catalog_kind: FunctionCatalogKind::Aggregate, overloads: OVERLOADS_222, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "table_info", function: BuiltinFunction::Table(BuiltinTableFunction::TableInfo), catalog_kind: FunctionCatalogKind::Table, overloads: OVERLOADS_223, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "tan", function: BuiltinFunction::Scalar(BuiltinScalar::Tan), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_224, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::Timestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_225, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_blob", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Blob)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_226, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_bool", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Bool)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_227, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_date", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Date)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_228, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_days", function: BuiltinFunction::Scalar(BuiltinScalar::ToDays), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_229, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_double", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Double)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_230, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_epoch_ms", function: BuiltinFunction::Scalar(BuiltinScalar::ToEpochMs), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_231, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_float", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Float)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_232, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_hours", function: BuiltinFunction::Scalar(BuiltinScalar::ToHours), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_233, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_int128", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int128)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_234, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_int16", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int16)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_235, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_int32", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int32)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_236, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_int64", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int64)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_237, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_int8", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Int8)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_238, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_interval", function: BuiltinFunction::Scalar(BuiltinScalar::Interval), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_239, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_microseconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToMicroseconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_240, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_milliseconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToMilliseconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_241, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_minutes", function: BuiltinFunction::Scalar(BuiltinScalar::ToMinutes), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_242, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_months", function: BuiltinFunction::Scalar(BuiltinScalar::ToMonths), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_243, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_seconds", function: BuiltinFunction::Scalar(BuiltinScalar::ToSeconds), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_244, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_serial", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Serial)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_245, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_string", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::String)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_246, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_timestamp", function: BuiltinFunction::Scalar(BuiltinScalar::ToTimestamp), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_247, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uint128", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt128)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_248, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uint16", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt16)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_249, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uint32", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt32)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_250, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uint64", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt64)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_251, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uint8", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::UInt8)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_252, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_uuid", function: BuiltinFunction::Scalar(BuiltinScalar::Cast(CastTarget::Uuid)), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_253, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "to_years", function: BuiltinFunction::Scalar(BuiltinScalar::ToYears), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_254, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "tolower", function: BuiltinFunction::Scalar(BuiltinScalar::Lower), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_255, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "topological_levels", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::TopologicalLevels), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_256, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "toupper", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_257, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "trim", function: BuiltinFunction::Scalar(BuiltinScalar::Trim), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_258, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "typeof", function: BuiltinFunction::Scalar(BuiltinScalar::Typeof), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_259, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "ucase", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_260, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "union_extract", function: BuiltinFunction::Scalar(BuiltinScalar::UnionExtract), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_261, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "union_tag", function: BuiltinFunction::Scalar(BuiltinScalar::UnionTag), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_262, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "union_value", function: BuiltinFunction::Scalar(BuiltinScalar::UnionValue), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_263, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: false },
+    BuiltinDescriptor { called_name: "upper", function: BuiltinFunction::Scalar(BuiltinScalar::Upper), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_264, koko_overloads: &[], string_coerce: &[0], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "uuid", function: BuiltinFunction::Scalar(BuiltinScalar::Uuid), catalog_kind: FunctionCatalogKind::Scalar, overloads: OVERLOADS_265, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
+    BuiltinDescriptor { called_name: "weakly_connected_components", function: BuiltinFunction::GraphAlgorithm(BuiltinGraphAlgorithm::WeaklyConnectedComponents), catalog_kind: FunctionCatalogKind::Algorithm, overloads: OVERLOADS_266, koko_overloads: &[], string_coerce: &[], variable_arity: false, bindable: true },
 ];
 
 fn ascii_fold(byte: u8) -> u8 {
@@ -8543,13 +8796,16 @@ pub fn resolve_builtin_scalar(called_name: &str) -> Option<BuiltinScalar> {
     }
     match descriptor.function {
         BuiltinFunction::Scalar(function) => Some(function),
-        BuiltinFunction::Aggregate(_) | BuiltinFunction::CatalogOnly => None,
+        BuiltinFunction::Aggregate(_)
+        | BuiltinFunction::Table(_)
+        | BuiltinFunction::GraphAlgorithm(_)
+        | BuiltinFunction::CatalogOnly => None,
     }
 }
 
 /// `CALL show_functions()` rows: the Ladybug-derived source order followed by Koko-only overloads.
 #[rustfmt::skip]
-pub static FUNCTION_CATALOG: [FunctionCatalogEntry; 1216] = [
+pub static FUNCTION_CATALOG: [FunctionCatalogEntry; 1224] = [
     FunctionCatalogEntry { name: "CENTURY", kind: FunctionCatalogKind::Scalar, signature: "(TIMESTAMP) -> INT64" },
     FunctionCatalogEntry { name: "BITWISE_AND", kind: FunctionCatalogKind::Scalar, signature: "(INT64,INT64) -> INT64" },
     FunctionCatalogEntry { name: "ARRAY_CROSS_PRODUCT", kind: FunctionCatalogKind::Scalar, signature: "(ARRAY,ARRAY) -> ARRAY" },
@@ -9766,4 +10022,12 @@ pub static FUNCTION_CATALOG: [FunctionCatalogEntry; 1216] = [
     FunctionCatalogEntry { name: "PROJECTED_GRAPH_INFO", kind: FunctionCatalogKind::Table, signature: "(STRING)" },
     FunctionCatalogEntry { name: "GREATEST", kind: FunctionCatalogKind::Scalar, signature: "(NUMERIC,NUMERIC,...) -> NUMERIC" },
     FunctionCatalogEntry { name: "LEAST", kind: FunctionCatalogKind::Scalar, signature: "(NUMERIC,NUMERIC,...) -> NUMERIC" },
+    FunctionCatalogEntry { name: "K_CORE_DECOMPOSITION", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, core INT64)" },
+    FunctionCatalogEntry { name: "LOUVAIN", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, community_id INT64)" },
+    FunctionCatalogEntry { name: "LOUVAIN", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>,INT64,INT64) -> TABLE(node NODE, community_id INT64)" },
+    FunctionCatalogEntry { name: "PAGE_RANK", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, score DOUBLE)" },
+    FunctionCatalogEntry { name: "PAGE_RANK", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>,DOUBLE,DOUBLE,INT64,BOOL) -> TABLE(node NODE, score DOUBLE)" },
+    FunctionCatalogEntry { name: "STRONGLY_CONNECTED_COMPONENTS", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, component_id INT64)" },
+    FunctionCatalogEntry { name: "TOPOLOGICAL_LEVELS", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, level INT64)" },
+    FunctionCatalogEntry { name: "WEAKLY_CONNECTED_COMPONENTS", kind: FunctionCatalogKind::Algorithm, signature: "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, component_id INT64)" },
 ];

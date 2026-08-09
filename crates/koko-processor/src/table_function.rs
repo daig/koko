@@ -1,6 +1,6 @@
 use koko_catalog::Catalog;
 use koko_common::{Error, IntKind, MemoryUsage, Result, TableId, TableStats, Value};
-use koko_ir::bound::BoundTableFunc;
+use koko_function::BuiltinTableFunction;
 
 const DATABASE_NAME: &str = "main(graph)";
 const DATABASE_VERSION: &str = "0.17.0";
@@ -49,12 +49,13 @@ pub trait TableFunctionRuntime: Sync {
 /// Produce rows for a table function previously validated and bound by the binder.
 pub fn produce_table_function_rows(
     catalog: &Catalog,
-    function: BoundTableFunc,
-    argument: Option<&str>,
+    function: BuiltinTableFunction,
+    arguments: &[String],
     runtime: &dyn TableFunctionRuntime,
 ) -> Result<Vec<Vec<Value>>> {
+    let argument = arguments.first().map(String::as_str);
     let rows = match function {
-        BoundTableFunc::ShowSequences => catalog
+        BuiltinTableFunction::ShowSequences => catalog
             .sequences_sorted()
             .iter()
             .map(|sequence| {
@@ -69,7 +70,7 @@ pub fn produce_table_function_rows(
                 ]
             })
             .collect(),
-        BoundTableFunc::ShowTables => {
+        BuiltinTableFunction::ShowTables => {
             if let Some(rows) = runtime.show_table_rows() {
                 return Ok(rows);
             }
@@ -94,7 +95,7 @@ pub fn produce_table_function_rows(
             }
             rows
         }
-        BoundTableFunc::TableInfo => {
+        BuiltinTableFunction::TableInfo => {
             let table = table_info_target(catalog, argument)?;
             if let Some(entry) = catalog.node_table(table) {
                 entry
@@ -129,8 +130,8 @@ pub fn produce_table_function_rows(
                     .collect()
             }
         }
-        BoundTableFunc::ShowMacros => runtime.macro_rows(),
-        BoundTableFunc::ShowFunctions => koko_function::catalog_data::FUNCTION_CATALOG
+        BuiltinTableFunction::ShowMacros => runtime.macro_rows(),
+        BuiltinTableFunction::ShowFunctions => koko_function::catalog_data::FUNCTION_CATALOG
             .iter()
             .map(|entry| {
                 vec![
@@ -140,13 +141,13 @@ pub fn produce_table_function_rows(
                 ]
             })
             .collect(),
-        BoundTableFunc::DbVersion => vec![vec![Value::String(DATABASE_VERSION.to_string())]],
-        BoundTableFunc::CacheArrayColumn => Vec::new(),
-        BoundTableFunc::ClearWarnings => {
+        BuiltinTableFunction::DbVersion => vec![vec![Value::String(DATABASE_VERSION.to_string())]],
+        BuiltinTableFunction::CacheArrayColumn => Vec::new(),
+        BuiltinTableFunction::ClearWarnings => {
             runtime.clear_warnings();
             Vec::new()
         }
-        BoundTableFunc::ShowOfficialExtensions => OFFICIAL_EXTENSIONS
+        BuiltinTableFunction::ShowOfficialExtensions => OFFICIAL_EXTENSIONS
             .iter()
             .map(|(name, description)| {
                 vec![
@@ -155,7 +156,7 @@ pub fn produce_table_function_rows(
                 ]
             })
             .collect(),
-        BoundTableFunc::ShowIndexes => catalog
+        BuiltinTableFunction::ShowIndexes => catalog
             .indexes()
             .into_iter()
             .map(|index| {
@@ -192,8 +193,8 @@ pub fn produce_table_function_rows(
                 ]
             })
             .collect(),
-        BoundTableFunc::ShowWarnings => runtime.warning_rows(),
-        BoundTableFunc::ShowConnection => {
+        BuiltinTableFunction::ShowWarnings => runtime.warning_rows(),
+        BuiltinTableFunction::ShowConnection => {
             let table = show_connection_target(catalog, argument)?;
             let entry = catalog
                 .rel_table(table)
@@ -227,11 +228,11 @@ pub fn produce_table_function_rows(
                 })
                 .collect()
         }
-        BoundTableFunc::StorageInfo => {
+        BuiltinTableFunction::StorageInfo => {
             existing_table_target(catalog, argument)?;
             Vec::new()
         }
-        BoundTableFunc::StatsInfo => {
+        BuiltinTableFunction::StatsInfo => {
             let table = existing_table_target(catalog, argument)?;
             let entry = catalog.node_table(table).ok_or_else(|| {
                 Error::binder(format!(
@@ -254,13 +255,13 @@ pub fn produce_table_function_rows(
             }));
             vec![row]
         }
-        BoundTableFunc::CurrentSetting => {
+        BuiltinTableFunction::CurrentSetting => {
             let key = argument.unwrap_or_default().to_ascii_lowercase();
             vec![vec![Value::String(
                 runtime.current_setting(&key).to_result_string(),
             )]]
         }
-        BoundTableFunc::BmInfo => {
+        BuiltinTableFunction::BmInfo => {
             let usage = runtime.memory_usage();
             let unsigned = |value: u64| Value::IntX {
                 value: value as i128,
@@ -271,7 +272,7 @@ pub fn produce_table_function_rows(
                 unsigned(usage.current),
             ]]
         }
-        BoundTableFunc::ShowLoadedExtensions => Vec::new(),
+        BuiltinTableFunction::ShowLoadedExtensions => Vec::new(),
     };
     Ok(rows)
 }

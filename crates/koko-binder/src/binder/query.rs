@@ -1,13 +1,8 @@
 use super::*;
 
-/// Bound read-side clauses for one query part.
+/// Bound read-side clauses for one query part, in textual order.
 pub(super) struct BoundReading {
-    pub(super) match_: BoundMatch,
-    pub(super) table_func_scans: Vec<BoundTableFuncScan>,
-    pub(super) load_scan: Option<BoundLoadScan>,
-    pub(super) unwind: Vec<BoundUnwind>,
-    pub(super) where_predicate: Option<BoundExpr>,
-    pub(super) optionals: Vec<BoundOptionalMatch>,
+    pub(super) clauses: Vec<BoundReadingClause>,
 }
 
 #[derive(Clone)]
@@ -25,10 +20,49 @@ impl ProjectionOutputRef {
     }
 }
 
+fn call_output_bindings(
+    call: &ast::CallClause,
+    schema_names: &[String],
+) -> Result<Vec<(usize, String)>> {
+    if call.yield_items.is_empty() {
+        return Ok(schema_names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (index, name.clone()))
+            .collect());
+    }
+
+    let mut selected_sources = HashSet::new();
+    let mut exposed_names = HashSet::new();
+    let mut bindings = Vec::with_capacity(call.yield_items.len());
+    for (column, alias) in &call.yield_items {
+        let source_index = schema_names
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(column))
+            .ok_or_else(|| {
+                Error::binder(format!(
+                    "Unknown table function output variable name: {column}."
+                ))
+            })?;
+        if !selected_sources.insert(source_index) {
+            return Err(Error::binder(format!(
+                "Table function output variable {column} appears more than once in the yield clause."
+            )));
+        }
+        let exposed_name = alias.clone().unwrap_or_else(|| column.clone());
+        if !exposed_names.insert(exposed_name.to_ascii_lowercase()) {
+            return Err(Error::binder(format!(
+                "Variable {exposed_name} already exists."
+            )));
+        }
+        bindings.push((source_index, exposed_name));
+    }
+    Ok(bindings)
+}
+
 impl Binder<'_, '_> {
     /// Bind one query operand into its ordered sequence of WITH-delimited parts.
     pub(super) fn bind_query(&mut self, query: &ast::SingleQuery) -> Result<BoundQuery> {
-        let query = split_required_after_optional(query);
         let mut parts = Vec::new();
         let mut input_vars = Vec::new();
         let mut input_filter = None;
@@ -55,14 +89,9 @@ impl Binder<'_, '_> {
             parts.push(BoundPart {
                 input_vars,
                 input_filter,
-                match_: reading.match_,
-                table_func_scans: reading.table_func_scans,
-                load_scan: reading.load_scan,
-                unwind: reading.unwind,
-                where_predicate: reading.where_predicate,
+                reading: reading.clauses,
                 subqueries,
                 sequence_calls,
-                optionals: reading.optionals,
                 updates,
                 projection: Some(projection),
                 carried: carried.clone(),
@@ -87,14 +116,9 @@ impl Binder<'_, '_> {
         parts.push(BoundPart {
             input_vars,
             input_filter,
-            match_: reading.match_,
-            table_func_scans: reading.table_func_scans,
-            load_scan: reading.load_scan,
-            unwind: reading.unwind,
-            where_predicate: reading.where_predicate,
+            reading: reading.clauses,
             subqueries,
             sequence_calls,
-            optionals: reading.optionals,
             updates,
             projection,
             carried: Vec::new(),
@@ -290,18 +314,10 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
         }
     }
 
-    /// Bind a part's reading clauses (`MATCH` / `OPTIONAL MATCH` / `UNWIND`) in
-    /// the current scope, in order, so each clause sees the variables bound before
-    /// it. Required matches and unwinds accumulate into one block; each
-    /// `OPTIONAL MATCH` becomes its own left-join block (applied after them). A
-    /// required `MATCH`/`UNWIND` *after* an `OPTIONAL MATCH` is deferred.
+    /// Bind a part's reading clauses in textual order, so each clause sees only
+    /// variables introduced by its predecessors and keeps its own predicate.
     pub(super) fn bind_reading(&mut self, reading: &[ast::ReadingClause]) -> Result<BoundReading> {
-        let mut predicates = Vec::new();
-        let mut match_ = BoundMatch::default();
-        let mut unwind = Vec::new();
-        let mut optionals = Vec::new();
-        let mut table_func_scans = Vec::new();
-        let mut load_scan = None;
+        let mut clauses = Vec::with_capacity(reading.len());
         for clause in reading {
             match clause {
                 ast::ReadingClause::LoadFrom(l) => {
@@ -499,7 +515,7 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
                             (columns, col_names, true)
                         }
                     };
-                    load_scan = Some(BoundLoadScan {
+                    let scan = BoundLoadScan {
                         columns,
                         col_names,
                         path: l.path.clone(),
@@ -507,76 +523,211 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
                         format,
                         options,
                         bare,
+                    };
+                    // A `WHERE` on the LOAD filters at this clause's position.
+                    let where_predicate = match &l.where_clause {
+                        Some(predicate) if !self.has_unbound_param(predicate) => {
+                            Some(self.bind_expr(predicate)?)
+                        }
+                        _ => None,
+                    };
+                    clauses.push(BoundReadingClause::Load {
+                        scan,
+                        where_predicate,
                     });
-                    // A `WHERE` on the LOAD filters the loaded rows; it references the
-                    // columns just registered, so bind it now (like a table-func scan).
-                    if let Some(w) = &l.where_clause {
-                        if !self.has_unbound_param(w) {
-                            predicates.push(self.bind_expr(w)?);
-                        }
-                    }
                 }
-                ast::ReadingClause::TableFuncScan(t) => {
-                    let func = bound_table_func(t.func);
-                    // Apply the YIELD renames: every yielded name must be one
-                    // of the function's output columns, and the clause must
-                    // cover ALL of them (C++ rules); the output names then get
-                    // registered as scalar variables, colliding names erroring
-                    // like any redefinition.
-                    let schema =
-                        table_func_schema(self.catalog, func, t.arg.as_deref(), &t.extra_args)?;
-                    // YIELD is POSITIONAL: item i must name the function's
-                    // i-th output column (a reorder is "Unknown … name"), and
-                    // the list must cover every column; aliases rename.
-                    let out_names: Vec<String> = if t.yield_items.is_empty() {
-                        schema.iter().map(|(n, _)| n.clone()).collect()
-                    } else {
-                        if t.yield_items.len() > schema.len() {
-                            return Err(Error::binder(
-                                "The number of variables in the yield clause exceeds the number \
-                                 of output variables of the table function."
-                                    .to_string(),
-                            ));
-                        }
-                        for (i, (col, _)) in t.yield_items.iter().enumerate() {
-                            let matches_pos = schema
-                                .get(i)
-                                .is_some_and(|(n, _)| n.eq_ignore_ascii_case(col));
-                            if !matches_pos {
+                ast::ReadingClause::Call(call) => {
+                    let (bound_call, kind) = self.bind_function_call(call)?;
+                    match bound_call {
+                        BoundCall::Table(bound_call) => {
+                            if kind == FunctionCatalogKind::StandaloneTable {
                                 return Err(Error::binder(format!(
-                                    "Unknown table function output variable name: {col}."
+                                    "{} is a standalone table function and cannot be used in a query pipeline.",
+                                    crate::table_function::display_name(bound_call.function)
                                 )));
                             }
+                            let schema = table_func_schema(
+                                self.catalog,
+                                bound_call.function,
+                                &bound_call.arguments,
+                            )?;
+                            let schema_names: Vec<String> =
+                                schema.iter().map(|(name, _)| name.clone()).collect();
+                            let output_bindings = call_output_bindings(call, &schema_names)?;
+                            for (_, name) in &output_bindings {
+                                if self.scope.keys().any(|key| key.eq_ignore_ascii_case(name)) {
+                                    return Err(Error::binder(format!(
+                                        "Variable {name} already exists."
+                                    )));
+                                }
+                            }
+
+                            let mut output_vars = vec![None; schema.len()];
+                            for (source_index, name) in output_bindings {
+                                let logical_type = schema[source_index].1.clone();
+                                output_vars[source_index] =
+                                    Some(self.add_scalar_var(name, logical_type));
+                            }
+                            let columns = schema
+                                .iter()
+                                .enumerate()
+                                .map(|(source_index, (_, logical_type))| {
+                                    let var = output_vars[source_index].unwrap_or_else(|| {
+                                        self.add_var(
+                                            None,
+                                            VarKind::Scalar {
+                                                ty: logical_type.clone(),
+                                            },
+                                            Vec::new(),
+                                        )
+                                    });
+                                    (var, logical_type.clone())
+                                })
+                                .collect();
+                            let where_predicate = match &call.where_clause {
+                                Some(predicate) if !self.has_unbound_param(predicate) => {
+                                    Some(self.bind_expr(predicate)?)
+                                }
+                                _ => None,
+                            };
+                            clauses.push(BoundReadingClause::TableFunction {
+                                scan: BoundTableFunctionScan {
+                                    call: bound_call,
+                                    columns,
+                                },
+                                where_predicate,
+                            });
                         }
-                        if t.yield_items.len() != schema.len() {
-                            return Err(Error::binder(
-                                "Output variables must all appear in the yield clause.".to_string(),
-                            ));
+                        BoundCall::GraphAlgorithm(bound_call) => {
+                            debug_assert_eq!(kind, FunctionCatalogKind::Algorithm);
+                            let function = bound_call.function;
+                            let scalar_name = match function {
+                                BuiltinGraphAlgorithm::KCoreDecomposition => "core",
+                                BuiltinGraphAlgorithm::Louvain => "community_id",
+                                BuiltinGraphAlgorithm::PageRank => "score",
+                                BuiltinGraphAlgorithm::TopologicalLevels => "level",
+                                BuiltinGraphAlgorithm::WeaklyConnectedComponents
+                                | BuiltinGraphAlgorithm::StronglyConnectedComponents => {
+                                    "component_id"
+                                }
+                            };
+                            let output_bindings = call_output_bindings(
+                                call,
+                                &["node".to_string(), scalar_name.to_string()],
+                            )?;
+                            for (_, name) in &output_bindings {
+                                if self.scope.keys().any(|key| key.eq_ignore_ascii_case(name)) {
+                                    return Err(Error::binder(format!(
+                                        "Variable {name} already exists."
+                                    )));
+                                }
+                            }
+
+                            let node_tables = &bound_call.graph.node_tables;
+                            let label = node_tables
+                                .first()
+                                .and_then(|&table| self.catalog.node_table(table))
+                                .map(|table| table.name().to_string())
+                                .unwrap_or_default();
+                            let properties = self.node_props_union(node_tables);
+                            let scalar_type = if function == BuiltinGraphAlgorithm::PageRank {
+                                LogicalType::Double
+                            } else {
+                                LogicalType::Int(koko_common::IntKind::I64)
+                            };
+                            let mut output_vars = [None, None];
+                            for (source_index, name) in output_bindings {
+                                let var = match source_index {
+                                    0 => self.add_var(
+                                        Some(name),
+                                        VarKind::Node {
+                                            tables: node_tables.clone(),
+                                            label: label.clone(),
+                                        },
+                                        properties.clone(),
+                                    ),
+                                    1 => self.add_scalar_var(name, scalar_type.clone()),
+                                    _ => unreachable!("graph algorithms have two outputs"),
+                                };
+                                output_vars[source_index] = Some(var);
+                            }
+                            let node = output_vars[0].unwrap_or_else(|| {
+                                self.add_var(
+                                    None,
+                                    VarKind::Node {
+                                        tables: node_tables.clone(),
+                                        label,
+                                    },
+                                    properties,
+                                )
+                            });
+                            let scalar = output_vars[1].unwrap_or_else(|| {
+                                self.add_var(None, VarKind::Scalar { ty: scalar_type }, Vec::new())
+                            });
+                            let id = GraphAlgorithmScanId(self.next_graph_algorithm_scan_id);
+                            self.next_graph_algorithm_scan_id = self
+                                .next_graph_algorithm_scan_id
+                                .checked_add(1)
+                                .ok_or_else(|| {
+                                    Error::binder(
+                                        "Query contains too many graph algorithm scans."
+                                            .to_string(),
+                                    )
+                                })?;
+                            let where_predicate = match &call.where_clause {
+                                Some(predicate) if !self.has_unbound_param(predicate) => {
+                                    Some(self.bind_expr(predicate)?)
+                                }
+                                _ => None,
+                            };
+                            let output = match function {
+                                BuiltinGraphAlgorithm::KCoreDecomposition => {
+                                    BoundGraphAlgorithmOutput::KCoreDecomposition {
+                                        node,
+                                        core: scalar,
+                                    }
+                                }
+                                BuiltinGraphAlgorithm::Louvain => {
+                                    BoundGraphAlgorithmOutput::Louvain {
+                                        node,
+                                        community_id: scalar,
+                                    }
+                                }
+                                BuiltinGraphAlgorithm::PageRank => {
+                                    BoundGraphAlgorithmOutput::PageRank {
+                                        node,
+                                        score: scalar,
+                                    }
+                                }
+                                BuiltinGraphAlgorithm::TopologicalLevels => {
+                                    BoundGraphAlgorithmOutput::TopologicalLevels {
+                                        node,
+                                        level: scalar,
+                                    }
+                                }
+                                BuiltinGraphAlgorithm::WeaklyConnectedComponents => {
+                                    BoundGraphAlgorithmOutput::WeaklyConnectedComponents {
+                                        node,
+                                        component_id: scalar,
+                                    }
+                                }
+                                BuiltinGraphAlgorithm::StronglyConnectedComponents => {
+                                    BoundGraphAlgorithmOutput::StronglyConnectedComponents {
+                                        node,
+                                        component_id: scalar,
+                                    }
+                                }
+                            };
+                            clauses.push(BoundReadingClause::GraphAlgorithm {
+                                scan: BoundGraphAlgorithmScan {
+                                    id,
+                                    call: bound_call,
+                                    output,
+                                },
+                                where_predicate,
+                            });
                         }
-                        t.yield_items
-                            .iter()
-                            .map(|(col, alias)| alias.clone().unwrap_or_else(|| col.clone()))
-                            .collect()
-                    };
-                    let mut columns = Vec::with_capacity(out_names.len());
-                    for (name, (_, ty)) in out_names.into_iter().zip(schema.iter()) {
-                        if self.scope.keys().any(|k| k.eq_ignore_ascii_case(&name)) {
-                            return Err(Error::binder(format!("Variable {name} already exists.")));
-                        }
-                        columns.push((self.add_scalar_var(name, ty.clone()), ty.clone()));
                     }
-                    // The WHERE binds *after* (it references these columns and
-                    // anything bound earlier in the part).
-                    if let Some(w) = &t.where_clause {
-                        if !self.has_unbound_param(w) {
-                            predicates.push(self.bind_expr(w)?);
-                        }
-                    }
-                    table_func_scans.push(BoundTableFuncScan {
-                        func,
-                        arg: t.arg.clone(),
-                        columns,
-                    });
                 }
                 ast::ReadingClause::Match(m) if m.optional => {
                     let mut opt_match = BoundMatch::default();
@@ -604,12 +755,14 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
                             opt_preds.push(self.bind_expr(w)?);
                         }
                     }
-                    optionals.push(BoundOptionalMatch {
+                    clauses.push(BoundReadingClause::OptionalMatch(BoundOptionalMatch {
                         match_: opt_match,
                         where_predicate: combine_and(opt_preds),
-                    });
+                    }));
                 }
                 ast::ReadingClause::Match(m) => {
+                    let mut match_ = BoundMatch::default();
+                    let mut predicates = Vec::new();
                     let pre_scope: std::collections::HashSet<String> =
                         self.scope.keys().cloned().collect();
                     for pe in &m.patterns {
@@ -623,18 +776,16 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
                             predicates.push(self.bind_expr(w)?);
                         }
                     }
+                    clauses.push(BoundReadingClause::Match {
+                        match_,
+                        where_predicate: combine_and(predicates),
+                    });
                 }
                 ast::ReadingClause::Unwind(u) => {
                     // Redefining an in-scope variable is the C++ binder error
                     // (names compare case-insensitively).
                     if self.scope.keys().any(|k| k.eq_ignore_ascii_case(&u.var)) {
                         return Err(Error::binder(format!("Variable {} already exists.", u.var)));
-                    }
-                    if !optionals.is_empty() {
-                        return Err(Error::not_implemented(
-                            "UNWIND after OPTIONAL MATCH is not supported in this phase"
-                                .to_string(),
-                        ));
                     }
                     let list = self.bind_expr(&u.expr)?;
                     let elem_ty = match list.ty() {
@@ -652,35 +803,11 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
                         }
                     };
                     let var = self.add_unwind_var(u.var.clone(), elem_ty);
-                    unwind.push(BoundUnwind { var, list });
+                    clauses.push(BoundReadingClause::Unwind(BoundUnwind { var, list }));
                 }
             }
         }
-        // A table-function scan may combine with MATCH as a cross product, but
-        // the current planner does not compose it with UNWIND or OPTIONAL MATCH.
-        if !table_func_scans.is_empty() && (!unwind.is_empty() || !optionals.is_empty()) {
-            return Err(Error::not_implemented(
-                "a table-function CALL combined with UNWIND/OPTIONAL MATCH is not supported \
-                 in this phase"
-                    .to_string(),
-            ));
-        }
-        // A `LOAD FROM` is a base source. It may be followed by a MATCH (the
-        // LOAD … MATCH … CREATE rel-load pattern, composed by the planner), but not
-        // combined with another leaf source.
-        if load_scan.is_some() && !table_func_scans.is_empty() {
-            return Err(Error::not_implemented(
-                "LOAD FROM combined with a table-function CALL is not supported".to_string(),
-            ));
-        }
-        Ok(BoundReading {
-            match_,
-            table_func_scans,
-            load_scan,
-            unwind,
-            where_predicate: combine_and(predicates),
-            optionals,
-        })
+        Ok(BoundReading { clauses })
     }
 
     /// Bind a part's updating clauses (`CREATE`). Returns `None` if there are none.

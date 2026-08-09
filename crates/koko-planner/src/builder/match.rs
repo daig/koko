@@ -1,6 +1,6 @@
 use koko_common::ExtendDir;
 use koko_function::{AggOp, BuiltinScalar};
-use koko_ir::bound::{BoundExpr, BoundMatch, BoundUnwind, VarId};
+use koko_ir::bound::{BoundExpr, VarId};
 use std::collections::HashSet;
 
 /// Record variables whose full node or relationship value an expression consumes.
@@ -73,44 +73,6 @@ pub(super) fn collect_value_consumed_vars(
         }
         _ => {}
     }
-}
-
-pub(super) fn match_bound_vars(match_: &BoundMatch) -> HashSet<VarId> {
-    let mut variables = HashSet::new();
-    variables.extend(match_.node_vars.iter().copied());
-    variables.extend(match_.rel_vars.iter().copied());
-    variables.extend(match_.path_vars.iter().copied());
-    variables
-}
-
-pub(super) fn pre_match_unwind_vars(
-    unwinds: &[BoundUnwind],
-    where_predicate: Option<&BoundExpr>,
-    match_variables: &HashSet<VarId>,
-) -> HashSet<VarId> {
-    if match_variables.is_empty() {
-        return HashSet::new();
-    }
-    let mut needed = HashSet::new();
-    if let Some(predicate) = where_predicate {
-        collect_expr_vars(predicate, &mut needed);
-    }
-    let mut prefix = HashSet::new();
-    for unwind in unwinds.iter().rev() {
-        if needed.contains(&unwind.var) && !expr_references_any_var(&unwind.list, match_variables) {
-            prefix.insert(unwind.var);
-            collect_expr_vars(&unwind.list, &mut needed);
-        }
-    }
-    prefix
-}
-
-pub(super) fn expr_references_any_var(expression: &BoundExpr, variables: &HashSet<VarId>) -> bool {
-    let mut references = HashSet::new();
-    collect_expr_vars(expression, &mut references);
-    references
-        .iter()
-        .any(|variable| variables.contains(variable))
 }
 
 pub(super) fn collect_expr_vars(expression: &BoundExpr, output: &mut HashSet<VarId>) {

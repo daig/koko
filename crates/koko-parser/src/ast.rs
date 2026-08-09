@@ -238,45 +238,25 @@ pub enum TxnOp {
     Checkpoint,
 }
 
-/// A standalone `CALL`: either a config assignment (`CALL k = v`) or a config
-/// read (`CALL current_setting('k') [RETURN *]`).
+/// A standalone `CALL`: either a config assignment (`CALL k = v`) or a
+/// function invocation without a query projection.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CallStmt {
     /// `CALL <key> = <value>` — set a session/config option.
     SetConfig { key: String, value: Expr },
-    /// A catalog-introspection table function (`CALL SHOW_SEQUENCES()` etc.), with
-    /// an optional string argument (`TABLE_INFO('t')`). A trailing `RETURN *` /
-    /// `ORDER BY <col>` is parsed and ignored (the `.test` runner sorts rows).
-    TableFunc {
-        func: TableFunc,
-        arg: Option<String>,
-        extra_args: Vec<String>,
-        /// Whether a trailing `RETURN *` was present. C++ rejects calling a
-        /// non-standalone table function without a RETURN.
-        has_return: bool,
-    },
+    /// `CALL <name>(<typed expressions>)` — resolved and validated by the binder.
+    Function(CallClause),
 }
 
-/// The supported catalog-introspection table functions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TableFunc {
-    ShowSequences,
-    ShowTables,
-    TableInfo,
-    ShowMacros,
-    ShowFunctions,
-    DbVersion,
-    ShowOfficialExtensions,
-    CacheArrayColumn,
-    ClearWarnings,
-    ShowIndexes,
-    ShowWarnings,
-    ShowConnection,
-    StorageInfo,
-    StatsInfo,
-    CurrentSetting,
-    BmInfo,
-    ShowLoadedExtensions,
+/// A typed function invocation shared by standalone and in-query `CALL`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallClause {
+    pub name: String,
+    pub args: Vec<Expr>,
+    /// `YIELD col [AS alias], …` — selects and renames declared output columns.
+    pub yield_items: Vec<(String, Option<String>)>,
+    /// A filter applied immediately after the function source.
+    pub where_clause: Option<Expr>,
 }
 
 /// One or more [`SingleQuery`]s combined by `UNION` / `UNION ALL`.
@@ -410,17 +390,15 @@ pub struct WithClause {
     pub where_clause: Option<Expr>,
 }
 
-/// A reading clause: a graph `MATCH`, an `UNWIND` list expansion, or a
-/// catalog-introspection table function used as an in-query scan source.
+/// A reading clause: a graph `MATCH`, an `UNWIND` list expansion, a typed
+/// function call, or a loaded-data source.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReadingClause {
     Match(MatchClause),
     Unwind(UnwindClause),
-    /// `CALL <table_func>(arg) [WHERE pred]` used *in-query* as a 0→N scan source,
-    /// so the surrounding query can filter/project/aggregate over its rows. Built
-    /// only by `call_statement` when a `WHERE` or non-`*` `RETURN` follows (a bare
-    /// `CALL` / `RETURN *` stays the standalone [`CallStmt::TableFunc`]).
-    TableFuncScan(TableFuncScanClause),
+    /// `CALL <name>(<typed expressions>) [YIELD …] [WHERE …]` used as a 0→N
+    /// source. Function identity and argument rules are binder-owned.
+    Call(CallClause),
     /// `LOAD [WITH HEADERS (col TYPE, …)] FROM "<file>" [(options)]` — scan a
     /// resolved CSV, Parquet, or NPY source as a 0→N row source. The surrounding
     /// query reads, filters, and updates over the loaded columns.
@@ -468,21 +446,6 @@ pub enum LoadOptVal {
 pub struct UnwindClause {
     pub expr: Expr,
     pub var: String,
-}
-
-/// An in-query table-function scan (the reading-clause form of `CALL`): the
-/// function, its optional string argument (`TABLE_INFO('t')`), and an optional
-/// trailing `WHERE` predicate. The surrounding query owns the `RETURN`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TableFuncScanClause {
-    pub func: TableFunc,
-    pub arg: Option<String>,
-    /// Trailing arguments beyond the first (validated per function).
-    pub extra_args: Vec<String>,
-    /// `YIELD col [AS alias], …` — renames the function's output columns
-    /// (when present it must cover every column, like C++).
-    pub yield_items: Vec<(String, Option<String>)>,
-    pub where_clause: Option<Expr>,
 }
 
 /// `MATCH p, … [WHERE pred]` (or `OPTIONAL MATCH`).

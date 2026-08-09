@@ -6,8 +6,9 @@ mod query;
 
 pub use layout::{LayoutProp, PropCol, RowLayout, VarColKind, VarColumns};
 pub use operator::{
-    Extend, ExtendTarget, IndexScan, InputSlot, JoinKind, MaterializeItem, MergePlan, PathRel,
-    PathSegmentPlan, PlanOp, ProjectPath, RelBranch, ScanNode, ScanTable, UnwindTarget, UpdateOp,
-    VarLengthExtend,
+    Extend, ExtendTarget, GraphAlgorithmPlan, IndexScan, InputSlot, JoinKind, KCorePlan,
+    LouvainPlan, MaterializeItem, MergePlan, PageRankPlan, PathRel, PathSegmentPlan, PlanOp,
+    ProjectPath, RelBranch, ScanNode, ScanTable, StronglyConnectedComponentsPlan,
+    TopologicalLevelsPlan, UnwindTarget, UpdateOp, VarLengthExtend, WeaklyConnectedComponentsPlan,
 };
 pub use query::{PartPlan, QueryPlan, RegularPlan};

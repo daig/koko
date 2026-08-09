@@ -1,33 +1,15 @@
 use koko_catalog::Catalog;
 use koko_common::{Error, IntKind, LogicalType, Result, TableId};
-use koko_ir::bound::BoundTableFunc;
+use koko_function::BuiltinTableFunction;
 use koko_parser::ast;
 
 /// The canonical uppercase name used in table-function diagnostics.
-pub(crate) fn display_name(function: ast::TableFunc) -> &'static str {
-    match function {
-        ast::TableFunc::ShowTables => "SHOW_TABLES",
-        ast::TableFunc::ShowSequences => "SHOW_SEQUENCES",
-        ast::TableFunc::TableInfo => "TABLE_INFO",
-        ast::TableFunc::ShowMacros => "SHOW_MACROS",
-        ast::TableFunc::ShowFunctions => "SHOW_FUNCTIONS",
-        ast::TableFunc::DbVersion => "DB_VERSION",
-        ast::TableFunc::ShowOfficialExtensions => "SHOW_OFFICIAL_EXTENSIONS",
-        ast::TableFunc::ClearWarnings => "CLEAR_WARNINGS",
-        ast::TableFunc::CacheArrayColumn => "_CACHE_ARRAY_COLUMN_LOCALLY",
-        ast::TableFunc::ShowIndexes => "SHOW_INDEXES",
-        ast::TableFunc::ShowWarnings => "SHOW_WARNINGS",
-        ast::TableFunc::ShowConnection => "SHOW_CONNECTION",
-        ast::TableFunc::StorageInfo => "STORAGE_INFO",
-        ast::TableFunc::StatsInfo => "STATS_INFO",
-        ast::TableFunc::CurrentSetting => "CURRENT_SETTING",
-        ast::TableFunc::BmInfo => "BM_INFO",
-        ast::TableFunc::ShowLoadedExtensions => "SHOW_LOADED_EXTENSIONS",
-    }
+pub(crate) const fn display_name(function: BuiltinTableFunction) -> &'static str {
+    function.canonical_name()
 }
 
-/// The name of a source query consisting of exactly one table-function scan.
-pub(crate) fn source_name(query: &ast::RegularQuery) -> Option<&'static str> {
+/// The name of a source query consisting of exactly one function call.
+pub(crate) fn source_name(query: &ast::RegularQuery) -> Option<String> {
     if !query.union_all.is_empty() {
         return None;
     }
@@ -38,7 +20,7 @@ pub(crate) fn source_name(query: &ast::RegularQuery) -> Option<&'static str> {
         return None;
     }
     match single.reading.as_slice() {
-        [ast::ReadingClause::TableFuncScan(scan)] => Some(display_name(scan.func)),
+        [ast::ReadingClause::Call(call)] => Some(call.name.to_ascii_uppercase()),
         _ => None,
     }
 }
@@ -46,20 +28,21 @@ pub(crate) fn source_name(query: &ast::RegularQuery) -> Option<&'static str> {
 /// Validate a table function's arguments and return its output schema.
 pub fn schema(
     catalog: &Catalog,
-    function: BoundTableFunc,
-    argument: Option<&str>,
-    extra_arguments: &[String],
+    function: BuiltinTableFunction,
+    arguments: &[String],
 ) -> Result<Vec<(String, LogicalType)>> {
+    let argument = arguments.first().map(String::as_str);
+    let extra_arguments = arguments.get(1..).unwrap_or_default();
     let string = str::to_string;
     let schema = match function {
-        BoundTableFunc::ShowTables => vec![
+        BuiltinTableFunction::ShowTables => vec![
             (string("id"), LogicalType::Int64),
             (string("name"), LogicalType::String),
             (string("type"), LogicalType::String),
             (string("database name"), LogicalType::String),
             (string("comment"), LogicalType::String),
         ],
-        BoundTableFunc::ShowSequences => vec![
+        BuiltinTableFunction::ShowSequences => vec![
             (string("name"), LogicalType::String),
             (string("database name"), LogicalType::String),
             (string("start value"), LogicalType::Int64),
@@ -68,7 +51,7 @@ pub fn schema(
             (string("max value"), LogicalType::Int64),
             (string("cycle"), LogicalType::Bool),
         ],
-        BoundTableFunc::TableInfo => {
+        BuiltinTableFunction::TableInfo => {
             let table = table_info_target(catalog, argument)?;
             let mut schema = vec![
                 (string("property id"), LogicalType::Int64),
@@ -83,22 +66,22 @@ pub fn schema(
             }
             schema
         }
-        BoundTableFunc::ShowMacros => vec![
+        BuiltinTableFunction::ShowMacros => vec![
             (string("name"), LogicalType::String),
             (string("definition"), LogicalType::String),
         ],
-        BoundTableFunc::ShowFunctions => vec![
+        BuiltinTableFunction::ShowFunctions => vec![
             (string("name"), LogicalType::String),
             (string("type"), LogicalType::String),
             (string("signature"), LogicalType::String),
         ],
-        BoundTableFunc::DbVersion => vec![(string("version"), LogicalType::String)],
-        BoundTableFunc::ShowOfficialExtensions => vec![
+        BuiltinTableFunction::DbVersion => vec![(string("version"), LogicalType::String)],
+        BuiltinTableFunction::ShowOfficialExtensions => vec![
             (string("name"), LogicalType::String),
             (string("description"), LogicalType::String),
         ],
-        BoundTableFunc::ClearWarnings => Vec::new(),
-        BoundTableFunc::CacheArrayColumn => {
+        BuiltinTableFunction::ClearWarnings => Vec::new(),
+        BuiltinTableFunction::CacheArrayColumn => {
             let table_name = argument.unwrap_or_default();
             let column_name = extra_arguments
                 .first()
@@ -126,7 +109,7 @@ pub fn schema(
             }
             Vec::new()
         }
-        BoundTableFunc::ShowIndexes => vec![
+        BuiltinTableFunction::ShowIndexes => vec![
             (string("table_name"), LogicalType::String),
             (string("index_name"), LogicalType::String),
             (string("index_type"), LogicalType::String),
@@ -137,14 +120,14 @@ pub fn schema(
             (string("extension_loaded"), LogicalType::Bool),
             (string("index_definition"), LogicalType::String),
         ],
-        BoundTableFunc::ShowWarnings => vec![
+        BuiltinTableFunction::ShowWarnings => vec![
             (string("query_id"), LogicalType::Int(IntKind::U64)),
             (string("message"), LogicalType::String),
             (string("file_path"), LogicalType::String),
             (string("line_number"), LogicalType::Int(IntKind::U64)),
             (string("skipped_line_or_record"), LogicalType::String),
         ],
-        BoundTableFunc::ShowConnection => {
+        BuiltinTableFunction::ShowConnection => {
             show_connection_target(catalog, argument)?;
             vec![
                 (string("source table name"), LogicalType::String),
@@ -153,7 +136,7 @@ pub fn schema(
                 (string("destination table primary key"), LogicalType::String),
             ]
         }
-        BoundTableFunc::StorageInfo => {
+        BuiltinTableFunction::StorageInfo => {
             existing_table_target(catalog, argument)?;
             [
                 ("table_type", LogicalType::String),
@@ -173,7 +156,7 @@ pub fn schema(
             .map(|(name, logical_type)| (string(name), logical_type))
             .collect()
         }
-        BoundTableFunc::StatsInfo => {
+        BuiltinTableFunction::StatsInfo => {
             let table = existing_table_target(catalog, argument)?;
             let entry = catalog.node_table(table).ok_or_else(|| {
                 Error::binder(format!(
@@ -191,15 +174,15 @@ pub fn schema(
             }));
             schema
         }
-        BoundTableFunc::CurrentSetting => vec![(
+        BuiltinTableFunction::CurrentSetting => vec![(
             argument.unwrap_or_default().to_string(),
             LogicalType::String,
         )],
-        BoundTableFunc::BmInfo => vec![
+        BuiltinTableFunction::BmInfo => vec![
             (string("mem_limit"), LogicalType::Int(IntKind::U64)),
             (string("mem_usage"), LogicalType::Int(IntKind::U64)),
         ],
-        BoundTableFunc::ShowLoadedExtensions => vec![
+        BuiltinTableFunction::ShowLoadedExtensions => vec![
             (string("extension name"), LogicalType::String),
             (string("extension source"), LogicalType::String),
             (string("extension path"), LogicalType::String),

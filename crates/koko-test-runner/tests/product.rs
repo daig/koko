@@ -2,7 +2,7 @@
 //! The manifest owns each fixture's contract, dataset, and case count. Every
 //! case must execute and pass against data bundled in this repository.
 
-use koko_test_runner::{Outcome, parse_test_file, run_test_file};
+use koko_test_runner::{CorpusEnv, Outcome, parse_test_file, run_test_file_with};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +12,14 @@ fn product_dir() -> PathBuf {
 
 fn datasets_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/datasets")
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("koko-test-runner must live under <workspace>/crates")
+        .to_path_buf()
 }
 
 fn fixture_manifest(dir: &Path) -> BTreeMap<String, (String, usize)> {
@@ -91,6 +99,11 @@ fn product_fixtures_match_their_manifest_and_pass() {
     let dir = product_dir();
     let datasets = datasets_dir();
     let manifest = fixture_manifest(&dir);
+    let root = workspace_root();
+    let corpus_env = CorpusEnv {
+        answers_dir: None,
+        root: Some(&root),
+    };
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", dir.display()))
         .map(|entry| entry.expect("cannot read product fixture entry").path())
@@ -127,7 +140,7 @@ fn product_fixtures_match_their_manifest_and_pass() {
         );
 
         let group = path.file_stem().unwrap().to_str().unwrap();
-        for result in run_test_file(&file, Some(&datasets)) {
+        for result in run_test_file_with(&file, Some(&datasets), corpus_env) {
             total += 1;
             match &result.outcome {
                 Outcome::Pass => {}

@@ -34,6 +34,12 @@ fn_struct_map.test	types-functions	empty	2	Struct literals/field access and map 
 fn_temporal_arith.test	types-functions	tinysnb	5	Date, timestamp, and interval arithmetic, division, construction, parts, and month/day boundary behavior remain exact.
 function_edge_cases.test	types-functions	tinysnb	6	List signatures/errors, array aliases, common-type coercion, UINT64 overflow, and nested string casts preserve their Koko contracts.
 function_semantics.test	types-functions	tinysnb	7	Numeric, string, list, date, map, and CASE functions preserve typed behavior over literals and a bundled typed graph dataset.
+graph_algorithm_k_core.test	execution	empty	7	K-core decomposition preserves undirected peeling, mixed coreness, parallel-edge and self-loop multiplicity, multi-table selection, named outputs, MVCC visibility, and binder validation.
+graph_algorithm_louvain.test	execution	empty	8	Serial unweighted Louvain covers canonical communities, CSR self-loop/parallel accounting, deterministic ties, configured limits, multi-table order, composition, MVCC visibility, and validation.
+graph_algorithm_page_rank.test	execution	empty	8	PageRank covers directed CSR pull updates, dangling redistribution, multiplicity/self-loops, typed defaults/options, iteration and convergence boundaries, worker-invariant composition, caller table order, MVCC visibility, and validation.
+graph_algorithm_scc.test	execution	empty	6	Directed strongly connected components cover empty, isolated, chunked, chain, cycle, SCC-DAG, self-loop, parallel-edge, disconnected multi-table, canonical-ID, composable YIELD, MVCC-visible, and graph-selection validation contracts.
+graph_algorithm_wcc.test	execution	empty	6	Statement-bound WCC streams selected endpoints as undirected union-find input and covers deterministic compact IDs, empty/isolated/disconnected, self-loop/parallel, relationship-group, composable YIELD, MVCC, and validation contracts.
+graph_algorithms.test	execution	empty	8	Statement-bound directed topological levels cover empty, isolated, layered, disconnected, parallel-edge, multi-table, cyclic, composable, name-selected output, worker-invariant, MVCC-visible, and validation contracts.
 hash_join.test	execution	empty	1	Both-side value equality lowers to a hash join while preserving NULL and residual-predicate semantics.
 identifier_primary_keys.test	regressions	empty	1	Quoted identifiers, inline primary keys, UUID primary keys, and in-case comment parsing remain accepted together.
 index_scan.test	execution	empty	3	Primary-key equality and disconnected-filter pushdown use correct point lookups for integer and string keys.
@@ -54,6 +60,7 @@ order_cross.test	language	empty	2	ORDER BY, SKIP, LIMIT, and disconnected cross 
 parallel.test	execution	empty	3	Morsel parallel scans, projections, aggregates, ordering, limits, and extensions equal serial results across vector boundaries.
 parameters.test	language	empty	2	Runner-supplied Cypher parameters persist within a case, bind with values, and report missing parameters.
 polymorphic_regressions.test	regressions	empty	2	Former crash and runtime-table-mapping defects remain fixed for unlabeled hints and polymorphic WITH values.
+reading_pipeline.test	language	mini	7	Reading clauses execute left to right across MATCH, OPTIONAL MATCH, UNWIND, name-selected and aliased table-function CALL, and LOAD while preserving scope, NULL extension, source cardinality, and node identity.
 rel_group_members.test	schema-writes	empty	2	Relationship-group physical members retain per-pair identity, reverse routing, and group-wide drop behavior.
 rel_multiplicity.test	schema-writes	empty	4	ONE_ONE, MANY_ONE, ONE_MANY, and MANY_MANY relationship constraints enforce incoming/outgoing cardinality atomically.
 rel_polymorphism.test	language	empty	1	Unlabeled and multi-type relationship patterns route across candidate tables with endpoint narrowing and runtime identity.

@@ -1,16 +1,20 @@
 mod aggregate;
+mod algorithm;
 mod expand;
 mod filter;
 mod join;
+mod louvain;
 mod path;
 mod project;
 mod source;
 mod update;
 
 pub(crate) use aggregate::*;
+pub(crate) use algorithm::*;
 pub(crate) use expand::*;
 pub(crate) use filter::*;
 pub(crate) use join::*;
+pub(crate) use louvain::*;
 pub(crate) use path::*;
 pub(crate) use project::*;
 pub(crate) use source::*;
@@ -27,6 +31,12 @@ pub(super) enum Exec<'a> {
     InputScan(InputScanState<'a>),
     Buffered(BufferedState),
     ScanNode(ScanNodeState<'a>),
+    KCore(KCoreState<'a>),
+    TopologicalLevels(TopologicalLevelsState<'a>),
+    PageRank(PageRankState<'a>),
+    Louvain(LouvainState<'a>),
+    WeaklyConnectedComponents(WeaklyConnectedComponentsState<'a>),
+    StronglyConnectedComponents(StronglyConnectedComponentsState<'a>),
     IndexScan(IndexScanState<'a>),
     IndexLookup(IndexLookupState<'a>),
     ScanTableFunc(TableFunctionScanState<'a>),
@@ -190,6 +200,16 @@ impl<'a> Exec<'a> {
                 output.set_flat(size);
                 return Ok(Some(output));
             },
+            Exec::KCore(state) => next_k_core_chunk(state, ctx),
+            Exec::TopologicalLevels(state) => next_topological_levels_chunk(state, ctx),
+            Exec::WeaklyConnectedComponents(state) => {
+                next_weakly_connected_components_chunk(state, ctx)
+            }
+            Exec::StronglyConnectedComponents(state) => {
+                next_strongly_connected_components_chunk(state, ctx)
+            }
+            Exec::PageRank(state) => next_page_rank_chunk(state, ctx),
+            Exec::Louvain(state) => next_louvain_chunk(state, ctx),
             Exec::IndexScan(IndexScanState { scan, done }) => {
                 if *done {
                     return Ok(None);
@@ -219,19 +239,16 @@ impl<'a> Exec<'a> {
                 })
             }
             Exec::ScanTableFunc(TableFunctionScanState {
-                func,
-                arg,
+                call,
                 cols,
                 rows,
                 idx,
             }) => {
                 if rows.is_none() {
-                    // Computed once (byte-exact with the standalone `CALL`
-                    // short-circuit), then yielded in chunks.
                     *rows = Some(produce_table_function_rows(
                         ctx.catalog,
-                        *func,
-                        *arg,
+                        call.function,
+                        &call.arguments,
                         ctx.table_functions,
                     )?);
                 }

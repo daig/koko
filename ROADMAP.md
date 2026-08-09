@@ -1,6 +1,6 @@
 # Koko: current product and roadmap
 
-> **Current as of 2026-07-27.** This is the single authority for Koko's current product boundary,
+> **Current as of 2026-08-08.** This is the single authority for Koko's current product boundary,
 > architecture map, active work, known limitations, candidate feature tracks, intentional semantic
 > decisions, and verification policy. It does not retain completed milestone checklists or fixed-bug
 > inventories; the implementation and regression suite are the record of completed work.
@@ -35,9 +35,10 @@ Four rules govern current work:
 | Product mode | Embedded, in-memory databases created by `Database::new()` or `Database::with_config(...)`; independent database instances and named graphs |
 | Graph model | Typed graphs and schemaless `ANY` graphs; node tables, relationship tables and multi-pair relationship groups; graph-scoped schemas, data and indexes |
 | Schema and data | Primary keys, defaults, serial columns/sequences, macros, HASH/ART index DDL and introspection; `CREATE`, `MERGE`, `SET`, `DELETE`, table alteration and graph DDL |
-| Query language | Koko's Cypher dialect: `MATCH`, `OPTIONAL MATCH`, `UNWIND`, `WITH`, `RETURN`, `UNION`, nested `EXISTS`/`COUNT` subqueries, variable-length `WALK`/`TRAIL`/`ACYCLIC` paths, aggregation, ordering, pagination, table functions, `EXPLAIN` and `PROFILE` |
-| Functions and values | Generated typed scalar/aggregate catalog; nested list/array/struct/map/union values, temporal and decimal values, ordered JSON, nodes, relationships, paths and `UINT128` |
-| Execution and storage | Typed columnar chunks, pull execution, static operator dispatch, versioned in-memory columns and adjacency, PK lookup, costed planning, hash joins, selected pushdown/decorrelation and scoped source parallelism |
+| Query language | Koko's Cypher dialect: left-to-right composition of `MATCH`, `OPTIONAL MATCH`, `UNWIND`, typed table-producing `CALL`, and `LOAD FROM`; `WITH`, `RETURN`, `UNION`, nested `EXISTS`/`COUNT` subqueries, variable-length `WALK`/`TRAIL`/`ACYCLIC` paths, aggregation, ordering, pagination, `EXPLAIN` and `PROFILE` |
+| Graph algorithms | Correlated `WALK`/`TRAIL`/`ACYCLIC`, unweighted/weighted shortest-path modes, and statement-bound directed `topological_levels` over explicit node/relationship table selections |
+| Functions and values | Generated typed scalar/aggregate/algorithm catalog; nested list/array/struct/map/union values, temporal and decimal values, ordered JSON, nodes, relationships, paths and `UINT128` |
+| Execution and storage | Typed columnar chunks, pull execution, static operator dispatch, versioned in-memory columns and adjacency, narrow topology visitors, PK lookup, costed planning, hash joins, selected pushdown/decorrelation and scoped source parallelism |
 | Transactions and controls | Snapshot reads, autocommit and explicit read/write transactions, concurrent connections, bounded multi-writer conflict detection, atomic rollback, cancellation, deadlines, worker limits and tracked-memory errors |
 | Local data movement | CSV and gzip CSV, Parquet and NPY input, native Rust `arrow-rs::RecordBatch` import/export for supported logical types, COPY, CSV/Parquet output, atomic database-wide logical export/import and validated local read-only `icebug-disk` scans |
 | Embedded Rust API | `Database`, `Connection`, exclusively borrowing `Transaction`, `PreparedStatement`, owned `Parameter`, connection-local `ScalarFunction`, `InterruptHandle`, `QueryResult`, borrowed `Row`/cell/column views, structured diagnostics and immutable tooling snapshots |
@@ -60,6 +61,7 @@ koko-common      values, logical types, typed chunks, memory/statistics primitiv
 
 koko-ir          shared bound semantics, variable IDs, row layouts and logical plans
 koko-storage     concrete versioned in-memory columns, adjacency, PK indexes and undo
+koko-algorithm   allocation-accounted whole-graph kernels over narrow typed contracts
 koko-binder      name/type resolution over parser + catalog + function + IR
 koko-expr        bound-expression compilation and typed evaluation
 koko-planner     logical planning, pushdown, joins and cost optimization
@@ -112,21 +114,8 @@ Detailed ownership and API contracts remain in
   Ladybug differs.
 
 
-### 3.2 Planned gap closure: reading-pipeline composition
 
-Koko intends to support these currently cleanly rejected combinations:
-
-- `UNWIND` after `OPTIONAL MATCH`;
-- a table-function `CALL` combined with `UNWIND` or `OPTIONAL MATCH`;
-- `LOAD FROM` combined with a table-function `CALL`; and
-- `MATCH` after an `UNWIND` whose node value depends on that same query part.
-
-The implementation must extend the normal bound-query and planner representation rather than add a
-special executor. Each form needs explicit scope, null-extension, multiplicity, clause-order,
-transaction and error-stage tests. The owning paths begin in
-`crates/koko-binder/src/binder/query.rs` and `crates/koko-planner/src/builder/mod.rs`.
-
-### 3.3 Planned gap closure: expression placement
+### 3.2 Planned gap closure: expression placement
 
 Koko intends to remove these representation-driven restrictions:
 
@@ -140,7 +129,7 @@ planner layout. Evaluation count, sequence side effects, NULL behavior, aliases 
 focused regressions. The owning paths begin in `crates/koko-binder/src/binder/query.rs` and
 `crates/koko-processor/src/operator/project.rs`.
 
-### 3.4 Planned language feature: pattern comprehensions
+### 3.3 Planned language feature: pattern comprehensions
 
 Pattern comprehensions need a deliberate Koko grammar, scope and execution contract. The feature
 must define introduced-variable visibility, correlation with the outer row, empty and NULL behavior,
@@ -149,6 +138,36 @@ ambiguous parse of list-comprehension-like syntax or its unbound-new-variable fa
 
 Until that design lands, pattern comprehensions remain a categorized clean rejection; the specific
 new-variable behavior is recorded as an intentional boundary in section 4.
+
+### 3.4 Supported built-in whole-graph algorithms
+
+Koko supports six built-in graph-algorithm scans over explicit node/relationship table selections:
+
+```cypher
+CALL topological_levels(['Task'], ['DependsOn']) YIELD node, level
+CALL weakly_connected_components(['Task'], ['DependsOn']) YIELD node, component_id
+CALL strongly_connected_components(['Task'], ['DependsOn']) YIELD node, component_id
+CALL page_rank(['Task'], ['DependsOn']) YIELD node, score
+CALL k_core_decomposition(['Task'], ['DependsOn']) YIELD node, core
+CALL louvain(['Task'], ['DependsOn']) YIELD node, community_id
+```
+
+Each binds table names against one graph/catalog snapshot, executes against the statement's MVCC
+view, and composes through ordinary `YIELD`, `WHERE`, projection, aggregation and ordering. WCC
+streams endpoints into union-find; SCC and k-core traverse base adjacency without copying topology;
+PageRank builds transient incoming CSR; Louvain builds transient undirected weighted CSR.
+Computation is eager and cached per logical scan, with bounded cancellation, tracked transient and
+retained allocations, no partial rows on failure, and deterministic values independent of pull
+worker scheduling.
+
+PageRank also accepts positional damping, tolerance, maximum-iteration and initial-normalization
+options; Louvain accepts positional maximum-iteration and maximum-phase limits. Current path modes
+remain separate correlated `MATCH` operators. [`docs/GRAPH_ALGORITHMS.md`](docs/GRAPH_ALGORITHMS.md)
+owns the full supported contract, logical graph selection, lowering, cost model and verification.
+
+This surface does not activate `PROJECT_GRAPH`, a named projected-graph registry, topology caching,
+extension/plugin lifecycle or an `algo` module. Algorithms bind directly to one captured Koko graph
+and MVCC statement view; reusable named selections remain a separate product decision.
 
 ### 3.5 Evidence-gated performance work
 
@@ -167,8 +186,9 @@ Koko workload, before/after profiles, fixed result checks and a workload-owned r
 
 ### 3.6 Candidate product expansions
 
-No product-expansion feature is selected today. The following may become roadmap work only after an
-explicit owner decision defines the user, representation, ownership and verification contract:
+The following separate product-expansion features remain unselected. They may become roadmap work
+only after an explicit owner decision defines the user, representation, ownership and verification
+contract:
 
 - Arrow C Data/C Stream;
 - extension/plugin lifecycle and extension modules;
@@ -216,10 +236,11 @@ but must update this section and its focused regression in the same landing.
 | `nondeterministic-by-design` | Unseeded `random()` is nondeterministic. Queries without `ORDER BY`, including `LIMIT`, do not promise a particular row identity or physical scan order. Seeded RNG and explicitly ordered results remain deterministic contracts. |
 | `pure-semantic-supersets` | Koko may retain coherent Koko-only syntax/functions such as `exp`, `power`, list aliases, one-argument `round`, two-argument `substr`, `INTERVAL * INT`, `WALK` and `INTEGER`; Ladybug rejection alone is not a reason to remove them. |
 | `list-comprehension-syntax` | `[variable IN list [WHERE predicate] [\| projection]]` is Koko list-comprehension syntax. The predicate must be boolean, NULL predicates exclude their element, NULL input returns NULL, nested comprehensions use lexical shadowing, and bodies may capture outer-row values. Parenthesize `variable IN list` when it is intended as a list-literal membership expression. |
+| `call-yield-name-selection` | A row-producing `CALL` without `YIELD` imports every declared output in declaration order. An explicit nonempty `YIELD` list selects declared outputs by Koko identifier name in caller-written order; each source output may appear once, `AS` replaces its exposed name, and only the selected names enter scope. The immediate `WHERE` sees incoming variables plus those selected names. Unknown outputs, duplicate selections, duplicate exposed names and collisions with incoming scope are binder errors. Selection and aliasing never change source row cardinality or order. `YIELD *` is not supported. |
 | `numeric-variadic-extrema` | `greatest`/`least` accept two or more all-numeric arguments, coerce them to Koko's common numeric type, propagate any NULL, and retain the leftmost value on ties. Their inherited DATE/TIMESTAMP overloads remain binary. |
 | `aggregate-in-where-orderby` | Aggregates in scalar positions where no aggregate scope exists are rejected during binding. Koko does not execute a global aggregate accidentally or defer the failure to runtime. |
 | `subquery-in-recursive-lambda` | `EXISTS`/`COUNT` subqueries and `nextval`/`currval` inside a recursive relationship's per-step lambda are intentionally rejected. Supporting them would require a correlated sub-pipeline inside the frontier loop and is not currently planned. |
-| `pattern-comprehension-newvar` | Pattern comprehensions, especially forms introducing a new variable, remain rejected until section 3.5 defines their scope. Koko will not copy Ladybug's ambiguous parse or accidental unbound-variable behavior. |
+| `pattern-comprehension-newvar` | Pattern comprehensions, especially forms introducing a new variable, remain rejected until section 3.3 defines their scope. Koko will not copy Ladybug's ambiguous parse or accidental unbound-variable behavior. |
 | `storage-info-physical-counts` | In-memory `storage_info` does not invent page, compression or physical chunk rows. Physical storage introspection belongs only to a separately selected native-storage product. |
 
 Exact probe entries for current intentional differences remain in

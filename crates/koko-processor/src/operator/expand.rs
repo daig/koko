@@ -1120,6 +1120,7 @@ pub(crate) fn fill_optional_empty_paths(
         PlanOp::SingleRow
         | PlanOp::InputScan
         | PlanOp::ScanTableFunc { .. }
+        | PlanOp::ScanGraphAlgorithm(_)
         | PlanOp::LoadScan { .. }
         | PlanOp::ScanNode(_) => {}
     }

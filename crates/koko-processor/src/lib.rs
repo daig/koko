@@ -54,13 +54,13 @@ use koko_function::{
 };
 use koko_ir::bound::{
     BoundCreate, BoundDelete, BoundExpr, BoundProjection, BoundQuery, BoundRegularQuery, BoundSet,
-    BoundSetTarget, BoundTableFunc, LambdaVarId, OrderKey, PathSemantic, ProjItem, RecursiveMode,
-    SequenceFn, SubqueryKind, VarId,
+    BoundSetTarget, BoundTableFunctionCall, LambdaVarId, OrderKey, PathSemantic, ProjItem,
+    RecursiveMode, SequenceFn, SubqueryKind, VarId,
 };
 use koko_ir::plan::{
-    Extend, ExtendTarget, IndexScan, InputSlot, JoinKind, MaterializeItem, MergePlan, PartPlan,
-    PathRel, PlanOp, ProjectPath, QueryPlan, RegularPlan, RowLayout, ScanNode, ScanTable,
-    UnwindTarget, UpdateOp, VarColKind, VarLengthExtend,
+    Extend, ExtendTarget, GraphAlgorithmPlan, IndexScan, InputSlot, JoinKind, MaterializeItem,
+    MergePlan, PartPlan, PathRel, PlanOp, ProjectPath, QueryPlan, RegularPlan, RowLayout, ScanNode,
+    ScanTable, UnwindTarget, UpdateOp, VarColKind, VarLengthExtend,
 };
 use koko_loader::{
     icebug::{IcebugNodeScan, IcebugQuerySources},

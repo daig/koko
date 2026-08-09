@@ -14,14 +14,13 @@ use crate::cost::{self, StatsMap};
 use koko_catalog::Catalog;
 use koko_common::{ExtendDir, LogicalType, Result, TableId};
 use koko_ir::bound::{
-    BoundExpr, BoundMatch, BoundPart, BoundQuery, BoundRegularQuery, BoundTableFuncScan,
-    BoundUnwind, PathSemantic, ProjItem, RecursiveFilter, RecursiveMode, SubqueryKind, VarId,
-    VarKind,
+    BoundExpr, BoundGraphAlgorithmConfig, BoundGraphAlgorithmOutput, BoundMatch,
+    BoundOptionalMatch, BoundPart, BoundQuery, BoundReadingClause, BoundRegularQuery, BoundUnwind,
+    OrderKey, PathSemantic, ProjItem, RecursiveFilter, RecursiveMode, SubqueryKind, VarId, VarKind,
 };
 use koko_ir::plan::*;
 use r#match::{
-    bwd_or_both, collect_expr_vars, collect_sequence_ids, collect_value_consumed_vars,
-    expr_references_any_var, fwd_or_both, match_bound_vars, pre_match_unwind_vars,
+    bwd_or_both, collect_expr_vars, collect_sequence_ids, collect_value_consumed_vars, fwd_or_both,
 };
 use std::collections::HashSet;
 use subquery::{collect_subquery_ids, plan_subquery};
@@ -113,336 +112,390 @@ fn plan_part(
     }
 
     let has_input = !part.input_vars.is_empty();
-    let match_vars = match_bound_vars(&part.match_);
-    let mut pre_unwind =
-        pre_match_unwind_vars(&part.unwind, part.where_predicate.as_ref(), &match_vars);
-    for u in &part.unwind {
-        if query.var(u.var).is_node() && part.match_.node_vars.contains(&u.var) {
-            if expr_references_any_var(&u.list, &match_vars) {
-                return Err(koko_common::Error::not_implemented(
-                    "MATCH after UNWIND of a node value that depends on the same MATCH is not \
-                     supported in this phase"
-                        .to_string(),
-                ));
-            }
-            pre_unwind.insert(u.var);
-        }
-    }
-
-    // The part's base source. An in-query table-function scan is a leaf with no
-    // MATCH/UNWIND (the binder guards the combination). A CSV `LOAD FROM` is a leaf
-    // that may be followed by an UNWIND and/or MATCH. Otherwise the base is the
-    // carried scope (`InputScan`) or one dummy row that feeds pre-MATCH UNWIND.
-    let mut root = if let Some((first, rest)) = part.table_func_scans.split_first() {
-        // Each scan's layout columns follow the function's schema order
-        // (YIELD renames positionally, never reorders).
-        let scan_op = |b: &mut PlanBuilder, tfs: &BoundTableFuncScan| {
-            let cols = tfs
-                .columns
-                .iter()
-                .map(|(var, ty)| b.layout.add_scalar(*var, ty.clone()))
-                .collect();
-            PlanOp::ScanTableFunc {
-                func: tfs.func,
-                arg: tfs.arg.clone(),
-                cols,
-            }
-        };
-        let mut root = scan_op(&mut b, first);
-        // Additional CALLs cross-product onto the accumulated rows.
-        for tfs in rest {
-            let left_width = b.layout.width();
-            let scan = scan_op(&mut b, tfs);
-            let right_width = b.layout.width() - left_width;
-            root = PlanOp::CrossProduct {
-                left: Box::new(root),
-                left_width,
-                right: Box::new(scan),
-                right_width,
-            };
-        }
-        root
-    } else if let Some(ls) = &part.load_scan {
-        // The carried columns precede the file's; a chained `LOAD FROM` after a
-        // `WITH` cross-products the file rows against the carried rows.
-        let input_width = b.layout.width();
-        let cols = ls
-            .columns
-            .iter()
-            .map(|(var, ty)| b.layout.add_scalar(*var, ty.clone()))
-            .collect();
-        let load = PlanOp::LoadScan {
-            cols,
-            col_names: ls.col_names.clone(),
-            path: ls.path.clone(),
-            paths: ls.paths.clone(),
-            format: ls.format,
-            options: ls.options.clone(),
-            bare: ls.bare,
-        };
-        if has_input {
-            let load_width = b.layout.width() - input_width;
-            PlanOp::CrossProduct {
-                left: Box::new(PlanOp::InputScan),
-                left_width: input_width,
-                right: Box::new(load),
-                right_width: load_width,
-            }
-        } else {
-            load
-        }
-    } else if has_input {
+    let mut root = if has_input {
         PlanOp::InputScan
     } else {
         PlanOp::SingleRow
     };
+    let mut has_pipeline = has_input;
+    let mut planned_subqueries = HashSet::new();
+    let mut planned_sequences = HashSet::new();
+    b.layout.ensure_subquery_slots(part.subqueries.len());
 
-    // `WITH … WHERE` from the previous part filters the carried rows before any of
-    // this part's own reading clauses. Subqueries it references compute first.
-    let mut input_filter_planned: std::collections::HashSet<usize> =
-        std::collections::HashSet::new();
-    if let Some(pred) = &part.input_filter {
-        for id in collect_subquery_ids(pred) {
-            let sq = &part.subqueries[id];
-            let ty = match sq.kind {
-                SubqueryKind::Exists => LogicalType::Bool,
-                SubqueryKind::Count => LogicalType::Int64,
-            };
-            let result_col = b.layout.add_subquery_column(id, ty);
-            root = plan_subquery(&mut b, root, sq, result_col, &part.subqueries)?;
-            input_filter_planned.insert(id);
-        }
+    // `WITH … WHERE` belongs to the carried input and therefore runs before
+    // every reading clause in this part.
+    if let Some(predicate) = &part.input_filter {
+        root = prepare_expression(
+            &mut b,
+            root,
+            predicate,
+            part,
+            &mut planned_subqueries,
+            &mut planned_sequences,
+        )?;
         root = PlanOp::Filter {
             input: Box::new(root),
-            predicate: pred.clone(),
+            predicate: predicate.clone(),
         };
     }
 
-    // UNWIND clauses whose variables must be visible to MATCH drive the MATCH,
-    // mirroring the C++ clause-order planner (`UNWIND … MATCH …`). This covers
-    // scalar aliases read by the MATCH predicate and node aliases reused directly
-    // as graph bindings; if the UNWIND expression itself needs a MATCH variable,
-    // it necessarily remains post-MATCH.
-    for u in part.unwind.iter().filter(|u| pre_unwind.contains(&u.var)) {
-        root = b.make_unwind(root, u);
-        if query.var(u.var).is_node() {
-            b.bound.insert(u.var);
-        }
-    }
-
-    // Compose any required MATCH onto the base rows. When there is no base/input and
-    // no pre-MATCH UNWIND, let `build_match` anchor directly on a node scan rather
-    // than cross-producting through the dummy row.
-    if !part.table_func_scans.is_empty() {
-        // A MATCH combined with CALL scans composes over the scan rows
-        // (cross product driven through the match).
-        if !(part.match_.node_vars.is_empty() && part.match_.rel_vars.is_empty()) {
-            let base = std::mem::replace(&mut root, PlanOp::SingleRow);
-            root = b.build_match(&part.match_, part.where_predicate.as_ref(), Some(base))?;
-        }
-    } else if part.table_func_scans.is_empty() {
-        let bare_match = !has_input && part.load_scan.is_none() && pre_unwind.is_empty();
-        let base = if bare_match {
-            None
-        } else {
-            Some(std::mem::replace(&mut root, PlanOp::SingleRow))
-        };
-        root = b.build_match(&part.match_, part.where_predicate.as_ref(), base)?;
-    }
-
-    // Remaining UNWIND operators keep the old post-MATCH position (e.g. `MATCH …
-    // UNWIND node.list AS x`), allocating either a scalar column or node binding.
-    for u in part.unwind.iter().filter(|u| !pre_unwind.contains(&u.var)) {
-        root = b.make_unwind(root, u);
-        if query.var(u.var).is_node() {
-            b.bound.insert(u.var);
-        }
-    }
-    // Lifted `EXISTS {}` / `COUNT {}` subqueries: each computes a per-row result
-    // column (before the WHERE / projection that read it). The inner pattern is a
-    // sub-pattern (rooted at the per-row seed) correlated to the bound variables.
-    // Materialize node/rel VALUES for variables whose value (not just id) is
-    // consumed by this part's expressions (audit V12 seam) — before the WHERE /
-    // subqueries / projection that read them.
-    {
-        let mut consumed: HashSet<VarId> = HashSet::new();
-        let mut exprs: Vec<&BoundExpr> = Vec::new();
-        if let Some(w) = &part.where_predicate {
-            exprs.push(w);
-        }
-        if let Some(proj) = &part.projection {
-            for it in &proj.items {
-                if let ProjItem::Scalar { expr, .. } = it {
-                    exprs.push(expr);
+    // Fold the reading pipeline from left to right. A MATCH may optimize its
+    // own graph, but no clause is moved across another clause's boundary.
+    for clause in &part.reading {
+        match clause {
+            BoundReadingClause::Match {
+                match_,
+                where_predicate,
+            } => {
+                let base = if has_pipeline { Some(root) } else { None };
+                root = b.build_match(match_, where_predicate.as_ref(), base)?;
+                has_pipeline = true;
+                if let Some(predicate) = where_predicate {
+                    root = prepare_expression(
+                        &mut b,
+                        root,
+                        predicate,
+                        part,
+                        &mut planned_subqueries,
+                        &mut planned_sequences,
+                    )?;
+                    root = PlanOp::Filter {
+                        input: Box::new(root),
+                        predicate: predicate.clone(),
+                    };
+                }
+            }
+            BoundReadingClause::OptionalMatch(optional) => {
+                root = plan_optional_clause(
+                    &mut b,
+                    root,
+                    optional,
+                    part,
+                    &mut planned_subqueries,
+                    &mut planned_sequences,
+                )?;
+                has_pipeline = true;
+            }
+            BoundReadingClause::Unwind(unwind) => {
+                root = prepare_expression(
+                    &mut b,
+                    root,
+                    &unwind.list,
+                    part,
+                    &mut planned_subqueries,
+                    &mut planned_sequences,
+                )?;
+                root = b.make_unwind(root, unwind);
+                if query.var(unwind.var).is_node() {
+                    b.bound.insert(unwind.var);
+                }
+                has_pipeline = true;
+            }
+            BoundReadingClause::TableFunction {
+                scan,
+                where_predicate,
+            } => {
+                let left_width = b.layout.width();
+                let cols = scan
+                    .columns
+                    .iter()
+                    .map(|(var, ty)| b.layout.add_scalar(*var, ty.clone()))
+                    .collect();
+                let source = PlanOp::ScanTableFunc {
+                    call: scan.call.clone(),
+                    cols,
+                };
+                root = if has_pipeline {
+                    let right_width = b.layout.width() - left_width;
+                    PlanOp::CrossProduct {
+                        left: Box::new(root),
+                        left_width,
+                        right: Box::new(source),
+                        right_width,
+                    }
+                } else {
+                    source
+                };
+                has_pipeline = true;
+                if let Some(predicate) = where_predicate {
+                    root = prepare_expression(
+                        &mut b,
+                        root,
+                        predicate,
+                        part,
+                        &mut planned_subqueries,
+                        &mut planned_sequences,
+                    )?;
+                    root = PlanOp::Filter {
+                        input: Box::new(root),
+                        predicate: predicate.clone(),
+                    };
+                }
+            }
+            BoundReadingClause::GraphAlgorithm {
+                scan,
+                where_predicate,
+            } => {
+                let left_width = b.layout.width();
+                let source = match (scan.output, scan.call.function, scan.call.config) {
+                    (
+                        BoundGraphAlgorithmOutput::TopologicalLevels { node, level },
+                        koko_function::BuiltinGraphAlgorithm::TopologicalLevels,
+                        BoundGraphAlgorithmConfig::TopologicalLevels,
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let level_col = b.layout.add_scalar(level, query.var(level).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::TopologicalLevels(
+                            TopologicalLevelsPlan {
+                                id: scan.id,
+                                graph: scan.call.graph.clone(),
+                                node: node_scan,
+                                level_col,
+                            },
+                        ))
+                    }
+                    (
+                        BoundGraphAlgorithmOutput::PageRank { node, score },
+                        koko_function::BuiltinGraphAlgorithm::PageRank,
+                        BoundGraphAlgorithmConfig::PageRank(config),
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let score_col = b.layout.add_scalar(score, query.var(score).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::PageRank(PageRankPlan {
+                            id: scan.id,
+                            graph: scan.call.graph.clone(),
+                            config,
+                            node: node_scan,
+                            score_col,
+                        }))
+                    }
+                    (
+                        BoundGraphAlgorithmOutput::KCoreDecomposition { node, core },
+                        koko_function::BuiltinGraphAlgorithm::KCoreDecomposition,
+                        BoundGraphAlgorithmConfig::TopologicalLevels,
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let core_col = b.layout.add_scalar(core, query.var(core).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::KCoreDecomposition(
+                            KCorePlan {
+                                id: scan.id,
+                                graph: scan.call.graph.clone(),
+                                node: node_scan,
+                                core_col,
+                            },
+                        ))
+                    }
+                    (
+                        BoundGraphAlgorithmOutput::Louvain { node, community_id },
+                        koko_function::BuiltinGraphAlgorithm::Louvain,
+                        BoundGraphAlgorithmConfig::Louvain(config),
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let community_col = b
+                            .layout
+                            .add_scalar(community_id, query.var(community_id).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::Louvain(LouvainPlan {
+                            id: scan.id,
+                            graph: scan.call.graph.clone(),
+                            node: node_scan,
+                            community_col,
+                            max_iterations: config.max_iterations,
+                            max_phases: config.max_phases,
+                        }))
+                    }
+                    (
+                        BoundGraphAlgorithmOutput::WeaklyConnectedComponents { node, component_id },
+                        koko_function::BuiltinGraphAlgorithm::WeaklyConnectedComponents,
+                        BoundGraphAlgorithmConfig::TopologicalLevels,
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let component_id_col = b
+                            .layout
+                            .add_scalar(component_id, query.var(component_id).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::WeaklyConnectedComponents(
+                            WeaklyConnectedComponentsPlan {
+                                id: scan.id,
+                                graph: scan.call.graph.clone(),
+                                node: node_scan,
+                                component_id_col,
+                            },
+                        ))
+                    }
+                    (
+                        BoundGraphAlgorithmOutput::StronglyConnectedComponents {
+                            node,
+                            component_id,
+                        },
+                        koko_function::BuiltinGraphAlgorithm::StronglyConnectedComponents,
+                        BoundGraphAlgorithmConfig::TopologicalLevels,
+                    ) => {
+                        let node_scan = b.make_scan(node);
+                        b.bound.insert(node);
+                        let component_col = b
+                            .layout
+                            .add_scalar(component_id, query.var(component_id).scalar_type());
+                        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::StronglyConnectedComponents(
+                            StronglyConnectedComponentsPlan {
+                                id: scan.id,
+                                graph: scan.call.graph.clone(),
+                                node: node_scan,
+                                component_col,
+                            },
+                        ))
+                    }
+                    _ => unreachable!("graph algorithm identity, output, and config must agree"),
+                };
+                root = if has_pipeline {
+                    let right_width = b.layout.width() - left_width;
+                    PlanOp::CrossProduct {
+                        left: Box::new(root),
+                        left_width,
+                        right: Box::new(source),
+                        right_width,
+                    }
+                } else {
+                    source
+                };
+                has_pipeline = true;
+                if let Some(predicate) = where_predicate {
+                    root = prepare_expression(
+                        &mut b,
+                        root,
+                        predicate,
+                        part,
+                        &mut planned_subqueries,
+                        &mut planned_sequences,
+                    )?;
+                    root = PlanOp::Filter {
+                        input: Box::new(root),
+                        predicate: predicate.clone(),
+                    };
+                }
+            }
+            BoundReadingClause::Load {
+                scan,
+                where_predicate,
+            } => {
+                let left_width = b.layout.width();
+                let cols = scan
+                    .columns
+                    .iter()
+                    .map(|(var, ty)| b.layout.add_scalar(*var, ty.clone()))
+                    .collect();
+                let source = PlanOp::LoadScan {
+                    cols,
+                    col_names: scan.col_names.clone(),
+                    path: scan.path.clone(),
+                    paths: scan.paths.clone(),
+                    format: scan.format,
+                    options: scan.options.clone(),
+                    bare: scan.bare,
+                };
+                root = if has_pipeline {
+                    let right_width = b.layout.width() - left_width;
+                    PlanOp::CrossProduct {
+                        left: Box::new(root),
+                        left_width,
+                        right: Box::new(source),
+                        right_width,
+                    }
+                } else {
+                    source
+                };
+                has_pipeline = true;
+                if let Some(predicate) = where_predicate {
+                    root = prepare_expression(
+                        &mut b,
+                        root,
+                        predicate,
+                        part,
+                        &mut planned_subqueries,
+                        &mut planned_sequences,
+                    )?;
+                    root = PlanOp::Filter {
+                        input: Box::new(root),
+                        predicate: predicate.clone(),
+                    };
                 }
             }
         }
-        for sq in &part.subqueries {
-            if let Some(w) = &sq.where_predicate {
-                exprs.push(w);
+    }
+
+    // Projection expressions consume the final reading rows. Prepare their
+    // lifted dependencies here; the processor performs the projection itself.
+    if let Some(projection) = &part.projection {
+        for item in &projection.items {
+            if let ProjItem::Scalar { expr, .. } = item {
+                root = prepare_expression(
+                    &mut b,
+                    root,
+                    expr,
+                    part,
+                    &mut planned_subqueries,
+                    &mut planned_sequences,
+                )?;
             }
         }
-        for e in exprs {
-            collect_value_consumed_vars(e, false, &mut consumed);
-        }
-        let mut items = Vec::new();
-        for var in consumed {
-            let Some(columns) = b.layout.try_var(var) else {
-                continue;
-            };
-            let Some((ty, is_node)) = columns.kind.graph_value_type() else {
-                continue;
-            };
-            let Some((id_col, value_col)) = b.layout.add_value_column(var, ty) else {
-                continue;
-            };
-            items.push(MaterializeItem {
-                id_col,
-                value_col,
-                is_node,
-            });
-        }
-        if !items.is_empty() {
-            root = PlanOp::MaterializeValues {
-                input: Box::new(root),
-                items,
-            };
+        for (key, _) in &projection.order_by {
+            if let OrderKey::Expr(expression) | OrderKey::PostProjection(expression) = key {
+                root = prepare_expression(
+                    &mut b,
+                    root,
+                    expression,
+                    part,
+                    &mut planned_subqueries,
+                    &mut planned_sequences,
+                )?;
+            }
         }
     }
 
-    // Ids consumed by an OPTIONAL's WHERE are planned inside that optional's
-    // branch (below), not here — their column slots are shared via the id-indexed
-    // map either way.
-    b.layout.ensure_subquery_slots(part.subqueries.len());
-    let optional_scoped: std::collections::HashSet<usize> = part
-        .optionals
-        .iter()
-        .filter_map(|o| o.where_predicate.as_ref())
-        .flat_map(collect_subquery_ids)
-        .collect();
-    // A subquery referenced by another's WHERE is NESTED: it plans inside its
-    // parent's pattern (its variables live there), not at the top level.
-    let nested_ids: std::collections::HashSet<usize> = part
+    // A subquery referenced only by an update or another non-projection
+    // expression still needs a result column. Nested subqueries are planned by
+    // their owning outer subquery.
+    let nested_subqueries: HashSet<usize> = part
         .subqueries
         .iter()
-        .flat_map(|sq| {
-            sq.where_predicate
+        .flat_map(|subquery| {
+            subquery
+                .where_predicate
                 .as_ref()
                 .map(collect_subquery_ids)
                 .unwrap_or_default()
         })
         .collect();
-    for (id, sq) in part.subqueries.iter().enumerate() {
-        if optional_scoped.contains(&id)
-            || nested_ids.contains(&id)
-            || input_filter_planned.contains(&id)
-        {
+    for (id, subquery) in part.subqueries.iter().enumerate() {
+        if planned_subqueries.contains(&id) || nested_subqueries.contains(&id) {
             continue;
         }
-        let ty = match sq.kind {
+        let result_type = match subquery.kind {
             SubqueryKind::Exists => LogicalType::Bool,
             SubqueryKind::Count => LogicalType::Int64,
         };
-        let result_col = b.layout.add_subquery_column(id, ty);
-        root = plan_subquery(&mut b, root, sq, result_col, &part.subqueries)?;
-    }
-    // Lifted `nextval`/`currval` calls: each fills a per-row INT64 column by
-    // advancing the named sequence (the processor does this with catalog access,
-    // since the pure expression evaluator can't reach mutable sequence state).
-    // A call the WHERE itself reads computes before the filter; every other call
-    // computes AFTER it (audit V11 — C++ advances a projection's nextval only
-    // for rows that survive the WHERE, so filtered rows must not consume values).
-    let where_seq_ids = part
-        .where_predicate
-        .as_ref()
-        .map(collect_sequence_ids)
-        .unwrap_or_default();
-    let mut post_filter_calls = Vec::new();
-    for (id, sc) in part.sequence_calls.iter().enumerate() {
-        let result_col = b.layout.add_sequence_column(LogicalType::Int64);
-        if where_seq_ids.contains(&id) {
-            root = PlanOp::SequenceCall {
-                input: Box::new(root),
-                func: sc.func,
-                name: sc.name.clone(),
-                result_col,
-            };
-        } else {
-            post_filter_calls.push((sc, result_col));
-        }
+        let result_col = b.layout.add_subquery_column(id, result_type);
+        root = plan_subquery(&mut b, root, subquery, result_col, &part.subqueries)?;
+        planned_subqueries.insert(id);
     }
 
-    if let Some(pred) = &part.where_predicate {
-        root = PlanOp::Filter {
-            input: Box::new(root),
-            predicate: pred.clone(),
-        };
-    }
-    for (sc, result_col) in post_filter_calls {
+    // Sequence calls not consumed by a reading predicate/list belong to the
+    // final projection or update and execute for every surviving row.
+    for (id, sequence) in part.sequence_calls.iter().enumerate() {
+        if planned_sequences.contains(&id) {
+            continue;
+        }
+        let result_col = b.layout.add_sequence_column(id, LogicalType::Int64);
         root = PlanOp::SequenceCall {
             input: Box::new(root),
-            func: sc.func,
-            name: sc.name.clone(),
+            func: sequence.func,
+            name: sequence.name.clone(),
             result_col,
         };
-    }
-
-    // `OPTIONAL MATCH` left-joins, in order. Each is a sub-pattern (rooted at the
-    // per-row seed) correlated to the already-bound variables; its WHERE filters
-    // matches before the NULL decision.
-    for opt in &part.optionals {
-        let width_before = b.layout.width();
-        // A WHERE that reads a lifted subquery must compute it INSIDE this
-        // branch, before the branch filter and the NULL decision (audit W2 —
-        // computing it in the outer pipeline read an unpopulated column).
-        let mut sub_ids: Vec<usize> = opt
-            .where_predicate
-            .as_ref()
-            .map(collect_subquery_ids)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        sub_ids.sort_unstable();
-        // P3 step 10b L1: decorrelate a sufficiently large, single-key outer pipeline into a
-        // build-once Left hash join. Selective or multi-key probes stay seeded: rebuilding their
-        // small sub-pipeline avoids materializing a whole relation (or all correlated pairs).
-        let correlated = (sub_ids.is_empty()
-            && cost::plan_card(&root, b.stats) >= DECORRELATE_MIN_PROBE_ROWS)
-            .then(|| b.correlated_nodes(&opt.match_, opt.where_predicate.as_ref()))
-            .flatten()
-            .filter(|correlated| correlated.len() == 1);
-        if let Some(corr) = correlated {
-            root = b.build_decorrelated_join(root, &corr, &opt.match_, JoinKind::Left)?;
-        } else {
-            b.layout.ensure_subquery_slots(part.subqueries.len());
-            let mut pattern = b.build_match(
-                &opt.match_,
-                opt.where_predicate.as_ref(),
-                Some(PlanOp::InputScan),
-            )?;
-            for &id in &sub_ids {
-                let sq = &part.subqueries[id];
-                let ty = match sq.kind {
-                    SubqueryKind::Exists => LogicalType::Bool,
-                    SubqueryKind::Count => LogicalType::Int64,
-                };
-                let result_col = b.layout.add_subquery_column(id, ty);
-                pattern = plan_subquery(&mut b, pattern, sq, result_col, &part.subqueries)?;
-            }
-            if let Some(pred) = &opt.where_predicate {
-                pattern = PlanOp::Filter {
-                    input: Box::new(pattern),
-                    predicate: pred.clone(),
-                };
-            }
-            // Columns first allocated by this optional are NULL-extended on no match.
-            let new_cols: Vec<usize> = (width_before..b.layout.width()).collect();
-            root = PlanOp::Optional {
-                input: Box::new(root),
-                pattern: Box::new(pattern),
-                new_cols,
-            };
-        }
+        planned_sequences.insert(id);
     }
 
     // Plan the updating clauses, in order, on the shared builder (so columns for
@@ -500,6 +553,173 @@ struct PlanBuilder<'q> {
     recursive_value_rels: HashSet<VarId>,
     /// Rels that are segments of a named path (`MATCH p = …`).
     recursive_path_rels: HashSet<VarId>,
+}
+
+/// Add any whole-node/relationship values consumed by `expression` to the
+/// current row before the expression is evaluated.
+fn materialize_expression_values(
+    builder: &mut PlanBuilder<'_>,
+    root: PlanOp,
+    expression: &BoundExpr,
+) -> PlanOp {
+    let mut consumed = HashSet::new();
+    collect_value_consumed_vars(expression, true, &mut consumed);
+    let mut consumed: Vec<_> = consumed.into_iter().collect();
+    consumed.sort_unstable();
+
+    let mut items = Vec::new();
+    for var in consumed {
+        let info = builder.query.var(var);
+        if !info.is_assembled_graph_var() {
+            continue;
+        }
+        let (ty, is_node) = match &info.kind {
+            VarKind::Node { tables, .. } => (tables.first().copied().map(LogicalType::Node), true),
+            VarKind::Rel { tables, .. } => (tables.first().copied().map(LogicalType::Rel), false),
+            VarKind::Path { .. } | VarKind::Scalar { .. } => unreachable!(),
+        };
+        let Some(ty) = ty else {
+            continue;
+        };
+        let Some((id_col, value_col)) = builder.layout.add_value_column(var, ty) else {
+            continue;
+        };
+        items.push(MaterializeItem {
+            id_col,
+            value_col,
+            is_node,
+        });
+    }
+
+    if items.is_empty() {
+        root
+    } else {
+        PlanOp::MaterializeValues {
+            input: Box::new(root),
+            items,
+        }
+    }
+}
+
+/// Prepare lifted subqueries, sequence calls, and whole graph values exactly
+/// where an expression is consumed in the reading pipeline.
+fn prepare_expression(
+    builder: &mut PlanBuilder<'_>,
+    mut root: PlanOp,
+    expression: &BoundExpr,
+    part: &BoundPart,
+    planned_subqueries: &mut HashSet<usize>,
+    planned_sequences: &mut HashSet<usize>,
+) -> Result<PlanOp> {
+    root = materialize_expression_values(builder, root, expression);
+
+    let mut subquery_ids: Vec<_> = collect_subquery_ids(expression).into_iter().collect();
+    subquery_ids.sort_unstable();
+    for id in subquery_ids {
+        if planned_subqueries.contains(&id) {
+            continue;
+        }
+        let subquery = &part.subqueries[id];
+        let result_type = match subquery.kind {
+            SubqueryKind::Exists => LogicalType::Bool,
+            SubqueryKind::Count => LogicalType::Int64,
+        };
+        let result_col = builder.layout.add_subquery_column(id, result_type);
+        root = plan_subquery(builder, root, subquery, result_col, &part.subqueries)?;
+        planned_subqueries.insert(id);
+    }
+
+    let mut sequence_ids: Vec<_> = collect_sequence_ids(expression).into_iter().collect();
+    sequence_ids.sort_unstable();
+    for id in sequence_ids {
+        if planned_sequences.contains(&id) {
+            continue;
+        }
+        let sequence = &part.sequence_calls[id];
+        let result_col = builder.layout.add_sequence_column(id, LogicalType::Int64);
+        root = PlanOp::SequenceCall {
+            input: Box::new(root),
+            func: sequence.func,
+            name: sequence.name.clone(),
+            result_col,
+        };
+        planned_sequences.insert(id);
+    }
+
+    Ok(root)
+}
+
+/// Plan one OPTIONAL MATCH at its textual position. Its branch starts from the
+/// incoming row, and every column introduced inside the branch is NULL-extended
+/// when the branch produces no rows.
+fn plan_optional_clause(
+    builder: &mut PlanBuilder<'_>,
+    mut root: PlanOp,
+    optional: &BoundOptionalMatch,
+    part: &BoundPart,
+    planned_subqueries: &mut HashSet<usize>,
+    planned_sequences: &mut HashSet<usize>,
+) -> Result<PlanOp> {
+    let predicate_subqueries = optional
+        .where_predicate
+        .as_ref()
+        .map(collect_subquery_ids)
+        .unwrap_or_default();
+    let predicate_sequences = optional
+        .where_predicate
+        .as_ref()
+        .map(collect_sequence_ids)
+        .unwrap_or_default();
+
+    let decorrelate = predicate_subqueries.is_empty()
+        && predicate_sequences.is_empty()
+        && cost::plan_card(&root, builder.stats) >= DECORRELATE_MIN_PROBE_ROWS;
+    if decorrelate
+        && let Some(correlation) =
+            builder.correlated_nodes(&optional.match_, optional.where_predicate.as_ref())
+        && correlation.len() == 1
+    {
+        return builder.build_decorrelated_join(
+            root,
+            &correlation,
+            &optional.match_,
+            JoinKind::Left,
+        );
+    }
+
+    // Values owned by the incoming row must be materialized before entering
+    // the nullable branch. Otherwise an unmatched OPTIONAL would NULL-extend
+    // that outer value together with genuinely branch-local columns.
+    if let Some(predicate) = &optional.where_predicate {
+        root = materialize_expression_values(builder, root, predicate);
+    }
+
+    let width_before = builder.layout.width();
+    let mut pattern = builder.build_match(
+        &optional.match_,
+        optional.where_predicate.as_ref(),
+        Some(PlanOp::InputScan),
+    )?;
+    if let Some(predicate) = &optional.where_predicate {
+        pattern = prepare_expression(
+            builder,
+            pattern,
+            predicate,
+            part,
+            planned_subqueries,
+            planned_sequences,
+        )?;
+        pattern = PlanOp::Filter {
+            input: Box::new(pattern),
+            predicate: predicate.clone(),
+        };
+    }
+    let new_cols = (width_before..builder.layout.width()).collect();
+    Ok(PlanOp::Optional {
+        input: Box::new(root),
+        pattern: Box::new(pattern),
+        new_cols,
+    })
 }
 
 impl PlanBuilder<'_> {

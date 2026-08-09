@@ -35,8 +35,8 @@ use koko_ir::bound::{
     BoundExpr, BoundPart, BoundProjection, BoundQuery, BoundRegularQuery, OrderKey, ProjItem, VarId,
 };
 use koko_ir::plan::{
-    Extend, ExtendTarget, IndexScan, InputSlot, JoinKind, PartPlan, PathRel, PlanOp, QueryPlan,
-    RegularPlan, RowLayout, ScanNode, ScanTable, UnwindTarget, VarLengthExtend,
+    Extend, ExtendTarget, GraphAlgorithmPlan, IndexScan, InputSlot, JoinKind, PartPlan, PathRel,
+    PlanOp, QueryPlan, RegularPlan, RowLayout, ScanNode, ScanTable, UnwindTarget, VarLengthExtend,
 };
 use std::collections::HashSet;
 
@@ -230,6 +230,7 @@ fn annotate_extend_carry(
         | PlanOp::InputScan
         | PlanOp::ScanNode(_)
         | PlanOp::ScanTableFunc { .. }
+        | PlanOp::ScanGraphAlgorithm(_)
         | PlanOp::LoadScan { .. } => {}
     }
 }
@@ -244,6 +245,24 @@ fn prune_plan_properties(op: &mut PlanOp, read: &HashSet<usize>) {
     };
     match op {
         PlanOp::ScanNode(scan) => prune_tables(&mut scan.tables),
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::TopologicalLevels(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::KCoreDecomposition(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::WeaklyConnectedComponents(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::StronglyConnectedComponents(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::PageRank(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::Louvain(scan)) => {
+            prune_tables(&mut scan.node.tables);
+        }
         PlanOp::IndexScan(scan) => {
             scan.prop_cols
                 .retain(|property| read.contains(&property.col_index));
@@ -428,16 +447,21 @@ fn collect_plan_reads(op: &PlanOp, layout: &RowLayout, out: &mut HashSet<usize>)
         | PlanOp::InputScan
         | PlanOp::ScanNode(_)
         | PlanOp::ScanTableFunc { .. }
+        | PlanOp::ScanGraphAlgorithm(_)
         | PlanOp::LoadScan { .. } => {}
     }
 }
 
-/// Add a variable's whole binding (its id column + every property column) to `out`.
+/// Add a variable's whole binding (its id, properties, and materialized value)
+/// to `out`.
 fn add_var_binding(layout: &RowLayout, var: VarId, out: &mut HashSet<usize>) {
-    if let Some(vc) = layout.try_var(var) {
-        out.insert(vc.id_col);
-        for p in &vc.props {
-            out.insert(p.col_index);
+    if let Some(columns) = layout.try_var(var) {
+        out.insert(columns.id_col);
+        for property in &columns.props {
+            out.insert(property.col_index);
+        }
+        if let Some(value_col) = columns.value_col {
+            out.insert(value_col);
         }
     }
 }
@@ -487,6 +511,7 @@ fn mark_collapsible(op: &mut PlanOp, chain_ok: bool, read: &HashSet<usize>) {
         | PlanOp::InputScan
         | PlanOp::ScanNode(_)
         | PlanOp::ScanTableFunc { .. }
+        | PlanOp::ScanGraphAlgorithm(_)
         | PlanOp::LoadScan { .. } => {}
     }
 }
@@ -788,6 +813,7 @@ impl FilterPushDown<'_> {
             op @ (PlanOp::SingleRow
             | PlanOp::InputScan
             | PlanOp::ScanTableFunc { .. }
+            | PlanOp::ScanGraphAlgorithm(_)
             | PlanOp::LoadScan { .. }
             | PlanOp::HashJoin { .. }) => self.land(op, carried),
         }
@@ -1000,6 +1026,60 @@ impl FilterPushDown<'_> {
             }
             PlanOp::ScanTableFunc { cols, .. } | PlanOp::LoadScan { cols, .. } => {
                 out.extend(cols.iter().copied())
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::KCoreDecomposition(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.core_col);
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::TopologicalLevels(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.level_col);
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::WeaklyConnectedComponents(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.component_id_col);
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::StronglyConnectedComponents(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.component_col);
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::PageRank(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.score_col);
+            }
+            PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::Louvain(scan)) => {
+                out.insert(scan.node.id_col);
+                for table in &scan.node.tables {
+                    for property in &table.prop_cols {
+                        out.insert(property.col_index);
+                    }
+                }
+                out.insert(scan.community_col);
             }
             PlanOp::Extend(e) => {
                 self.collect_produced(&e.input, out);
@@ -1264,8 +1344,8 @@ mod tests {
     use koko_common::RelStorageDirection;
     use koko_common::{TableId, Value};
     use koko_ir::bound::{
-        BoundMatch, BoundPart, BoundQuery, BoundSet, BoundUnwind, BoundUpdate, PropInfo,
-        SequenceFn, SubqueryKind, VarInfo, VarKind,
+        BoundMatch, BoundPart, BoundQuery, BoundReadingClause, BoundSet, BoundUnwind, BoundUpdate,
+        PropInfo, SequenceFn, SubqueryKind, VarInfo, VarKind,
     };
 
     fn empty_rel(name: &str, endpoints: Vec<(TableId, TableId)>) -> RelTableDefinition {
@@ -1344,6 +1424,16 @@ mod tests {
         }
     }
 
+    fn required_match(
+        match_: BoundMatch,
+        where_predicate: Option<BoundExpr>,
+    ) -> Vec<BoundReadingClause> {
+        vec![BoundReadingClause::Match {
+            match_,
+            where_predicate,
+        }]
+    }
+
     /// Plan + optimize a single-part query: match `node_vars`, filtered by `pred`.
     fn optimized_root(
         cat: &Catalog,
@@ -1354,11 +1444,13 @@ mod tests {
         let query = BoundQuery {
             vars,
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars,
-                    ..Default::default()
-                },
-                where_predicate: Some(pred),
+                reading: required_match(
+                    BoundMatch {
+                        node_vars,
+                        ..Default::default()
+                    },
+                    Some(pred),
+                ),
                 ..Default::default()
             }],
         };
@@ -1415,18 +1507,22 @@ mod tests {
         let query = BoundQuery {
             vars: vec![scalar_var("i", LogicalType::Int64), node_var("p", t)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![p],
-                    ..Default::default()
-                },
-                unwind: vec![BoundUnwind {
-                    var: i,
-                    list: BoundExpr::List {
-                        elems: vec![BoundExpr::Literal(Value::Int64(0))],
-                        ty: LogicalType::List(Box::new(LogicalType::Int64)),
+                reading: vec![
+                    BoundReadingClause::Unwind(BoundUnwind {
+                        var: i,
+                        list: BoundExpr::List {
+                            elems: vec![BoundExpr::Literal(Value::Int64(0))],
+                            ty: LogicalType::List(Box::new(LogicalType::Int64)),
+                        },
+                    }),
+                    BoundReadingClause::Match {
+                        match_: BoundMatch {
+                            node_vars: vec![p],
+                            ..Default::default()
+                        },
+                        where_predicate: Some(pred),
                     },
-                }],
-                where_predicate: Some(pred),
+                ],
                 ..Default::default()
             }],
         };
@@ -1574,11 +1670,14 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", n), node_var("b", n), rel_var("e", r, a, b)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    rel_vars: vec![e],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        rel_vars: vec![e],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 projection: Some(BoundProjection {
                     distinct: false,
                     items,
@@ -1793,12 +1892,14 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", n), node_var("b", n), rel_var("e", r, a, b)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    rel_vars: vec![e],
-                    ..Default::default()
-                },
-                where_predicate: Some(cmp(b, ScalarOp::Eq, Value::Int64(7))),
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        rel_vars: vec![e],
+                        ..Default::default()
+                    },
+                    Some(cmp(b, ScalarOp::Eq, Value::Int64(7))),
+                ),
                 ..Default::default()
             }],
         };
@@ -1834,11 +1935,13 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", t), node_var("b", t)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    ..Default::default()
-                },
-                where_predicate: Some(pred),
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        ..Default::default()
+                    },
+                    Some(pred),
+                ),
                 ..Default::default()
             }],
         };
@@ -1942,11 +2045,14 @@ mod tests {
                 property_rel_var("e", r, a, b),
             ],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    rel_vars: vec![e],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        rel_vars: vec![e],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 updates: updating
                     .then(|| BoundUpdate::Set(BoundSet { items: Vec::new() }))
                     .into_iter()
@@ -2141,11 +2247,14 @@ mod tests {
                 property_rel_var("e", r, a, b),
             ],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    rel_vars: vec![e],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        rel_vars: vec![e],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 ..Default::default()
             }],
         };
@@ -2207,10 +2316,13 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", table), node_var("b", table)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 ..Default::default()
             }],
         };
@@ -2282,10 +2394,13 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", table)],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 ..Default::default()
             }],
         };
@@ -2298,7 +2413,7 @@ mod tests {
                     input: Box::new(scan),
                     func: SequenceFn::NextVal,
                     name: "s".to_string(),
-                    result_col: part.layout.add_sequence_column(LogicalType::Int64),
+                    result_col: part.layout.add_sequence_column(0, LogicalType::Int64),
                 }
             } else {
                 let node_type = LogicalType::Node(table);
@@ -2385,6 +2500,7 @@ mod tests {
             | PlanOp::InputScan
             | PlanOp::ScanNode(_)
             | PlanOp::ScanTableFunc { .. }
+            | PlanOp::ScanGraphAlgorithm(_)
             | PlanOp::LoadScan { .. } => {}
         }
     }
@@ -2528,11 +2644,14 @@ mod tests {
                 rel_var("dense", dense, a, c),
             ],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b, c],
-                    rel_vars: vec![dense_rel, sparse_rel],
-                    ..Default::default()
-                },
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b, c],
+                        rel_vars: vec![dense_rel, sparse_rel],
+                        ..Default::default()
+                    },
+                    None,
+                ),
                 ..Default::default()
             }],
         };
@@ -2576,12 +2695,14 @@ mod tests {
         let query = BoundQuery {
             vars: vec![node_var("a", n), node_var("b", n), recursive],
             parts: vec![BoundPart {
-                match_: BoundMatch {
-                    node_vars: vec![a, b],
-                    rel_vars: vec![e],
-                    ..Default::default()
-                },
-                where_predicate: Some(cmp(b, ScalarOp::Eq, Value::Int64(7))),
+                reading: required_match(
+                    BoundMatch {
+                        node_vars: vec![a, b],
+                        rel_vars: vec![e],
+                        ..Default::default()
+                    },
+                    Some(cmp(b, ScalarOp::Eq, Value::Int64(7))),
+                ),
                 ..Default::default()
             }],
         };

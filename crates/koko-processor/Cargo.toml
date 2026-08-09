@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 koko-common = { workspace = true }
+koko-algorithm = { workspace = true }
 koko-ir = { workspace = true }
 koko-expr = { workspace = true }
 koko-function = { workspace = true }

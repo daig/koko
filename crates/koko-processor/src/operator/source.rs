@@ -37,8 +37,7 @@ pub(crate) struct IndexLookupState<'a> {
 }
 
 pub(crate) struct TableFunctionScanState<'a> {
-    pub(crate) func: BoundTableFunc,
-    pub(crate) arg: Option<&'a str>,
+    pub(crate) call: &'a BoundTableFunctionCall,
     pub(crate) cols: &'a [usize],
     pub(crate) rows: Option<Vec<Vec<Value>>>,
     pub(crate) idx: usize,

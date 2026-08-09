@@ -1,0 +1,293 @@
+# PageRank is an eager statement-bound source over selected directed tables. Numeric rows use
+# CHECK_PRECISION's raw DOUBLE comparison (one ULP), while focused kernel tests own tighter epsilons.
+-DATASET CSV empty
+
+--
+
+-CASE EmptySingletonAndCatalogSurface
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0})
+---- ok
+-STATEMENT CALL page_rank([], []) YIELD node, score RETURN count(*)
+---- 1
+0
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 1
+0|1.0
+-STATEMENT CALL show_functions() WHERE name = 'PAGE_RANK' RETURN type, signature ORDER BY signature
+-CHECK_ORDER
+---- 2
+ALGORITHM FUNCTION|(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, score DOUBLE)
+ALGORITHM FUNCTION|(LIST<STRING>,LIST<STRING>,DOUBLE,DOUBLE,INT64,BOOL) -> TABLE(node NODE, score DOUBLE)
+
+-CASE ChainCycleStarAndDanglingMass
+-STATEMENT CREATE NODE TABLE Chain(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE ChainEdge(FROM Chain TO Chain)
+---- ok
+-STATEMENT UNWIND range(0, 2) AS id CREATE (:Chain {id: id})
+---- ok
+-STATEMENT MATCH (a:Chain), (b:Chain) WHERE (a.id = 0 AND b.id = 1) OR (a.id = 1 AND b.id = 2) CREATE (a)-[:ChainEdge]->(b)
+---- ok
+-STATEMENT CALL page_rank(['Chain'], ['ChainEdge']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 3
+0|0.184416624629836
+1|0.34117087344058555
+2|0.4744125019295781
+-STATEMENT CREATE NODE TABLE Cycle(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE CycleEdge(FROM Cycle TO Cycle)
+---- ok
+-STATEMENT UNWIND range(0, 2) AS id CREATE (:Cycle {id: id})
+---- ok
+-STATEMENT MATCH (a:Cycle), (b:Cycle) WHERE (a.id = 0 AND b.id = 1) OR (a.id = 1 AND b.id = 2) OR (a.id = 2 AND b.id = 0) CREATE (a)-[:CycleEdge]->(b)
+---- ok
+-STATEMENT CALL page_rank(['Cycle'], ['CycleEdge']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 3
+0|0.3333333333333333
+1|0.3333333333333333
+2|0.3333333333333333
+-STATEMENT CREATE NODE TABLE Star(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE StarEdge(FROM Star TO Star)
+---- ok
+-STATEMENT UNWIND range(0, 3) AS id CREATE (:Star {id: id})
+---- ok
+-STATEMENT MATCH (center:Star), (leaf:Star) WHERE center.id = 0 AND leaf.id > 0 CREATE (center)-[:StarEdge]->(leaf)
+---- ok
+-STATEMENT CALL page_rank(['Star'], ['StarEdge']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 4
+0|0.20618557523664716
+1|0.26460480825445104
+2|0.26460480825445104
+3|0.26460480825445104
+
+-CASE ParallelEdgesAndSelfLoops
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT UNWIND range(0, 2) AS id CREATE (:N {id: id})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b), (a)-[:E]->(b)
+---- ok
+-STATEMENT MATCH (n:N) WHERE n.id = 0 CREATE (n)-[:E]->(n)
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 1 AND b.id = 2 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 3
+0|0.24444896978907332
+1|0.3137095183915057
+2|0.4418415118194207
+
+-CASE ConfiguredOptionsAndIterationBoundaries
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-PARAMETER damping=0.5
+-PARAMETER tolerance=0.0
+-PARAMETER iterations=3
+-PARAMETER normalize=true
+-STATEMENT CALL page_rank(['N'], ['E'], $damping, $tolerance, $iterations, $normalize) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.40625
+1|0.59375
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 0.0, 2, false) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.575
+1|1.4249999999999998
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 0.0, 0, true) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.5
+1|0.5
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 0.0, 1, true) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.5
+1|0.5
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 1.0, 20, true) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.2875
+1|0.7124999999999999
+
+-CASE WorkersYieldAndQueryComposition
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT CALL threads=1
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.35087718001264234
+1|0.6491228199873578
+-STATEMENT CALL threads=4
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.35087718001264234
+1|0.6491228199873578
+-STATEMENT CALL page_rank(['N'], ['E']) RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.35087718001264234
+1|0.6491228199873578
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD score AS rank, node AS ranked RETURN ranked.id, rank ORDER BY ranked.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.35087718001264234
+1|0.6491228199873578
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD score WHERE score > 0.6 RETURN count(*), min(score)
+---- 1
+1|0.649123
+-STATEMENT UNWIND [10,20] AS outer CALL page_rank(['N'], ['E']) YIELD node, score RETURN outer, node.id, score ORDER BY outer, node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 4
+10|0|0.35087718001264234
+10|1|0.6491228199873578
+20|0|0.35087718001264234
+20|1|0.6491228199873578
+
+-CASE MultiTableSelectionOrderAndRelationshipGroup
+-STATEMENT CREATE NODE TABLE A(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE B(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE Links(FROM A TO A, FROM A TO B)
+---- ok
+-STATEMENT CREATE (:A {id: 0}), (:A {id: 1}), (:B {id: 10})
+---- ok
+-STATEMENT MATCH (a:A), (b:A) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:Links]->(b)
+---- ok
+-STATEMENT MATCH (a:A), (b:B) WHERE a.id = 0 AND b.id = 10 CREATE (a)-[:Links]->(b)
+---- ok
+-STATEMENT CALL page_rank(['B','A'], ['Links']) YIELD node, score RETURN label(node), node.id, score
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 3
+B|10|0.37012987292033567
+A|0|0.25974025415932855
+A|1|0.37012987292033567
+
+-CASE TransactionVisibility
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT MATCH (:N)-[edge:E]->(:N) DELETE edge
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.5
+1|0.5
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score ORDER BY node.id
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 2
+0|0.35087718001264234
+1|0.6491228199873578
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT MATCH (n:N) WHERE n.id = 1 DETACH DELETE n
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E']) YIELD node, score RETURN node.id, score
+-CHECK_PRECISION
+-CHECK_ORDER
+---- 1
+0|1.0
+-STATEMENT ROLLBACK
+---- ok
+
+-CASE ArgumentAndOptionValidation
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE M(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE REL TABLE Cross(FROM N TO M)
+---- ok
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85) YIELD node, score RETURN node
+---- error
+Binder exception: Function page_rank did not receive correct arguments:
+Actual:   (3 arguments)
+Expected: (LIST<STRING>,LIST<STRING>) or (LIST<STRING>,LIST<STRING>,DOUBLE,DOUBLE,INT64,BOOL)
+-STATEMENT CALL page_rank('N', ['E']) YIELD node, score RETURN node
+---- error
+Binder exception: Argument 1 of page_rank must be LIST<STRING>, but STRING was provided.
+-STATEMENT CALL page_rank(['N'], ['E'], 'bad', 0.0, 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: Argument 3 of page_rank must be DOUBLE, but STRING was provided.
+-STATEMENT CALL page_rank(['N'], ['E'], -0.1, 0.0, 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank damping factor must be finite and in [0, 1).
+-STATEMENT CALL page_rank(['N'], ['E'], 1.0, 0.0, 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank damping factor must be finite and in [0, 1).
+-STATEMENT CALL page_rank(['N'], ['E'], CAST('nan' AS DOUBLE), 0.0, 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank damping factor must be finite and in [0, 1).
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, -0.1, 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank tolerance must be finite and non-negative.
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, CAST('inf' AS DOUBLE), 2, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank tolerance must be finite and non-negative.
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 0.0, -1, true) YIELD node, score RETURN node
+---- error
+Binder exception: PageRank maximum iterations must be non-negative.
+-STATEMENT CALL page_rank(['N'], ['E'], 0.85, 0.0, 2, 1) YIELD node, score RETURN node
+---- error
+Binder exception: Argument 6 of page_rank must be BOOL, but INT64 was provided.
+-STATEMENT CALL page_rank(['N'], ['Cross']) YIELD node, score RETURN node
+---- error
+Binder exception: Relationship table Cross references node table M, which is not in the graph selection.

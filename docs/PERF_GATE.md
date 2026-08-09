@@ -1,4 +1,4 @@
-# P3 step 10 — LSQB performance gate and recorded baselines
+# Performance gates and recorded baselines
 
 > **Status (2026-07-26): completed historical LSQB comparison protocol and measurements.**
 > The 2026-07-25 idiomatic Rust cutover run produced nine correct, timeout-free answers, every
@@ -199,3 +199,30 @@ numbers. The *ratios* are large enough that run-to-run noise doesn't change the 
 
 Neither item is active by default. `ROADMAP.md` owns activation conditions for current performance
 work.
+
+
+## Topological levels point-in-time diagnostic (2026-08-08)
+
+This is implementation evidence, not a standing release threshold. A release `koko` CLI built with
+`rustc 1.94.0` ran on the Apple M5 workstation. Each in-memory topology was loaded once, then the
+same aggregate algorithm query ran three times as independent statements:
+
+```cypher
+CALL topological_levels(['N'], ['E'])
+YIELD node, level
+RETURN count(*), max(level)
+```
+
+CLI `QuerySummary::execution_time` excludes DDL and graph construction but includes the complete
+algorithm scan, result-chunk production and aggregation. Every run returned the expected vertex
+count and maximum level.
+
+| Topology | Vertices | Edges | Execution samples (ms) | Median (ms) |
+|---|---:|---:|---|---:|
+| Two wide layers | 100,000 | 50,000 | 4.193, 4.048, 3.897 | 4.048 |
+| Single long chain | 100,000 | 99,999 | 5.626, 5.710, 5.739 | 5.710 |
+| Long chain with forward degree up to four | 100,000 | 399,990 | 8.233, 7.831, 7.936 | 7.936 |
+
+For context, two ordinary typed node-scan aggregates over the same 100,000-node chain took 1.137
+and 1.051 ms. The topological path performs one narrow endpoint pass, one forward-adjacency pass and
+one output scan; it allocates no edge copy.

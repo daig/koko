@@ -885,6 +885,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "koko-algorithm"
+version = "0.0.0"
+dependencies = [
+ "koko-common",
+]
+
+[[package]]
 name = "koko-binder"
 version = "0.0.0"
 dependencies = [
@@ -1005,6 +1012,7 @@ dependencies = [
 name = "koko-processor"
 version = "0.0.0"
 dependencies = [
+ "koko-algorithm",
  "koko-catalog",
  "koko-common",
  "koko-expr",

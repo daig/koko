@@ -15,14 +15,15 @@ scope. See [`ROADMAP.md`](ROADMAP.md) for the current product map, remaining wor
 decisions, and deferred scope; [`docs/cpp-reference/`](docs/cpp-reference) retains historical C++
 semantics notes.
 
-## Status (2026-07-27)
+## Status (2026-08-08)
 
-**The in-memory v0, first-party CLI, facade decomposition, and idiomatic Rust API cutover are
-complete.** Typed and schemaless named graphs use one Cypher/MVCC pipeline; ordered JSON,
-graph-scoped HASH/ART DDL, atomic database-level logical interchange, validated query-time local
-`icebug-disk`, and connection-local native scalar functions are implemented. The engine retains
-typed columnar storage/results, snapshot transactions, concurrent connections, cancellation and
-deadlines, tracked memory, and eager borrowed result views.
+**The in-memory v0, first-party CLI, facade decomposition, idiomatic Rust API cutover, and first
+built-in whole-graph algorithm are complete.** Typed and schemaless named graphs use one
+Cypher/MVCC pipeline; ordered JSON, graph-scoped HASH/ART DDL, atomic database-level logical
+interchange, validated query-time local `icebug-disk`, connection-local native scalar functions,
+and directed `topological_levels` scans are implemented. The engine retains typed columnar
+storage/results, snapshot transactions, concurrent connections, cancellation and deadlines,
+tracked memory, and eager borrowed result views.
 
 Koko is now an independent project. Supported Koko behavior is the non-regression contract. The
 Ladybug 0.17 corpus, differential probes, and historical parity scorecards remain useful evidence
@@ -48,6 +49,8 @@ Current sources:
 3. [`docs/CLI_UX.md`](docs/CLI_UX.md) and
    [`docs/CLI_ARCHITECTURE.md`](docs/CLI_ARCHITECTURE.md) — CLI behavior and architecture.
 4. [`docs/REPL_USAGE_GUIDE.md`](docs/REPL_USAGE_GUIDE.md) — practical terminal workflows.
+5. [`docs/GRAPH_ALGORITHMS.md`](docs/GRAPH_ALGORITHMS.md) — supported path/topological algorithms,
+   graph-selection semantics, physical lowering, and planned analytics.
 
 ## Workspace layout
 
@@ -57,6 +60,7 @@ The workspace DAG makes layer ownership a compile-time property:
 koko-common      types · Value · typed chunks/vectors · memory/statistics primitives       (leaf)
 koko-catalog     private node/rel schema and catalog invariants                       → common
 koko-storage     versioned typed/chunked MVCC columns/adjacency/PK/undo                → common,catalog
+koko-algorithm   allocation-accounted whole-graph kernels over narrow typed contracts       → common
 koko-parser      hand-written lexer + recursive-descent/Pratt parser → AST             → common
 koko-function    generated function identities/signatures + scalar/aggregate execution → common
 koko-ir          bound semantics · typed variable IDs · row layouts · logical plans    → common,function
@@ -64,7 +68,7 @@ koko-binder      name/type resolution and query graph                           
 koko-expr        compile bound expressions → column evaluator                          → common,function,ir
 koko-planner     planning + pushdown/join/cost optimization                            → common,catalog,function,ir
 koko-loader      CSV/Parquet/NPY input · CSV/Parquet output · external scan protocols  → common,catalog,function,storage
-koko-processor   pull execution · typed chunks · controls/accounting · parallelism     → common,catalog,expr,function,ir,loader,storage
+koko-processor   pull execution · typed chunks · controls/accounting · parallelism     → common,algorithm,catalog,expr,function,ir,loader,storage
 koko             public Database/Connection/Transaction/Prepared/Result facade         → all engine crates
 koko-test-runner `.test` parser + hermetic/external corpus runners                      → koko,common
 koko-cli         first-party interactive/batch `koko` terminal client                  → koko
@@ -84,6 +88,33 @@ printf 'RETURN 42 AS answer;\n' | koko --format jsonl
 The no-argument TTY mode is an in-memory interactive session. Batch data is written to stdout;
 diagnostics, timing, and progress are written to stderr. `koko --help` lists the canonical options
 and `:help` lists interactive commands.
+
+Whole-graph algorithms are ordinary query sources over explicit table selections:
+
+```cypher
+CALL topological_levels(['Task'], ['DependsOn'])
+YIELD node, level
+RETURN node.name, level
+ORDER BY level, node.name;
+```
+
+Other built-in whole-graph scans use the same two-list selection and composable `YIELD` surface:
+
+```cypher
+CALL weakly_connected_components(['Task'], ['DependsOn']) YIELD node, component_id;
+CALL strongly_connected_components(['Task'], ['DependsOn']) YIELD node, component_id;
+CALL page_rank(['Task'], ['DependsOn']) YIELD node, score;
+CALL k_core_decomposition(['Task'], ['DependsOn']) YIELD node, core;
+CALL louvain(['Task'], ['DependsOn']) YIELD node, community_id;
+```
+
+`page_rank` also has a six-argument overload for damping, tolerance, iteration count and initial
+normalization; `louvain` has a four-argument overload for iteration and phase limits. See
+[`docs/GRAPH_ALGORITHMS.md`](docs/GRAPH_ALGORITHMS.md) for exact semantics and physical lowering.
+
+For any row-producing `CALL`, omit `YIELD` to import every declared output, or use
+`YIELD output [AS alias], ...` to import a named subset in caller-written order. Only yielded names
+enter scope; `RETURN` still controls the final projection.
 
 ## Embedded API quick start
 

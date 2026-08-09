@@ -112,78 +112,48 @@ impl Parser {
             let value = self.parse_expr()?;
             return Ok(Statement::Call(CallStmt::SetConfig { key: name, value }));
         }
-        if self.eat(&Tok::LParen) {
-            let func = Self::table_func_by_name(&name);
-            if let Some(func) = func {
-                let (arg, extra_args) = self.table_func_args(&name, func)?;
-                self.expect(&Tok::RParen)?;
-                let yield_items = self.parse_yield_items()?;
-                // Route to the in-query SCAN path (the table function feeds the
-                // query pipeline, so the surrounding query can filter / project /
-                // aggregate) iff a `YIELD`/`WHERE`/`WITH`/another clause follows,
-                // or a `RETURN` of something other than `*`. A bare `CALL f()` /
-                // `CALL f() RETURN *` / `RETURN * ORDER BY` stays the standalone
-                // short-circuit below. This mirrors Kùzu's split of
-                // `iC_InQueryCall` from `iC_StandaloneCall`.
-                let route_to_query = !yield_items.is_empty()
-                    || self.at_kw("WHERE")
-                    || self.at_kw("WITH")
-                    || self.at_kw("CALL")
-                    || self.at_kw("MATCH")
-                    || self.at_kw("UNWIND")
-                    || (self.at_kw("RETURN") && self.peek_at(1) != &Tok::Star);
-                if route_to_query {
-                    let where_clause = if self.eat_kw("WHERE") {
-                        Some(self.parse_expr()?)
-                    } else {
-                        None
-                    };
-                    let clause = ReadingClause::TableFuncScan(TableFuncScanClause {
-                        func,
-                        arg,
-                        extra_args,
-                        yield_items,
-                        where_clause,
-                    });
-                    // Continue parsing the rest of the query pipeline (further
-                    // CALLs, WITH parts, RETURN) with this scan as the first
-                    // reading clause.
-                    let single = self.single_query_from(vec![clause])?;
-                    return Ok(Statement::Query(RegularQuery {
-                        singles: vec![single],
-                        union_all: Vec::new(),
-                    }));
-                }
-                // Standalone form: `RETURN *` and `ORDER BY <col>` are accepted and
-                // ignored (the `.test` runner sorts result rows before comparing);
-                // its presence is recorded — C++ rejects a bare `CALL f()` for
-                // non-standalone table functions.
-                let has_return = if self.eat_kw("RETURN") {
-                    self.eat(&Tok::Star);
-                    true
-                } else {
-                    false
-                };
-                if self.eat_kw("ORDER") {
-                    self.expect_kw("BY")?;
-                    let _ = self.ident()?;
-                }
-                return Ok(Statement::Call(CallStmt::TableFunc {
-                    func,
-                    arg,
-                    extra_args,
-                    has_return,
-                }));
-            }
-            // A CALL of a non-table function name is the C++ binder error,
-            // echoing the name as typed.
-            return Err(Error::binder(format!(
-                "{name} is not a table or algorithm function."
-            )));
+        self.expect(&Tok::LParen)
+            .map_err(|_| Error::parser(format!("expected `=` or `(` after CALL {name}")))?;
+        let args = self.call_args()?;
+        self.expect(&Tok::RParen)?;
+        let yield_items = self.parse_yield_items()?;
+
+        // A composable form enters the ordinary reading-clause pipeline. A
+        // function with no projection remains a standalone call; the binder
+        // later accepts only functions explicitly declared standalone.
+        let route_to_query = !yield_items.is_empty()
+            || self.at_kw("WHERE")
+            || self.at_kw("WITH")
+            || self.at_kw("CALL")
+            || self.at_kw("MATCH")
+            || self.at_kw("UNWIND")
+            || self.at_kw("LOAD")
+            || self.at_kw("RETURN")
+            || (self.at_kw("OPTIONAL") && self.at_kw_ahead(1, "MATCH"));
+        if route_to_query {
+            let where_clause = if self.eat_kw("WHERE") {
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            let clause = ReadingClause::Call(CallClause {
+                name,
+                args,
+                yield_items,
+                where_clause,
+            });
+            let single = self.single_query_from(vec![clause])?;
+            return Ok(Statement::Query(RegularQuery {
+                singles: vec![single],
+                union_all: Vec::new(),
+            }));
         }
-        Err(Error::parser(format!(
-            "expected `=` or `(` after CALL {name}"
-        )))
+        Ok(Statement::Call(CallStmt::Function(CallClause {
+            name,
+            args,
+            yield_items,
+            where_clause: None,
+        })))
     }
 
     pub(super) fn copy_to_statement(&mut self) -> Result<CopyToStatement> {
@@ -302,27 +272,22 @@ impl Parser {
                 options,
             });
         }
-        // A table-function source `COPY t FROM TABLE_INFO('x')` scans the
-        // function like `CALL … RETURN *`; any other bare identifier is the
-        // C++ scope error.
-        if let Tok::Ident(x) = self.peek().clone() {
-            if let (Some(func), true) = (
-                Self::table_func_by_name(&x),
-                self.peek_at(1) == &Tok::LParen,
-            ) {
-                self.advance(); // name
-                self.advance(); // (
-                let (arg, extra_args) = self.table_func_args(&x, func)?;
+        // A function source `COPY t FROM TABLE_INFO('x')` is parsed generically;
+        // the binder resolves its function kind and arguments.
+        if let Tok::Ident(name) = self.peek().clone() {
+            if self.peek_at(1) == &Tok::LParen {
+                self.advance();
+                self.advance();
+                let args = self.call_args()?;
                 self.expect(&Tok::RParen)?;
                 let options = if self.peek() == &Tok::LParen {
                     self.load_options()?
                 } else {
                     Vec::new()
                 };
-                let clause = ReadingClause::TableFuncScan(TableFuncScanClause {
-                    func,
-                    arg,
-                    extra_args,
+                let clause = ReadingClause::Call(CallClause {
+                    name,
+                    args,
                     yield_items: Vec::new(),
                     where_clause: None,
                 });
@@ -351,7 +316,7 @@ impl Parser {
                     options,
                 });
             }
-            return Err(Error::binder(format!("Variable {x} is not in scope.")));
+            return Err(Error::binder(format!("Variable {name} is not in scope.")));
         }
         // A single path, or a multi-file list `("a", "b")` / `["a", "b"]`.
         let mut files = Vec::new();
@@ -1115,156 +1080,26 @@ impl Parser {
         Ok(items)
     }
 
-    /// Parse a CALL'd table function's argument list (already inside the
-    /// parens) and enforce its arity with the C++ binder error, echoing the
-    /// name as typed.
-    /// A short rendering of a rejected table-function argument (C++ echoes the
-    /// expression as typed).
-    pub(super) fn table_arg_name(e: &Expr) -> String {
-        match e {
-            Expr::Property { base, name } => {
-                format!("{}.{name}", Self::table_arg_name(base))
-            }
-            Expr::Variable(v) => v.clone(),
-            Expr::Function { name, .. } => format!("{}()", name.to_uppercase()),
-            _ => "expression".to_string(),
-        }
-    }
-
-    /// The C++ expression-kind label for the argument rejection.
-    pub(super) fn table_arg_kind(e: &Expr) -> &'static str {
-        match e {
-            Expr::Property { .. } => "PROPERTY",
-            Expr::Variable(_) => "VARIABLE",
-            Expr::Function { .. } => "FUNCTION",
-            _ => "EXPRESSION",
-        }
-    }
-
-    /// Fold a constant expression argument of a TABLE function to its string
-    /// rendering (C++ binds these as real expressions; the corpus uses simple
-    /// pure string functions like `upper("person")`).
-    pub(super) fn fold_const_str(e: &Expr) -> Option<String> {
-        match e {
-            Expr::Literal(Value::String(s)) => Some(s.clone()),
-            Expr::Literal(v) => Some(v.to_result_string()),
-            Expr::Function { name, args, .. } => {
-                let vals: Vec<String> = args
-                    .iter()
-                    .map(Self::fold_const_str)
-                    .collect::<Option<_>>()?;
-                match name.to_ascii_lowercase().as_str() {
-                    "upper" | "ucase" if vals.len() == 1 => Some(vals[0].to_uppercase()),
-                    "lower" | "lcase" if vals.len() == 1 => Some(vals[0].to_lowercase()),
-                    "concat" => Some(vals.concat()),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    }
-
-    pub(super) fn table_func_args(
-        &mut self,
-        name: &str,
-        func: TableFunc,
-    ) -> Result<(Option<String>, Vec<String>)> {
+    /// Parse a typed `CALL` argument list while already inside its parentheses.
+    fn call_args(&mut self) -> Result<Vec<Expr>> {
         let mut args = Vec::new();
+        if self.peek_at(0) == &Tok::RParen {
+            return Ok(args);
+        }
         loop {
-            let a = match self.peek().clone() {
-                Tok::Str(a) => {
-                    self.advance();
-                    a
-                }
-                // A non-string literal still counts as the argument — its
-                // rendering feeds the function's own validation
-                // (show_connection(123) → "…only be called on a rel table!").
-                Tok::Int(n) => {
-                    self.advance();
-                    n.to_string()
-                }
-                Tok::Float(f) => {
-                    self.advance();
-                    f.to_string()
-                }
-                // A constant EXPRESSION argument folds at parse
-                // (show_connection(upper("person")) → "PERSON").
-                Tok::Ident(_) => {
-                    let e = self.parse_expr()?;
-                    match Self::fold_const_str(&e) {
-                        Some(v) => v,
-                        // A non-constant argument is the C++ argument-kind
-                        // rejection (show_connection(a.fName)).
-                        None => {
-                            return Err(Error::binder(format!(
-                                "{} has type {} but LITERAL,PARAMETER,PATTERN was expected.",
-                                Self::table_arg_name(&e),
-                                Self::table_arg_kind(&e)
-                            )));
-                        }
-                    }
-                }
-                _ => break,
-            };
-            args.push(a);
+            args.push(self.parse_expr()?);
             if !self.eat(&Tok::Comma) {
-                break;
+                return Ok(args);
             }
         }
-        let expected = match func {
-            TableFunc::TableInfo
-            | TableFunc::ShowConnection
-            | TableFunc::StorageInfo
-            | TableFunc::CurrentSetting
-            | TableFunc::StatsInfo => 1,
-            TableFunc::CacheArrayColumn => 2,
-            _ => 0,
-        };
-        if args.len() != expected {
-            let actual = vec!["STRING"; args.len()].join(",");
-            let exp = vec!["STRING"; expected].join(",");
-            return Err(Error::binder(format!(
-                "Function {name} did not receive correct arguments:\nActual:   ({actual})\nExpected: ({exp})"
-            )));
-        }
-        let mut it = args.into_iter();
-        let first = it.next();
-        Ok((first, it.collect()))
     }
 
-    /// Map a CALL'd name to its table function, if it is one.
-    pub(super) fn table_func_by_name(name: &str) -> Option<TableFunc> {
-        match name.to_ascii_lowercase().as_str() {
-            "show_sequences" => Some(TableFunc::ShowSequences),
-            "show_tables" => Some(TableFunc::ShowTables),
-            "table_info" => Some(TableFunc::TableInfo),
-            "show_macros" => Some(TableFunc::ShowMacros),
-            "show_functions" => Some(TableFunc::ShowFunctions),
-            "db_version" => Some(TableFunc::DbVersion),
-            "show_indexes" => Some(TableFunc::ShowIndexes),
-            "show_warnings" => Some(TableFunc::ShowWarnings),
-            "show_connection" => Some(TableFunc::ShowConnection),
-            "storage_info" => Some(TableFunc::StorageInfo),
-            "stats_info" => Some(TableFunc::StatsInfo),
-            "show_official_extensions" => Some(TableFunc::ShowOfficialExtensions),
-            "current_setting" => Some(TableFunc::CurrentSetting),
-            "bm_info" => Some(TableFunc::BmInfo),
-            "show_loaded_extensions" => Some(TableFunc::ShowLoadedExtensions),
-            "_cache_array_column_locally" => Some(TableFunc::CacheArrayColumn),
-            "clear_warnings" => Some(TableFunc::ClearWarnings),
-            _ => None,
-        }
-    }
-
-    /// A mid-query `CALL fn(['arg']) [YIELD …] [WHERE …]` reading clause.
+    /// A mid-query `CALL fn(args) [YIELD …] [WHERE …]` reading clause.
     pub(super) fn call_reading_clause(&mut self) -> Result<ReadingClause> {
         self.expect_kw("CALL")?;
         let name = self.ident()?;
         self.expect(&Tok::LParen)?;
-        let func = Self::table_func_by_name(&name).ok_or_else(|| {
-            Error::binder(format!("{name} is not a table or algorithm function."))
-        })?;
-        let (arg, extra_args) = self.table_func_args(&name, func)?;
+        let args = self.call_args()?;
         self.expect(&Tok::RParen)?;
         let yield_items = self.parse_yield_items()?;
         let where_clause = if self.eat_kw("WHERE") {
@@ -1272,10 +1107,9 @@ impl Parser {
         } else {
             None
         };
-        Ok(ReadingClause::TableFuncScan(TableFuncScanClause {
-            func,
-            arg,
-            extra_args,
+        Ok(ReadingClause::Call(CallClause {
+            name,
+            args,
             yield_items,
             where_clause,
         }))

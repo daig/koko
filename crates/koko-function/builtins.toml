@@ -38,6 +38,11 @@ semantic = "PowerOperator"
 bindable = false
 
 [[builtin]]
+name = "_cache_array_column_locally"
+kind = "standalone_table"
+semantic = "CacheArrayColumn"
+
+[[builtin]]
 name = "abs"
 kind = "scalar"
 semantic = "Abs"
@@ -244,6 +249,11 @@ kind = "scalar"
 semantic = "Blob"
 
 [[builtin]]
+name = "bm_info"
+kind = "table"
+semantic = "BmInfo"
+
+[[builtin]]
 name = "cardinality"
 kind = "scalar"
 semantic = "Size"
@@ -275,6 +285,11 @@ canonical_name = "ceil"
 name = "century"
 kind = "scalar"
 semantic = "Century"
+
+[[builtin]]
+name = "clear_warnings"
+kind = "standalone_table"
+semantic = "ClearWarnings"
 
 [[builtin]]
 name = "coalesce"
@@ -346,6 +361,11 @@ kind = "scalar"
 semantic = "CurrentDate"
 
 [[builtin]]
+name = "current_setting"
+kind = "table"
+semantic = "CurrentSetting"
+
+[[builtin]]
 name = "current_timestamp"
 kind = "scalar"
 semantic = "CurrentTimestamp"
@@ -387,6 +407,11 @@ canonical_name = "date_trunc"
 name = "dayname"
 kind = "scalar"
 semantic = "Dayname"
+
+[[builtin]]
+name = "db_version"
+kind = "table"
+semantic = "DbVersion"
 
 [[builtin]]
 name = "decode"
@@ -528,6 +553,13 @@ semantic = "IsAcyclic"
 name = "is_trail"
 kind = "scalar"
 semantic = "IsTrail"
+
+[[builtin]]
+name = "k_core_decomposition"
+kind = "algorithm"
+semantic = "KCoreDecomposition"
+signatures = ["(LIST,LIST)"]
+catalog_signature = "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, core INT64)"
 
 [[builtin]]
 name = "keys"
@@ -750,6 +782,13 @@ kind = "scalar"
 semantic = "Log2"
 
 [[builtin]]
+name = "louvain"
+kind = "algorithm"
+semantic = "Louvain"
+signatures = ["(LIST,LIST)", "(LIST,LIST,INT64,INT64)"]
+catalog_signatures = ["(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, community_id INT64)", "(LIST<STRING>,LIST<STRING>,INT64,INT64) -> TABLE(node NODE, community_id INT64)"]
+
+[[builtin]]
 name = "lower"
 kind = "scalar"
 semantic = "Lower"
@@ -854,6 +893,13 @@ semantic = "OctetLength"
 name = "offset"
 kind = "scalar"
 semantic = "Offset"
+
+[[builtin]]
+name = "page_rank"
+kind = "algorithm"
+semantic = "PageRank"
+signatures = ["(LIST,LIST)", "(LIST,LIST,DOUBLE,DOUBLE,INT64,BOOL)"]
+catalog_signatures = ["(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, score DOUBLE)", "(LIST<STRING>,LIST<STRING>,DOUBLE,DOUBLE,INT64,BOOL) -> TABLE(node NODE, score DOUBLE)"]
 
 [[builtin]]
 name = "percentiledisc"
@@ -1008,6 +1054,51 @@ semantic = "Sha256"
 string_coerce = [0]
 
 [[builtin]]
+name = "show_connection"
+kind = "table"
+semantic = "ShowConnection"
+
+[[builtin]]
+name = "show_functions"
+kind = "table"
+semantic = "ShowFunctions"
+
+[[builtin]]
+name = "show_indexes"
+kind = "table"
+semantic = "ShowIndexes"
+
+[[builtin]]
+name = "show_loaded_extensions"
+kind = "table"
+semantic = "ShowLoadedExtensions"
+
+[[builtin]]
+name = "show_macros"
+kind = "table"
+semantic = "ShowMacros"
+
+[[builtin]]
+name = "show_official_extensions"
+kind = "table"
+semantic = "ShowOfficialExtensions"
+
+[[builtin]]
+name = "show_sequences"
+kind = "table"
+semantic = "ShowSequences"
+
+[[builtin]]
+name = "show_tables"
+kind = "table"
+semantic = "ShowTables"
+
+[[builtin]]
+name = "show_warnings"
+kind = "table"
+semantic = "ShowWarnings"
+
+[[builtin]]
 name = "sign"
 kind = "scalar"
 semantic = "Sign"
@@ -1052,6 +1143,16 @@ canonical_name = "prefix"
 string_coerce = [0, 1]
 
 [[builtin]]
+name = "stats_info"
+kind = "table"
+semantic = "StatsInfo"
+
+[[builtin]]
+name = "storage_info"
+kind = "table"
+semantic = "StorageInfo"
+
+[[builtin]]
 name = "str_split"
 kind = "scalar"
 semantic = "StringSplit"
@@ -1075,6 +1176,13 @@ kind = "scalar"
 semantic = "StringSplit"
 canonical_name = "string_split"
 string_coerce = [0, 1]
+
+[[builtin]]
+name = "strongly_connected_components"
+kind = "algorithm"
+semantic = "StronglyConnectedComponents"
+signatures = ["(LIST,LIST)"]
+catalog_signature = "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, component_id INT64)"
 
 [[builtin]]
 name = "struct_extract"
@@ -1111,6 +1219,11 @@ string_coerce = [0, 1]
 name = "sum"
 kind = "aggregate"
 semantic = "Sum"
+
+[[builtin]]
+name = "table_info"
+kind = "table"
+semantic = "TableInfo"
 
 [[builtin]]
 name = "tan"
@@ -1275,6 +1388,13 @@ semantic = "Lower"
 canonical_name = "lower"
 
 [[builtin]]
+name = "topological_levels"
+kind = "algorithm"
+semantic = "TopologicalLevels"
+signatures = ["(LIST,LIST)"]
+catalog_signature = "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, level INT64)"
+
+[[builtin]]
 name = "toupper"
 kind = "scalar"
 semantic = "Upper"
@@ -1324,3 +1444,10 @@ string_coerce = [0]
 name = "uuid"
 kind = "scalar"
 semantic = "Uuid"
+
+[[builtin]]
+name = "weakly_connected_components"
+kind = "algorithm"
+semantic = "WeaklyConnectedComponents"
+signatures = ["(LIST,LIST)"]
+catalog_signature = "(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, component_id INT64)"

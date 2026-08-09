@@ -1,6 +1,7 @@
 use crate::bound::{
-    BoundCreate, BoundDelete, BoundExpr, BoundSet, BoundTableFunc, CsvLoadOptions, PathSemantic,
-    RecursiveFilter, RecursiveMode, SequenceFn, SubqueryKind, VarId,
+    BoundCreate, BoundDelete, BoundExpr, BoundGraphSelection, BoundPageRankConfig, BoundSet,
+    BoundTableFunctionCall, CsvLoadOptions, GraphAlgorithmScanId, PathSemantic, RecursiveFilter,
+    RecursiveMode, SequenceFn, SubqueryKind, VarId,
 };
 use koko_common::{ExtendDir, TableId, file_resolver::FileFormat};
 
@@ -17,6 +18,79 @@ pub struct ScanNode {
     pub var: VarId,
     pub id_col: usize,
     pub tables: Vec<ScanTable>,
+}
+
+/// Planned k-core decomposition scan.
+#[derive(Debug, Clone)]
+pub struct KCorePlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub core_col: usize,
+}
+
+/// Planned layered topological-level scan.
+#[derive(Debug, Clone)]
+pub struct TopologicalLevelsPlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub level_col: usize,
+}
+/// Planned deterministic Louvain scan.
+#[derive(Debug, Clone)]
+pub struct LouvainPlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub community_col: usize,
+    pub max_iterations: u64,
+    pub max_phases: u64,
+}
+
+/// Planned weakly connected components scan.
+#[derive(Debug, Clone)]
+pub struct WeaklyConnectedComponentsPlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub component_id_col: usize,
+}
+
+/// Planned directed strongly connected component scan.
+#[derive(Debug, Clone)]
+pub struct StronglyConnectedComponentsPlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub component_col: usize,
+}
+
+/// Planned PageRank scan.
+#[derive(Debug, Clone)]
+pub struct PageRankPlan {
+    pub id: GraphAlgorithmScanId,
+    pub graph: BoundGraphSelection,
+    pub config: BoundPageRankConfig,
+    /// Output node layout and per-table property projections.
+    pub node: ScanNode,
+    pub score_col: usize,
+}
+
+/// Whole-graph algorithm source plans.
+#[derive(Debug, Clone)]
+pub enum GraphAlgorithmPlan {
+    KCoreDecomposition(KCorePlan),
+    TopologicalLevels(TopologicalLevelsPlan),
+    WeaklyConnectedComponents(WeaklyConnectedComponentsPlan),
+    StronglyConnectedComponents(StronglyConnectedComponentsPlan),
+    PageRank(PageRankPlan),
+    Louvain(LouvainPlan),
 }
 
 #[derive(Debug, Clone)]
@@ -121,10 +195,10 @@ pub enum PlanOp {
     SingleRow,
     InputScan,
     ScanTableFunc {
-        func: BoundTableFunc,
-        arg: Option<String>,
+        call: BoundTableFunctionCall,
         cols: Vec<usize>,
     },
+    ScanGraphAlgorithm(GraphAlgorithmPlan),
     LoadScan {
         cols: Vec<usize>,
         col_names: Vec<String>,

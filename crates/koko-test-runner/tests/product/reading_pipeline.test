@@ -1,0 +1,175 @@
+# Reading clauses execute left to right. Each clause owns its predicate and scope;
+# OPTIONAL preserves NULL rows, independent CALL/LOAD sources cross-product once,
+# and node-valued UNWIND can feed a later MATCH in the same query part.
+-DATASET CSV mini
+
+--
+
+-CASE OptionalThenUnwind
+-STATEMENT CREATE NODE TABLE RP(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE RQ(id INT64, xs INT64[], PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE RR(FROM RP TO RQ)
+---- ok
+-STATEMENT CREATE (:RP {id: 1})
+---- ok
+# A constant UNWIND multiplies the NULL-extended optional row.
+-STATEMENT MATCH (p:RP) OPTIONAL MATCH (p)-[:RR]->(q:RQ) UNWIND [1, 2] AS x RETURN p.id, q.id, x ORDER BY x
+-CHECK_ORDER
+---- 2
+1||1
+1||2
+# A list read from the unmatched node is NULL and therefore emits no rows.
+-STATEMENT MATCH (p:RP) OPTIONAL MATCH (p)-[:RR]->(q:RQ) UNWIND q.xs AS x RETURN p.id, x
+---- 0
+# An outer graph value consumed inside the nullable predicate is materialized
+# before the branch, so later clauses do not observe it as branch-local NULL.
+-STATEMENT MATCH (p:RP) OPTIONAL MATCH (p)-[:RR]->(q:RQ) WHERE p = p UNWIND [p] AS x RETURN x.id, q.id
+---- 1
+1|
+
+-CASE CallAndUnwindBothOrders
+-STATEMENT CALL db_version() YIELD version UNWIND [1, 2] AS x RETURN version, x ORDER BY x
+-CHECK_ORDER
+---- 2
+0.17.0|1
+0.17.0|2
+-STATEMENT UNWIND [1, 2] AS x CALL db_version() YIELD version RETURN x, version ORDER BY x
+-CHECK_ORDER
+---- 2
+1|0.17.0
+2|0.17.0
+# A list-valued YIELD column feeds the immediately following UNWIND.
+-STATEMENT CREATE NODE TABLE RX(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE HASH INDEX reading_pipeline_idx FOR (p:RX) ON (p.id)
+---- ok
+-STATEMENT CALL show_indexes() YIELD table_name, index_name, index_type, property_names, extension_loaded, index_definition WHERE index_name = 'reading_pipeline_idx' UNWIND property_names AS property RETURN index_name, property
+---- 1
+reading_pipeline_idx|id
+
+-CASE CallYieldNameSelection
+-STATEMENT CREATE NODE TABLE YN(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE HASH INDEX yield_name_selection_idx FOR (n:YN) ON (n.id)
+---- ok
+# An explicit YIELD selects by declared name in caller order, aliases replace the source names,
+# and the immediate WHERE sees those aliases. RETURN * preserves the YIELD order.
+-STATEMENT CALL show_indexes() YIELD index_type AS kind, index_name AS idx WHERE idx = 'yield_name_selection_idx' RETURN *
+---- 1
+HASH|yield_name_selection_idx
+# Outputs omitted by YIELD do not enter scope, so an incoming variable with that name is retained.
+-STATEMENT UNWIND ['outer'] AS table_name CALL show_indexes() YIELD index_name WHERE index_name = 'yield_name_selection_idx' RETURN table_name, index_name
+---- 1
+outer|yield_name_selection_idx
+# Aliasing removes the source name from scope.
+-STATEMENT CALL show_indexes() YIELD index_name AS idx WHERE idx = 'yield_name_selection_idx' RETURN index_name
+---- error
+Binder exception: Variable index_name is not in scope.
+# A source output can be selected only once, even with different casing and aliases.
+-STATEMENT CALL show_indexes() YIELD index_name, INDEX_NAME AS other RETURN index_name
+---- error
+Binder exception: Table function output variable INDEX_NAME appears more than once in the yield clause.
+# Exposed names remain case-insensitively unique.
+-STATEMENT CALL show_indexes() YIELD table_name AS value, index_name AS VALUE RETURN value
+---- error
+Binder exception: Variable VALUE already exists.
+# A selected name cannot collide with the incoming scope.
+-STATEMENT UNWIND ['outer'] AS index_name CALL show_indexes() YIELD index_name RETURN index_name
+---- error
+Binder exception: Variable index_name already exists.
+-STATEMENT CALL show_indexes() YIELD missing RETURN missing
+---- error
+Binder exception: Unknown table function output variable name: missing.
+# Wildcard yielding is deliberately unsupported; omission already imports the full schema.
+-STATEMENT CALL db_version() YIELD * RETURN version
+---- error
+Parser exception: expected an identifier, found Star
+
+-CASE CallAndOptionalBothOrders
+-STATEMENT CREATE NODE TABLE RP(id INT64, PRIMARY KEY(id))
+---- ok
+# A leading CALL without YIELD still routes through the composed query grammar.
+-STATEMENT CALL db_version() OPTIONAL MATCH (p:RP) RETURN version, p.id
+---- 1
+0.17.0|
+-STATEMENT CALL db_version() YIELD version OPTIONAL MATCH (p:RP) RETURN version, p.id
+---- 1
+0.17.0|
+-STATEMENT OPTIONAL MATCH (p:RP) CALL db_version() YIELD version RETURN p.id, version
+---- 1
+|0.17.0
+# A zero-row table function remains a normal inner source and empties the row.
+-STATEMENT OPTIONAL MATCH (p:RP) CALL show_warnings() RETURN p.id, query_id
+---- 0
+
+-CASE LoadAndCallBothOrders
+# The CALL predicate can see a column introduced by the preceding LOAD.
+-STATEMENT LOAD WITH HEADERS (n STRING) FROM '${KOKO_ROOT_DIRECTORY}/crates/koko-test-runner/tests/datasets/mini/city.csv' (header=false) CALL db_version() YIELD version WHERE n = 'Toronto' AND version = '0.17.0' RETURN n, version
+---- 1
+Toronto|0.17.0
+# Leading CALL without YIELD also composes with LOAD; the LOAD predicate sees both sources.
+-STATEMENT CALL db_version() LOAD WITH HEADERS (n STRING) FROM '${KOKO_ROOT_DIRECTORY}/crates/koko-test-runner/tests/datasets/mini/city.csv' (header=false) WHERE n = 'Waterloo' AND version = '0.17.0' RETURN version, n
+---- 1
+0.17.0|Waterloo
+
+-CASE NodeUnwindFeedsMatch
+-STATEMENT CREATE NODE TABLE RP(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE RR(FROM RP TO RP)
+---- ok
+-STATEMENT CREATE (:RP {id: 1}), (:RP {id: 2}), (:RP {id: 3})
+---- ok
+-STATEMENT MATCH (a:RP), (b:RP) WHERE a.id = 1 AND b.id IN [2, 3] CREATE (a)-[:RR]->(b)
+---- ok
+# The first MATCH materializes p before UNWIND; q keeps node identity for the second MATCH.
+-STATEMENT MATCH (p:RP) WHERE p.id = 1 UNWIND [p] AS q MATCH (q)-[:RR]->(friend:RP) RETURN p.id, q.id, friend.id ORDER BY friend.id
+-CHECK_ORDER
+---- 2
+1|1|2
+1|1|3
+# The established cross-WITH form also retains a complete node value.
+-STATEMENT MATCH (p:RP) WHERE p.id = 1 WITH p UNWIND [p] AS q RETURN q.id
+---- 1
+1
+# Correlated subquery predicates likewise retain outer graph values for later clauses.
+-STATEMENT MATCH (p:RP) WHERE p.id = 1 AND EXISTS { MATCH (p)-[:RR]->(q:RP) WHERE p = p } UNWIND [p] AS x RETURN x.id
+---- 1
+1
+# Duplicates remain duplicates; a NULL node element contributes no downstream match.
+-STATEMENT MATCH (p:RP) WHERE p.id = 1 UNWIND [p, p, NULL] AS q MATCH (q)-[:RR]->(friend:RP) RETURN p.id, q.id, friend.id ORDER BY friend.id
+-CHECK_ORDER
+---- 4
+1|1|2
+1|1|2
+1|1|3
+1|1|3
+
+-CASE SequentialScopeAndRejections
+-STATEMENT CREATE NODE TABLE RP(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE (:RP {id: 1}), (:RP {id: 2})
+---- ok
+# A later MATCH may depend on the preceding UNWIND value.
+-STATEMENT UNWIND [1, 2] AS x MATCH (p:RP) WHERE p.id = x RETURN x, p.id ORDER BY x
+-CHECK_ORDER
+---- 2
+1|1
+2|2
+# Future aliases are not visible to an earlier clause.
+-STATEMENT MATCH (p:RP) WHERE x = 1 UNWIND [1] AS x RETURN p.id
+---- error
+Binder exception: Variable x is not in scope.
+-STATEMENT UNWIND [1] AS x UNWIND [2] AS x RETURN x
+---- error
+Binder exception: Variable x already exists.
+# State-mutating table functions remain standalone and fail during binding.
+-STATEMENT CALL clear_warnings() UNWIND [1] AS x RETURN x
+---- error
+Binder exception: CLEAR_WARNINGS is a standalone table function and cannot be used in a query pipeline.
+-STATEMENT CREATE NODE TABLE AX(id INT64, vals INT64[2], PRIMARY KEY(id))
+---- ok
+-STATEMENT CALL _cache_array_column_locally('AX', 'vals') UNWIND [1] AS x RETURN x
+---- error
+Binder exception: _CACHE_ARRAY_COLUMN_LOCALLY is a standalone table function and cannot be used in a query pipeline.

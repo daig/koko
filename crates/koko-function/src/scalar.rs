@@ -1,9 +1,9 @@
 //! Typed builtin-scalar identity and generated descriptor lookup.
 
 pub use crate::catalog_data::{
-    BUILTIN_DESCRIPTORS, BuiltinDescriptor, BuiltinFunction, BuiltinScalar, CastTarget,
-    CatalogTypeId, DigestAlgorithm, FunctionCatalogEntry, FunctionCatalogKind, OverloadDescriptor,
-    RoundMode, resolve_builtin, resolve_builtin_scalar,
+    BUILTIN_DESCRIPTORS, BuiltinDescriptor, BuiltinFunction, BuiltinGraphAlgorithm, BuiltinScalar,
+    BuiltinTableFunction, CastTarget, CatalogTypeId, DigestAlgorithm, FunctionCatalogEntry,
+    FunctionCatalogKind, OverloadDescriptor, RoundMode, resolve_builtin, resolve_builtin_scalar,
 };
 use koko_common::{IntKind, LogicalType};
 

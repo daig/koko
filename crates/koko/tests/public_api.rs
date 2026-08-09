@@ -1,7 +1,7 @@
 use koko::function::{NullPolicy, ScalarFunction};
 use koko::prepared::StatementKind;
 use koko::result::ResultKind;
-use koko::{Database, LogicalType, Result, Value, params};
+use koko::{Database, Error, LogicalType, Result, Value, params};
 
 #[test]
 fn canonical_embedding_flow_and_borrowed_results() -> Result<()> {
@@ -200,5 +200,130 @@ fn structural_presentations_and_scalar_function_descriptor() -> Result<()> {
     );
     assert!(connection.unregister_scalar_function("PLUS_ONE")?);
 
+    Ok(())
+}
+
+fn integer_pairs(result: &koko::QueryResult) -> Result<Vec<(i64, i64)>> {
+    result
+        .into_iter()
+        .map(|row| Ok((row.get::<i64>(0)?, row.get::<i64>(1)?)))
+        .collect()
+}
+
+#[test]
+fn topological_levels_rebinds_prepared_snapshots_and_uses_public_results() -> Result<()> {
+    let database = Database::new();
+    let connection = database.connect();
+    connection.execute("CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))")?;
+    connection.execute("CREATE REL TABLE E(FROM N TO N)")?;
+    connection.execute("CREATE (:N {id: 0}), (:N {id: 1})")?;
+
+    let mut prepared = connection.prepare(
+        "CALL topological_levels(['N'], ['E']) YIELD node, level \
+         RETURN node.id AS id, level ORDER BY id",
+    )?;
+    assert_eq!(prepared.columns()[0].name(), "id");
+    assert_eq!(prepared.columns()[0].logical_type(), &LogicalType::Int64);
+    assert_eq!(prepared.columns()[1].logical_type(), &LogicalType::Int64);
+    assert_eq!(integer_pairs(&prepared.execute()?)?, [(0, 0), (1, 0)]);
+
+    connection.execute("MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)")?;
+    let ranked = prepared.execute()?;
+    assert_eq!(integer_pairs(&ranked)?, [(0, 0), (1, 1)]);
+    let batches = ranked.to_arrow_record_batches()?;
+    assert_eq!(
+        batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+        2
+    );
+
+    let parameterized = connection.execute_with(
+        "CALL topological_levels($nodes, $relationships) YIELD node, level \
+         RETURN node.id AS id, level ORDER BY id",
+        params! {
+            "nodes" => Value::List(vec![Value::String("N".to_string())]),
+            "relationships" => Value::List(vec![Value::String("E".to_string())]),
+        },
+    )?;
+    assert_eq!(integer_pairs(&parameterized)?, [(0, 0), (1, 1)]);
+
+    connection.set_max_threads(1)?;
+    let serial = integer_pairs(&prepared.execute()?)?;
+    connection.set_max_threads(4)?;
+    assert_eq!(integer_pairs(&prepared.execute()?)?, serial);
+
+    connection.execute(
+        "UNWIND range(0, 10000) AS ignored \
+         MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)",
+    )?;
+
+    connection.set_query_timeout(Some(std::time::Duration::from_nanos(1)))?;
+    let error = prepared.execute().unwrap_err();
+    assert!(matches!(error, Error::Interrupt));
+    connection.set_query_timeout(None)?;
+    assert_eq!(integer_pairs(&prepared.execute()?)?, [(0, 0), (1, 1)]);
+
+    Ok(())
+}
+
+fn page_rank_pairs(result: &koko::QueryResult) -> Result<Vec<(i64, f64)>> {
+    result
+        .into_iter()
+        .map(|row| Ok((row.get::<i64>(0)?, row.get::<f64>(1)?)))
+        .collect()
+}
+
+fn assert_page_rank_pairs(actual: &[(i64, f64)], expected: &[(i64, f64)], tolerance: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for ((actual_id, actual_score), (expected_id, expected_score)) in actual.iter().zip(expected) {
+        assert_eq!(actual_id, expected_id);
+        assert!(
+            (actual_score - expected_score).abs() <= tolerance,
+            "expected score {expected_score:.16}, got {actual_score:.16}"
+        );
+    }
+}
+
+#[test]
+fn page_rank_prepared_options_rebind_and_reject_nonfinite_values() -> Result<()> {
+    let database = Database::new();
+    let connection = database.connect();
+    connection.execute("CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))")?;
+    connection.execute("CREATE REL TABLE E(FROM N TO N)")?;
+    connection.execute("CREATE (:N {id: 0}), (:N {id: 1})")?;
+
+    let mut prepared = connection.prepare(
+        "CALL page_rank(['N'], ['E'], $damping, $tolerance, $iterations, $normalize) \
+         YIELD node, score RETURN node.id AS id, score ORDER BY id",
+    )?;
+    assert_eq!(prepared.columns()[0].logical_type(), &LogicalType::Int64);
+    assert_eq!(prepared.columns()[1].logical_type(), &LogicalType::Double);
+
+    let options = || {
+        params! {
+            "damping" => 0.5,
+            "tolerance" => 0.0,
+            "iterations" => 3,
+            "normalize" => true,
+        }
+    };
+    let isolated = page_rank_pairs(&prepared.execute_with(options())?)?;
+    assert_page_rank_pairs(&isolated, &[(0, 0.5), (1, 0.5)], 0.0);
+
+    connection.execute("MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)")?;
+    let linked = page_rank_pairs(&prepared.execute_with(options())?)?;
+    assert_page_rank_pairs(&linked, &[(0, 0.40625), (1, 0.59375)], 1e-15);
+
+    let error = prepared
+        .execute_with(params! {
+            "damping" => f64::NAN,
+            "tolerance" => 0.0,
+            "iterations" => 3,
+            "normalize" => true,
+        })
+        .unwrap_err();
+    assert_eq!(
+        error,
+        Error::Binder("PageRank damping factor must be finite and in [0, 1).".to_string())
+    );
     Ok(())
 }

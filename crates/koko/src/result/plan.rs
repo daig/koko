@@ -253,6 +253,24 @@ fn plan_op_node(operator: &koko_ir::plan::PlanOp) -> PlanNode {
         PlanOp::SingleRow => leaf("SingleRow"),
         PlanOp::InputScan => leaf("InputScan"),
         PlanOp::ScanTableFunc { .. } => leaf("TableFunctionScan"),
+        PlanOp::ScanGraphAlgorithm(koko_ir::plan::GraphAlgorithmPlan::KCoreDecomposition(_)) => {
+            leaf("KCoreDecomposition")
+        }
+        PlanOp::ScanGraphAlgorithm(koko_ir::plan::GraphAlgorithmPlan::TopologicalLevels(_)) => {
+            leaf("TopologicalLevels")
+        }
+        PlanOp::ScanGraphAlgorithm(
+            koko_ir::plan::GraphAlgorithmPlan::WeaklyConnectedComponents(_),
+        ) => leaf("WeaklyConnectedComponents"),
+        PlanOp::ScanGraphAlgorithm(
+            koko_ir::plan::GraphAlgorithmPlan::StronglyConnectedComponents(_),
+        ) => leaf("StronglyConnectedComponents"),
+        PlanOp::ScanGraphAlgorithm(koko_ir::plan::GraphAlgorithmPlan::PageRank(_)) => {
+            leaf("PageRank")
+        }
+        PlanOp::ScanGraphAlgorithm(koko_ir::plan::GraphAlgorithmPlan::Louvain(_)) => {
+            leaf("Louvain")
+        }
         PlanOp::LoadScan { format, paths, .. } => PlanNode {
             operator: "LoadScan".to_string(),
             detail: vec![

@@ -848,3 +848,35 @@ fn decorrelation_plan_contracts_cover_activation_and_every_safety_gate() {
         "optimizer-disabled EXISTS must use the seeded plan"
     );
 }
+
+#[test]
+fn explain_preserves_reading_clause_order() {
+    let database = Database::new();
+    let connection = database.connect();
+    connection
+        .execute("CREATE NODE TABLE P(id INT64, PRIMARY KEY(id))")
+        .unwrap();
+
+    let result = connection
+        .execute(
+            "EXPLAIN MATCH (p:P) UNWIND [p] AS q \
+             CALL db_version() YIELD version RETURN q.id, version",
+        )
+        .unwrap();
+    let roots = result.plan().expect("EXPLAIN returns a plan").roots();
+    let query_part = &roots[0].children()[0];
+    let cross_product = &query_part.children()[0];
+    assert_eq!(cross_product.operator(), "CrossProduct");
+
+    let [unwind, table_function] = cross_product.children() else {
+        panic!("CALL must be the right source of the cross product");
+    };
+    assert_eq!(unwind.operator(), "Unwind");
+    assert_eq!(table_function.operator(), "TableFunctionScan");
+    assert_eq!(unwind.children()[0].operator(), "MaterializeValues");
+    assert_eq!(
+        unwind.children()[0].children()[0].operator(),
+        "NodeScan",
+        "MATCH must feed node materialization, then UNWIND, before CALL"
+    );
+}

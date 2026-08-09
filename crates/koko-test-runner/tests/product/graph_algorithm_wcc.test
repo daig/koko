@@ -1,0 +1,180 @@
+# Weakly connected components consume statement-selected relationship endpoints as an
+# undirected stream and return deterministic compact IDs for every visible selected node.
+-DATASET CSV empty
+
+--
+
+-CASE EmptySelectionIsolatedAndCatalog
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1}), (:N {id: 2})
+---- ok
+-STATEMENT CALL weakly_connected_components([], []) YIELD node, component_id RETURN count(*)
+---- 1
+0
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0|0
+1|1
+2|2
+-STATEMENT CALL show_functions() WHERE name = 'WEAKLY_CONNECTED_COMPONENTS' RETURN type, signature
+---- 1
+ALGORITHM FUNCTION|(LIST<STRING>,LIST<STRING>) -> TABLE(node NODE, component_id INT64)
+
+-CASE UndirectedParallelSelfLoopsAndDisconnected
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT UNWIND range(0, 5) AS id CREATE (:N {id: id})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE (a.id = 2 AND b.id = 1) OR (a.id = 1 AND b.id = 0) CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 4 AND b.id = 3 CREATE (a)-[:E]->(b), (a)-[:E]->(b)
+---- ok
+-STATEMENT MATCH (n:N) WHERE n.id = 5 CREATE (n)-[:E]->(n)
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 6
+0|0
+1|0
+2|0
+3|1
+4|1
+5|2
+
+-CASE MultiTableRelationshipGroupAndCanonicalIds
+-STATEMENT CREATE NODE TABLE Person(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE City(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE Company(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE Links(FROM Person TO City, FROM City TO Company, FROM Person TO Person)
+---- ok
+-STATEMENT CREATE (:Person {id: 0}), (:Person {id: 1}), (:City {id: 10}), (:City {id: 11}), (:Company {id: 20}), (:Company {id: 21})
+---- ok
+-STATEMENT MATCH (p:Person), (c:City) WHERE p.id = 0 AND c.id = 10 CREATE (p)-[:Links]->(c)
+---- ok
+-STATEMENT MATCH (c:City), (company:Company) WHERE c.id = 10 AND company.id = 20 CREATE (c)-[:Links]->(company)
+---- ok
+-STATEMENT CALL weakly_connected_components(['Company','City','Person'], ['Links']) YIELD node, component_id RETURN label(node), node.id, component_id ORDER BY label(node), node.id
+-CHECK_ORDER
+---- 6
+City|10|0
+City|11|2
+Company|20|0
+Company|21|3
+Person|0|0
+Person|1|1
+
+-CASE ComposableNameSelectedYield
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1}), (:N {id: 2})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD component_id AS cid, node AS member RETURN member.id, cid ORDER BY member.id
+-CHECK_ORDER
+---- 3
+0|0
+1|0
+2|1
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD component_id AS cid WHERE cid = 0 RETURN count(*), min(cid)
+---- 1
+2|0
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node RETURN node.id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0
+1
+2
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0|0
+1|0
+2|1
+
+-CASE TransactionVisibility
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO N)
+---- ok
+-STATEMENT CREATE (:N {id: 0}), (:N {id: 1}), (:N {id: 2})
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 0 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0|0
+1|0
+2|1
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT MATCH (a:N), (b:N) WHERE a.id = 2 AND b.id = 1 CREATE (a)-[:E]->(b)
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0|0
+1|0
+2|0
+-STATEMENT ROLLBACK
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 3
+0|0
+1|0
+2|1
+-STATEMENT BEGIN TRANSACTION
+---- ok
+-STATEMENT MATCH (n:N) WHERE n.id = 0 DETACH DELETE n
+---- ok
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node.id, component_id ORDER BY node.id
+-CHECK_ORDER
+---- 2
+1|0
+2|1
+-STATEMENT ROLLBACK
+---- ok
+
+-CASE ArgumentAndYieldValidation
+-STATEMENT CREATE NODE TABLE N(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE NODE TABLE M(id INT64, PRIMARY KEY(id))
+---- ok
+-STATEMENT CREATE REL TABLE E(FROM N TO M)
+---- ok
+-STATEMENT CALL weakly_connected_components(['N']) YIELD node, component_id RETURN node
+---- error
+Binder exception: Function weakly_connected_components did not receive correct arguments:
+Actual:   (1 arguments)
+Expected: (LIST<STRING>,LIST<STRING>)
+-STATEMENT CALL weakly_connected_components('N', ['E']) YIELD node, component_id RETURN node
+---- error
+Binder exception: Argument 1 of weakly_connected_components must be LIST<STRING>, but STRING was provided.
+-STATEMENT CALL weakly_connected_components([1], ['E']) YIELD node, component_id RETURN node
+---- error
+Binder exception: Element 1 of argument 1 to weakly_connected_components must be STRING, but INT64 was provided.
+-STATEMENT CALL weakly_connected_components(['N','N'], []) YIELD node, component_id RETURN node
+---- error
+Binder exception: Duplicate node table in graph selection: N.
+-STATEMENT CALL weakly_connected_components(['N','M'], ['E','E']) YIELD node, component_id RETURN node
+---- error
+Binder exception: Duplicate relationship table in graph selection: E.
+-STATEMENT CALL weakly_connected_components(['N'], ['E']) YIELD node, component_id RETURN node
+---- error
+Binder exception: Relationship table E references node table M, which is not in the graph selection.
+-STATEMENT CALL weakly_connected_components(['N','M'], ['E']) YIELD level RETURN level
+---- error
+Binder exception: Unknown table function output variable name: level.

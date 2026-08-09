@@ -53,6 +53,7 @@ observable boundary—for example, an engine error fixture plus a CLI exit-statu
 | `koko-common` | Logical/value types, typed vectors/chunks, hashes, memory/statistics primitives, temporal/decimal helpers, and CSV dialect parsing |
 | `koko-catalog` | Schema definitions, table/sequence namespaces, IDs, column generation, relationship groups, and catalog invariants |
 | `koko-storage` | Versioned columns/adjacency, primary-key maps, relationship routing, undo, snapshots, and storage-side constraints |
+| `koko-algorithm` | Pure graph-kernel semantics, cycle/failure boundaries, cancellation cadence, dense-ID dispatch, and tracked-memory admission/release |
 | `koko-parser` | Lexing, AST parsing/rendering, syntax status, spans, diagnostics, and completion contexts |
 | `koko-function` | Generated registry/signatures, casts, scalar/aggregate values, NULL policy, ordering, overflow, and function errors |
 | `koko-ir` | Shared bound-expression, row-layout, query-graph, and logical/physical plan contracts |
@@ -60,8 +61,8 @@ observable boundary—for example, an engine error fixture plus a CLI exit-statu
 | `koko-expr` | Compilation and columnar evaluation of bound expressions |
 | `koko-planner` | Plan building, cost choices, pushdown, pruning, joins, factorization, decorrelation, and activation barriers |
 | `koko-loader` | CSV/Parquet/NPY decoding, file resolution, output adapters, and external scan validation |
-| `koko-processor` | Pull operators, chunks, joins/aggregates, parallel morsels, cancellation, memory control, and execution errors |
-| `koko` unit plus `public_api`/`tooling` integrations | Database/graph/connection ownership, transactions/concurrency, prepared statements, results, Arrow/interchange, UDFs, and public tooling |
+| `koko-processor` | Pull operators, chunks, joins/aggregates, graph-algorithm storage adapters/caching, parallel morsels, cancellation, memory control, and execution errors |
+| `koko` unit plus `public_api`/`tooling` integrations | Database/graph/connection ownership, transactions/concurrency, prepared statements, algorithm result integration, Arrow/interchange, UDFs, and public tooling |
 | `koko-test-runner` unit plus `product` integration | Fixture parsing/directives/comparison, dataset orchestration, fresh-case isolation, manifest integrity, and end-to-end Cypher contracts |
 | `koko-cli` unit plus `bootstrap`, `session`, `batch`, `process`, `presentation`, and `interactive` integrations | Configuration, editor/history/rendering, facade-only sessions, real processes/files, machine formats, cancellation, and PTY behavior |
 
@@ -73,8 +74,10 @@ manifest entry differ, a dataset or category is unknown, a case count changes si
 skipped, or any case fails.
 
 All fixture data is deterministic and checked in under
-`crates/koko-test-runner/tests/datasets/`. Each case runs against a fresh in-memory database. Run the
-surface directly with:
+`crates/koko-test-runner/tests/datasets/`. For statements that read a checked-in file directly,
+the integration runner resolves `${KOKO_ROOT_DIRECTORY}` to the workspace root for checked-in
+fixture paths, independent of the directory from which Cargo was invoked. Each case runs against a
+fresh in-memory database. Run the surface directly with:
 
 ```bash
 cargo test -p koko-test-runner --test product

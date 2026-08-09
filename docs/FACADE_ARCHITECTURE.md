@@ -1,9 +1,10 @@
 # Koko facade architecture
 
-> **Status (2026-07-26): implemented and current after the idiomatic Rust cutover.** This document
-> is the authoritative architecture reference for the public `koko` facade and workspace dependency
-> boundaries. Sections 1–8 retain the state-ownership architecture established by the 2026-07-24
-> decomposition; sections 9–12 describe the current public API and lower-layer cutover.
+> **Status (2026-08-08): implemented and current after the idiomatic Rust cutover and built-in
+> algorithm-scan foundation.** This document is the authoritative architecture reference for the
+> public `koko` facade and workspace dependency boundaries. Sections 1–8 retain the state-ownership
+> architecture established by the 2026-07-24 decomposition; sections 9–12 describe the current
+> public API and lower-layer cutover.
 >
 > [`ROADMAP.md`](../ROADMAP.md) owns current product scope, work, limitations, intentional
 > decisions, and verification policy. [`CLI_ARCHITECTURE.md`](CLI_ARCHITECTURE.md) owns the
@@ -12,8 +13,8 @@
 ## 1. Architectural outcome
 
 `koko` remains the single public Rust composition root over the parser, catalog, storage, binder,
-planner, processor, loader, and function crates. It is organized as a small public shell, one
-private stateful runtime capsule, and cohesive stateless or explicitly contextual adapters.
+planner, processor, loader, function and algorithm crates. It is organized as a small public shell,
+one private stateful runtime capsule, and cohesive stateless or explicitly contextual adapters.
 
 The runtime decomposition is structural and behavior-preserving. The subsequent 2026-07-25 cutover
 made a deliberate clean break in the pre-user Rust API while preserving every engine and CLI contract.
@@ -143,6 +144,7 @@ The lower workspace is responsibility-oriented:
 koko-common      value/data/memory/statistics primitives
 koko-catalog     private catalog entries plus schema-definition inputs
 koko-storage     concrete versioned in-memory storage and explicit guards
+koko-algorithm   allocation-accounted whole-graph kernels over narrow typed contracts
 koko-parser      grammar-family parser modules
 koko-function    generated typed function identities, signatures and evaluation
 koko-ir          shared bound semantic IR, row layouts and logical plans
@@ -150,7 +152,7 @@ koko-binder      binding orchestration over catalog/parser/function/koko-ir
 koko-expr        bound-expression compilation and evaluation
 koko-planner     planning and optimization over koko-ir
 koko-loader      CSV/Parquet/NPY readers and external scan protocols
-koko-processor   pull execution, operators and borrowed execution capabilities
+koko-processor   pull execution, operators, storage-to-kernel adapters and borrowed execution capabilities
 koko             public lifecycle, synchronization, adapters and result facade
 ```
 
@@ -206,6 +208,7 @@ flowchart TB
     Processor --> Expr[koko-expr]
     Processor --> Storage[koko-storage]
     Processor --> Loader[koko-loader]
+    Processor --> Algorithm[koko-algorithm]
     Expr --> IR
     Expr --> Functions
     Loader --> Storage
@@ -213,6 +216,7 @@ flowchart TB
     Storage --> Common
     Parser --> Common
     Functions --> Common
+    Algorithm --> Common
     IR --> Common
 ```
 
@@ -304,13 +308,23 @@ concurrency semantics require it. The architectural invariants are:
    commit, rollback, release, and panic-recovery operations appropriate to their scope.
 3. **One lower pipeline:** regular queries use the existing binder, planner, optimizer, processor,
    and storage path. Metadata-preserving execution wraps this path; it does not duplicate it.
-4. **No coordinator during ordinary engine work:** the existing autocommit regular-query guarantee
+4. **One ordered reading contract:** the binder preserves each `MATCH`, `OPTIONAL MATCH`, `UNWIND`,
+   in-query table-function `CALL`, and `LOAD FROM` as a `BoundReadingClause` with its local
+   predicate. The planner folds that sequence left to right. Independent table/LOAD sources are
+   opened once and cross-producted with incoming rows; OPTIONAL owns NULL extension; whole graph
+   values are materialized before an expression such as a node-valued `UNWIND` consumes them.
+   State-mutating table functions remain standalone binder errors.
+   Row-producing functions retain their canonical physical output order; explicit `YIELD` bindings
+   create exposed variables in caller-written order and anonymous internal variables for omitted
+   outputs. Selection and aliasing therefore do not create a second table-function ABI or alter
+   source cardinality.
+5. **No coordinator during ordinary engine work:** the existing autocommit regular-query guarantee
    remains—database coordination is held only for snapshot/lease transitions, not bind, plan, scan,
    mutation, or materialization. The decomposition must not lengthen any existing lock lifetime.
-5. **Explicit exceptional adapters:** graph DDL, index DDL, logical database import/export, Arrow
+6. **Explicit exceptional adapters:** graph DDL, index DDL, logical database import/export, Arrow
    import, and dataset loading may need wider atomic coordination, but their lock and transaction
    boundaries remain runtime-owned and visible at the dispatcher.
-6. **No implicit side channel:** warnings, settings, timing, cancellation, UDFs, memory, and table
+7. **No implicit side channel:** warnings, settings, timing, cancellation, UDFs, memory, and table
    function context travel in the statement context, not globals or thread-local state.
 
 ### 7.1 Entry-point convergence

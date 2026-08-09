@@ -13,7 +13,7 @@ use koko_common::TableId;
 use koko_common::stats::TableStats;
 use koko_function::ScalarOp;
 use koko_ir::bound::{BoundExpr, BoundQuery, VarId};
-use koko_ir::plan::PlanOp;
+use koko_ir::plan::{GraphAlgorithmPlan, PlanOp};
 use std::collections::HashMap;
 
 /// A snapshot of per-table statistics, keyed by table id (node + rel tables). Built
@@ -120,6 +120,29 @@ pub fn plan_card(op: &PlanOp, stats: &StatsMap) -> f64 {
             .as_ref()
             .map_or(1.0, |input| plan_card(input, stats)),
         PlanOp::ScanTableFunc { .. } | PlanOp::LoadScan { .. } => DEFAULT_CARD,
+        PlanOp::ScanGraphAlgorithm(algorithm) => {
+            let tables: Vec<TableId> = match algorithm {
+                GraphAlgorithmPlan::KCoreDecomposition(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+                GraphAlgorithmPlan::TopologicalLevels(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+                GraphAlgorithmPlan::WeaklyConnectedComponents(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+                GraphAlgorithmPlan::StronglyConnectedComponents(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+                GraphAlgorithmPlan::PageRank(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+                GraphAlgorithmPlan::Louvain(scan) => {
+                    scan.node.tables.iter().map(|table| table.table).collect()
+                }
+            };
+            tables_rows(&tables, stats).unwrap_or(DEFAULT_CARD)
+        }
         PlanOp::Filter { input, .. } => plan_card(input, stats) * DEFAULT_FILTER_SEL,
         PlanOp::Extend(e) => plan_card(&e.input, stats) * DEFAULT_FANOUT,
         PlanOp::VarLengthExtend(e) => plan_card(&e.input, stats) * DEFAULT_FANOUT * DEFAULT_FANOUT,

@@ -18,9 +18,9 @@ pub mod oracle_hash;
 pub mod scalar;
 pub mod scalarfn;
 pub use scalar::{
-    BuiltinDescriptor, BuiltinFunction, BuiltinScalar, CastTarget, CatalogTypeId, DigestAlgorithm,
-    FunctionCatalogEntry, FunctionCatalogKind, OverloadDescriptor, RoundMode, resolve_builtin,
-    resolve_builtin_scalar,
+    BuiltinDescriptor, BuiltinFunction, BuiltinGraphAlgorithm, BuiltinScalar, BuiltinTableFunction,
+    CastTarget, CatalogTypeId, DigestAlgorithm, FunctionCatalogEntry, FunctionCatalogKind,
+    OverloadDescriptor, RoundMode, resolve_builtin, resolve_builtin_scalar,
 };
 pub use scalarfn::{
     aggregate_signature_error, eval as eval_scalar_func,

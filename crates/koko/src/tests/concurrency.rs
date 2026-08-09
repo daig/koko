@@ -190,7 +190,10 @@ fn im4_interrupt_handle_cancels_only_the_running_statement() {
     });
 
     let error = connection
-        .execute("UNWIND range(0, 1000000) AS value RETURN sum(value)")
+        .execute(
+            "CALL db_version() YIELD version \
+             UNWIND range(0, 1000000) AS value RETURN version, sum(value)",
+        )
         .unwrap_err();
     stop.store(true, Ordering::Release);
     interrupter.join().unwrap();
@@ -216,7 +219,10 @@ fn im4_interrupted_mutation_rolls_back_and_releases_writer() {
         .unwrap();
 
     let error = connection
-        .execute("UNWIND range(0, 1000000) AS id CREATE (:P {id: id})")
+        .execute(
+            "CALL db_version() YIELD version \
+             UNWIND range(0, 1000000) AS id CREATE (:P {id: id})",
+        )
         .unwrap_err();
     assert!(matches!(error, Error::Interrupt));
     connection.set_query_timeout(None).unwrap();
@@ -595,7 +601,10 @@ fn im4_repeated_hash_aggregate_exhaustion_is_catchable_and_releases_memory() {
 
     for _ in 0..2 {
         let error = connection
-            .execute("UNWIND range(0, 100000) AS value RETURN value, count(*)")
+            .execute(
+                "CALL db_version() YIELD version \
+                 UNWIND range(0, 100000) AS value RETURN version, value, count(*)",
+            )
             .unwrap_err();
         assert!(matches!(error, Error::BufferManager));
         assert_eq!(

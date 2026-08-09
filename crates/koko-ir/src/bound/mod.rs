@@ -8,7 +8,7 @@ use koko_common::{
     LogicalType, RegisteredScalarFunction, RelMultiplicity, RelStorageDirection, TableId, Value,
     csv_dialect::CsvOptions, file_resolver::FileFormat,
 };
-use koko_function::{AggOp, BuiltinScalar, ScalarOp};
+use koko_function::{AggOp, BuiltinGraphAlgorithm, BuiltinScalar, BuiltinTableFunction, ScalarOp};
 use std::sync::Arc;
 
 /// A pattern-variable identifier (index into [`BoundQuery::vars`]).
@@ -618,47 +618,116 @@ impl BoundProjection {
     }
 }
 
-/// A bound `UNWIND <list> AS var`, applied (in order) after the match.
+/// A bound `UNWIND <list> AS var`.
 #[derive(Debug, Clone)]
 pub struct BoundUnwind {
     pub var: VarId,
     pub list: BoundExpr,
 }
 
-/// The catalog-introspection table functions, as a binder-side mirror of the
-/// parser's `TableFunc` (the planner/processor crates do not depend on
-/// `koko-parser`, so the bound tree carries its own copy).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BoundTableFunc {
-    ShowTables,
-    ShowSequences,
-    TableInfo,
-    ShowMacros,
-    ShowFunctions,
-    DbVersion,
-    ShowOfficialExtensions,
-    CacheArrayColumn,
-    ClearWarnings,
-    ShowIndexes,
-    ShowWarnings,
-    ShowConnection,
-    StorageInfo,
-    StatsInfo,
-    CurrentSetting,
-    BmInfo,
-    ShowLoadedExtensions,
+/// A binder-resolved catalog table-function invocation.
+#[derive(Debug, Clone)]
+pub struct BoundTableFunctionCall {
+    pub function: BuiltinTableFunction,
+    /// Binder-evaluated constant arguments in declared order.
+    pub arguments: Vec<String>,
 }
 
-/// A bound in-query table-function scan: a 0→N leaf source whose output columns
-/// are registered as scalar variables (so a surrounding `WHERE`/`RETURN` binds
-/// against them with no extra machinery). `columns` is `(var, type)` per output
-/// column, in column order; the processor produces rows at execution from the
-/// catalog and its explicit table-function runtime capabilities.
+/// A bound catalog table-function scan. `columns` remains in the function's
+/// canonical physical order; outputs omitted by an explicit `YIELD` use
+/// anonymous variables and therefore do not enter the surrounding query scope.
 #[derive(Debug, Clone)]
-pub struct BoundTableFuncScan {
-    pub func: BoundTableFunc,
-    pub arg: Option<String>,
+pub struct BoundTableFunctionScan {
+    pub call: BoundTableFunctionCall,
     pub columns: Vec<(VarId, LogicalType)>,
+}
+
+/// Statement-local identity used to cache one algorithm scan's immutable result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GraphAlgorithmScanId(pub u32);
+
+/// One concrete relationship-table member in a bound graph selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoundRelSelection {
+    /// Catalog relationship-group identity named by the caller.
+    pub group: TableId,
+    /// Physical per-endpoint-pair relationship table.
+    pub table: TableId,
+    /// Index into [`BoundGraphSelection::node_tables`] for the source domain.
+    pub source_domain: u32,
+    /// Index into [`BoundGraphSelection::node_tables`] for the destination domain.
+    pub destination_domain: u32,
+}
+
+/// Catalog-resolved, statement-bound graph input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundGraphSelection {
+    /// Node tables in caller-specified output order.
+    pub node_tables: Vec<TableId>,
+    /// Expanded physical relationship members in caller/group declaration order.
+    pub rel_tables: Vec<BoundRelSelection>,
+}
+
+/// Binder-evaluated PageRank options.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoundPageRankConfig {
+    pub damping_factor: f64,
+    pub tolerance: f64,
+    pub max_iterations: i64,
+    pub normalize_initial: bool,
+}
+
+impl Default for BoundPageRankConfig {
+    fn default() -> Self {
+        Self {
+            damping_factor: 0.85,
+            tolerance: 1e-7,
+            max_iterations: 20,
+            normalize_initial: true,
+        }
+    }
+}
+
+/// Binder-validated Louvain limits, carried as data through planning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoundLouvainConfig {
+    pub max_iterations: u64,
+    pub max_phases: u64,
+}
+
+/// Data-only configuration for one bound whole-graph algorithm.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BoundGraphAlgorithmConfig {
+    TopologicalLevels,
+    PageRank(BoundPageRankConfig),
+    Louvain(BoundLouvainConfig),
+}
+
+/// A binder-resolved graph algorithm call.
+#[derive(Debug, Clone)]
+pub struct BoundGraphAlgorithmCall {
+    pub function: BuiltinGraphAlgorithm,
+    pub graph: BoundGraphSelection,
+    pub config: BoundGraphAlgorithmConfig,
+}
+
+/// Output-variable shape of a bound graph algorithm.
+#[derive(Debug, Clone, Copy)]
+pub enum BoundGraphAlgorithmOutput {
+    KCoreDecomposition { node: VarId, core: VarId },
+    TopologicalLevels { node: VarId, level: VarId },
+    PageRank { node: VarId, score: VarId },
+    WeaklyConnectedComponents { node: VarId, component_id: VarId },
+    StronglyConnectedComponents { node: VarId, component_id: VarId },
+    Louvain { node: VarId, community_id: VarId },
+}
+
+/// A bound whole-graph algorithm scan.
+#[derive(Debug, Clone)]
+pub struct BoundGraphAlgorithmScan {
+    pub id: GraphAlgorithmScanId,
+    pub call: BoundGraphAlgorithmCall,
+    pub output: BoundGraphAlgorithmOutput,
 }
 
 /// CSV reader options for `COPY` and typed `LOAD FROM`.
@@ -683,6 +752,33 @@ pub struct BoundLoadScan {
     pub bare: bool,
 }
 
+/// One reading clause in textual query order.
+///
+/// Each clause consumes the rows produced by its predecessor. Required matches
+/// and source predicates therefore remain at their own position instead of
+/// being merged into query-part-wide buckets.
+#[derive(Debug, Clone)]
+pub enum BoundReadingClause {
+    Match {
+        match_: BoundMatch,
+        where_predicate: Option<BoundExpr>,
+    },
+    OptionalMatch(BoundOptionalMatch),
+    Unwind(BoundUnwind),
+    TableFunction {
+        scan: BoundTableFunctionScan,
+        where_predicate: Option<BoundExpr>,
+    },
+    GraphAlgorithm {
+        scan: BoundGraphAlgorithmScan,
+        where_predicate: Option<BoundExpr>,
+    },
+    Load {
+        scan: BoundLoadScan,
+        where_predicate: Option<BoundExpr>,
+    },
+}
+
 /// One bound query part: reading + optional updating, terminated by a projection.
 ///
 /// A part reads from an *input scope* — scalar variables (`input_vars`) carried
@@ -699,30 +795,17 @@ pub struct BoundPart {
     /// part's input (carried) scope and applied before any of this part's own
     /// reading clauses.
     pub input_filter: Option<BoundExpr>,
-    pub match_: BoundMatch,
-    /// An in-query table-function scan used as a base source. It may compose
-    /// with `MATCH` as a cross product, but the binder rejects combinations with
-    /// `UNWIND` or `OPTIONAL MATCH`; the planner uses it instead of `build_match`
-    /// as the leaf and applies `where_predicate` above it.
-    pub table_func_scans: Vec<BoundTableFuncScan>,
-    /// A resolved `LOAD FROM` base source. Unlike `table_func_scan`, it may be
-    /// followed by `MATCH`; the planner composes that match onto the loaded rows
-    /// for `LOAD … MATCH … CREATE` relationship imports.
-    pub load_scan: Option<BoundLoadScan>,
-    /// `UNWIND` expansions applied (in order) after the match.
-    pub unwind: Vec<BoundUnwind>,
-    pub where_predicate: Option<BoundExpr>,
+    /// Reading clauses in textual order. Each consumes the rows emitted by the
+    /// previous clause.
+    pub reading: Vec<BoundReadingClause>,
     /// `EXISTS {}` / `COUNT {}` subqueries referenced by this part's expressions,
-    /// indexed by the `id` carried in [`BoundExpr::Subquery`]. Each is computed
-    /// per row into a column after the match (before the WHERE / projection).
+    /// indexed by the `id` carried in [`BoundExpr::Subquery`]. Planning inserts
+    /// each result column at the clause that consumes it.
     pub subqueries: Vec<BoundSubquery>,
     /// `nextval`/`currval` calls referenced by this part's expressions, indexed by
-    /// the `id` in [`BoundExpr::SequenceCall`]. Each is computed per row into a
-    /// column (advancing sequence state) before the WHERE / projection.
+    /// the `id` in [`BoundExpr::SequenceCall`]. Planning advances sequence state
+    /// per row at the call's owning clause.
     pub sequence_calls: Vec<BoundSequenceCall>,
-    /// `OPTIONAL MATCH` left-join blocks, applied (in order) after the required
-    /// match / unwinds / WHERE.
-    pub optionals: Vec<BoundOptionalMatch>,
     /// Updating clauses (`CREATE`/`SET`/`DELETE`), applied in order after the
     /// reading clauses and before the part's projection.
     pub updates: Vec<BoundUpdate>,

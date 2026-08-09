@@ -298,13 +298,138 @@ pub(crate) fn build_exec_morsel<'a>(
                 Exec::IndexScan(IndexScanState { scan, done: false })
             }
         }
-        PlanOp::ScanTableFunc { func, arg, cols } => Exec::ScanTableFunc(TableFunctionScanState {
-            func: *func,
-            arg: arg.as_deref(),
+        PlanOp::ScanTableFunc { call, cols } => Exec::ScanTableFunc(TableFunctionScanState {
+            call,
             cols,
             rows: None,
             idx: 0,
         }),
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::KCoreDecomposition(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::KCore(KCoreState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::TopologicalLevels(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::TopologicalLevels(TopologicalLevelsState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::WeaklyConnectedComponents(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::WeaklyConnectedComponents(WeaklyConnectedComponentsState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::StronglyConnectedComponents(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::StronglyConnectedComponents(StronglyConnectedComponentsState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::PageRank(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::PageRank(PageRankState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
+        PlanOp::ScanGraphAlgorithm(GraphAlgorithmPlan::Louvain(scan)) => {
+            let projected_columns = scan
+                .node
+                .tables
+                .iter()
+                .map(|table| {
+                    table
+                        .prop_cols
+                        .iter()
+                        .map(|property| property.column_id as usize)
+                        .collect()
+                })
+                .collect();
+            Exec::Louvain(LouvainState {
+                scan,
+                result: None,
+                table_idx: 0,
+                offset: 0,
+                projected_columns,
+            })
+        }
         PlanOp::LoadScan {
             cols,
             col_names,

@@ -31,7 +31,8 @@ use koko_common::{
     file_resolver::{FileFormat, FileResolverConfig, resolve_files},
 };
 use koko_function::{
-    AggOp, BuiltinFunction, BuiltinScalar, ScalarOp, resolve_builtin, resolve_builtin_scalar,
+    AggOp, BuiltinFunction, BuiltinGraphAlgorithm, BuiltinScalar, FunctionCatalogKind, ScalarOp,
+    resolve_builtin, resolve_builtin_scalar,
 };
 use koko_ir::bound::*;
 use koko_parser::{ast, expr_to_cypher};
@@ -368,25 +369,463 @@ fn constrain_direct_union_parameters(
     }
 }
 
-pub fn bound_table_func(f: ast::TableFunc) -> BoundTableFunc {
-    match f {
-        ast::TableFunc::ShowTables => BoundTableFunc::ShowTables,
-        ast::TableFunc::ShowSequences => BoundTableFunc::ShowSequences,
-        ast::TableFunc::TableInfo => BoundTableFunc::TableInfo,
-        ast::TableFunc::ShowMacros => BoundTableFunc::ShowMacros,
-        ast::TableFunc::ShowFunctions => BoundTableFunc::ShowFunctions,
-        ast::TableFunc::DbVersion => BoundTableFunc::DbVersion,
-        ast::TableFunc::ShowOfficialExtensions => BoundTableFunc::ShowOfficialExtensions,
-        ast::TableFunc::CacheArrayColumn => BoundTableFunc::CacheArrayColumn,
-        ast::TableFunc::ClearWarnings => BoundTableFunc::ClearWarnings,
-        ast::TableFunc::ShowIndexes => BoundTableFunc::ShowIndexes,
-        ast::TableFunc::ShowWarnings => BoundTableFunc::ShowWarnings,
-        ast::TableFunc::ShowConnection => BoundTableFunc::ShowConnection,
-        ast::TableFunc::StorageInfo => BoundTableFunc::StorageInfo,
-        ast::TableFunc::StatsInfo => BoundTableFunc::StatsInfo,
-        ast::TableFunc::CurrentSetting => BoundTableFunc::CurrentSetting,
-        ast::TableFunc::BmInfo => BoundTableFunc::BmInfo,
-        ast::TableFunc::ShowLoadedExtensions => BoundTableFunc::ShowLoadedExtensions,
+enum BoundCall {
+    Table(BoundTableFunctionCall),
+    GraphAlgorithm(BoundGraphAlgorithmCall),
+}
+
+/// Resolve and bind a function call that appears without a query projection.
+/// Only functions declared as standalone table functions are accepted.
+pub fn bind_standalone_table_call(
+    catalog: &Catalog,
+    call: &ast::CallClause,
+    params: &HashMap<String, Value>,
+    config: &SessionConfig,
+) -> Result<BoundTableFunctionCall> {
+    let mut binder = Binder::with_state(catalog, params, config, None);
+    let (bound, kind) = binder.bind_function_call(call)?;
+    let BoundCall::Table(bound) = bound else {
+        return Err(Error::binder(
+            "Only standalone table functions can be called without return statement.".to_string(),
+        ));
+    };
+    if kind != FunctionCatalogKind::StandaloneTable {
+        return Err(Error::binder(
+            "Only standalone table functions can be called without return statement.".to_string(),
+        ));
+    }
+    Ok(bound)
+}
+
+impl Binder<'_, '_> {
+    fn bind_function_call(
+        &mut self,
+        call: &ast::CallClause,
+    ) -> Result<(BoundCall, FunctionCatalogKind)> {
+        let descriptor = resolve_builtin(&call.name).ok_or_else(|| {
+            Error::binder(format!(
+                "{} is not a table or algorithm function.",
+                call.name
+            ))
+        })?;
+        let bound = match descriptor.function {
+            BuiltinFunction::Table(function) => {
+                let expected = descriptor
+                    .overloads
+                    .first()
+                    .map(|overload| overload.params.len())
+                    .unwrap_or_default();
+                if call.args.len() != expected {
+                    let actual = vec!["STRING"; call.args.len()].join(",");
+                    let expected = vec!["STRING"; expected].join(",");
+                    return Err(Error::binder(format!(
+                        "Function {} did not receive correct arguments:\nActual:   ({actual})\nExpected: ({expected})",
+                        call.name
+                    )));
+                }
+
+                let mut arguments = Vec::with_capacity(call.args.len());
+                for expression in &call.args {
+                    let bound = self.bind_expr(expression)?;
+                    let Some(value) = try_const_eval(&bound) else {
+                        return Err(Error::binder(format!(
+                            "{} has type {} but LITERAL,PARAMETER,PATTERN was expected.",
+                            table_argument_name(expression),
+                            table_argument_kind(expression)
+                        )));
+                    };
+                    arguments.push(value?.to_result_string());
+                }
+                BoundCall::Table(BoundTableFunctionCall {
+                    function,
+                    arguments,
+                })
+            }
+            BuiltinFunction::GraphAlgorithm(function) => {
+                BoundCall::GraphAlgorithm(self.bind_graph_algorithm_call(function, call)?)
+            }
+            BuiltinFunction::Scalar(_)
+            | BuiltinFunction::Aggregate(_)
+            | BuiltinFunction::CatalogOnly => {
+                return Err(Error::binder(format!(
+                    "{} is not a table or algorithm function.",
+                    call.name
+                )));
+            }
+        };
+        Ok((bound, descriptor.catalog_kind))
+    }
+
+    fn bind_graph_algorithm_call(
+        &mut self,
+        function: BuiltinGraphAlgorithm,
+        call: &ast::CallClause,
+    ) -> Result<BoundGraphAlgorithmCall> {
+        match function {
+            BuiltinGraphAlgorithm::KCoreDecomposition
+            | BuiltinGraphAlgorithm::TopologicalLevels
+            | BuiltinGraphAlgorithm::WeaklyConnectedComponents
+            | BuiltinGraphAlgorithm::StronglyConnectedComponents => {
+                if call.args.len() != 2 {
+                    return Err(Error::binder(format!(
+                        "Function {} did not receive correct arguments:\nActual:   ({} arguments)\nExpected: (LIST<STRING>,LIST<STRING>)",
+                        call.name,
+                        call.args.len()
+                    )));
+                }
+                let node_names = self.bind_string_list_argument(&call.name, 1, &call.args[0])?;
+                let rel_names = self.bind_string_list_argument(&call.name, 2, &call.args[1])?;
+                let graph = self.bind_graph_selection(&node_names, &rel_names)?;
+                Ok(BoundGraphAlgorithmCall {
+                    function,
+                    graph,
+                    config: BoundGraphAlgorithmConfig::TopologicalLevels,
+                })
+            }
+            BuiltinGraphAlgorithm::PageRank => {
+                if call.args.len() != 2 && call.args.len() != 6 {
+                    return Err(Error::binder(format!(
+                        "Function {} did not receive correct arguments:\nActual:   ({} arguments)\nExpected: (LIST<STRING>,LIST<STRING>) or (LIST<STRING>,LIST<STRING>,DOUBLE,DOUBLE,INT64,BOOL)",
+                        call.name,
+                        call.args.len()
+                    )));
+                }
+                let node_names = self.bind_string_list_argument(&call.name, 1, &call.args[0])?;
+                let rel_names = self.bind_string_list_argument(&call.name, 2, &call.args[1])?;
+                let graph = self.bind_graph_selection(&node_names, &rel_names)?;
+                let config = if call.args.len() == 2 {
+                    BoundPageRankConfig::default()
+                } else {
+                    let damping_factor = self.bind_page_rank_double_argument(
+                        &call.name,
+                        3,
+                        &call.args[2],
+                        BoundPageRankConfig::default().damping_factor,
+                    )?;
+                    let tolerance = self.bind_page_rank_double_argument(
+                        &call.name,
+                        4,
+                        &call.args[3],
+                        BoundPageRankConfig::default().tolerance,
+                    )?;
+                    let max_iterations = self.bind_page_rank_integer_argument(
+                        &call.name,
+                        5,
+                        &call.args[4],
+                        BoundPageRankConfig::default().max_iterations,
+                    )?;
+                    let normalize_initial = self.bind_page_rank_bool_argument(
+                        &call.name,
+                        6,
+                        &call.args[5],
+                        BoundPageRankConfig::default().normalize_initial,
+                    )?;
+                    if !damping_factor.is_finite() || !(0.0..1.0).contains(&damping_factor) {
+                        return Err(Error::binder(
+                            "PageRank damping factor must be finite and in [0, 1).",
+                        ));
+                    }
+                    if !tolerance.is_finite() || tolerance < 0.0 {
+                        return Err(Error::binder(
+                            "PageRank tolerance must be finite and non-negative.",
+                        ));
+                    }
+                    if max_iterations < 0 {
+                        return Err(Error::binder(
+                            "PageRank maximum iterations must be non-negative.",
+                        ));
+                    }
+                    BoundPageRankConfig {
+                        damping_factor,
+                        tolerance,
+                        max_iterations,
+                        normalize_initial,
+                    }
+                };
+                Ok(BoundGraphAlgorithmCall {
+                    function,
+                    graph,
+                    config: BoundGraphAlgorithmConfig::PageRank(config),
+                })
+            }
+            BuiltinGraphAlgorithm::Louvain => {
+                if call.args.len() != 2 && call.args.len() != 4 {
+                    return Err(Error::binder(format!(
+                        "Function {} did not receive correct arguments:\nActual:   ({} arguments)\nExpected: (LIST<STRING>,LIST<STRING>) or (LIST<STRING>,LIST<STRING>,INT64,INT64)",
+                        call.name,
+                        call.args.len()
+                    )));
+                }
+                let node_names = self.bind_string_list_argument(&call.name, 1, &call.args[0])?;
+                let rel_names = self.bind_string_list_argument(&call.name, 2, &call.args[1])?;
+                let graph = self.bind_graph_selection(&node_names, &rel_names)?;
+                // Defaults are frozen from Ladybug's LouvainConfig and MaxPhases.
+                let config = if call.args.len() == 2 {
+                    BoundLouvainConfig {
+                        max_iterations: 20,
+                        max_phases: 20,
+                    }
+                } else {
+                    BoundLouvainConfig {
+                        max_iterations: self.bind_nonnegative_louvain_limit(
+                            &call.name,
+                            3,
+                            "max_iterations",
+                            &call.args[2],
+                        )?,
+                        max_phases: self.bind_nonnegative_louvain_limit(
+                            &call.name,
+                            4,
+                            "max_phases",
+                            &call.args[3],
+                        )?,
+                    }
+                };
+                Ok(BoundGraphAlgorithmCall {
+                    function,
+                    graph,
+                    config: BoundGraphAlgorithmConfig::Louvain(config),
+                })
+            }
+        }
+    }
+
+    fn bind_nonnegative_louvain_limit(
+        &mut self,
+        function: &str,
+        position: usize,
+        name: &str,
+        expression: &ast::Expr,
+    ) -> Result<u64> {
+        let bound = self.bind_expr(expression)?;
+        let Some(value) = try_const_eval(&bound) else {
+            return Err(Error::binder(format!(
+                "Argument {position} ({name}) of {function} must be a constant INT64."
+            )));
+        };
+        match value? {
+            Value::Int64(value) => u64::try_from(value).map_err(|_| {
+                Error::binder(format!(
+                    "Argument {position} ({name}) of {function} must be nonnegative."
+                ))
+            }),
+            other => Err(Error::binder(format!(
+                "Argument {position} ({name}) of {function} must be INT64, but {} was provided.",
+                other.logical_type()
+            ))),
+        }
+    }
+
+    fn bind_page_rank_double_argument(
+        &mut self,
+        function: &str,
+        position: usize,
+        expression: &ast::Expr,
+        prepared_default: f64,
+    ) -> Result<f64> {
+        let value = self.bind_graph_algorithm_constant_argument(
+            function,
+            position,
+            expression,
+            &LogicalType::Double,
+            Value::Double(prepared_default),
+        )?;
+        value.as_f64().ok_or_else(|| {
+            Error::binder(format!(
+                "Argument {position} of {function} must be DOUBLE, but {} was provided.",
+                value.logical_type()
+            ))
+        })
+    }
+
+    fn bind_page_rank_integer_argument(
+        &mut self,
+        function: &str,
+        position: usize,
+        expression: &ast::Expr,
+        prepared_default: i64,
+    ) -> Result<i64> {
+        let value = self.bind_graph_algorithm_constant_argument(
+            function,
+            position,
+            expression,
+            &LogicalType::Int64,
+            Value::Int64(prepared_default),
+        )?;
+        value.as_i64().ok_or_else(|| {
+            Error::binder(format!(
+                "Argument {position} of {function} must be INT64, but {} was provided.",
+                value.logical_type()
+            ))
+        })
+    }
+
+    fn bind_page_rank_bool_argument(
+        &mut self,
+        function: &str,
+        position: usize,
+        expression: &ast::Expr,
+        prepared_default: bool,
+    ) -> Result<bool> {
+        let value = self.bind_graph_algorithm_constant_argument(
+            function,
+            position,
+            expression,
+            &LogicalType::Bool,
+            Value::Bool(prepared_default),
+        )?;
+        value.as_bool().ok_or_else(|| {
+            Error::binder(format!(
+                "Argument {position} of {function} must be BOOL, but {} was provided.",
+                value.logical_type()
+            ))
+        })
+    }
+
+    fn bind_graph_algorithm_constant_argument(
+        &mut self,
+        function: &str,
+        position: usize,
+        expression: &ast::Expr,
+        expected_type: &LogicalType,
+        prepared_default: Value,
+    ) -> Result<Value> {
+        let mut bound = self.bind_expr(expression)?;
+        self.constrain_parameter(&mut bound, expected_type);
+        if self.prepared_parameters.is_some() && matches!(&bound, BoundExpr::Parameter { .. }) {
+            return Ok(prepared_default);
+        }
+        let Some(value) = try_const_eval(&bound) else {
+            return Err(Error::binder(format!(
+                "Argument {position} of {function} must be a constant {expected_type}."
+            )));
+        };
+        value
+    }
+
+    fn bind_string_list_argument(
+        &mut self,
+        function: &str,
+        position: usize,
+        expression: &ast::Expr,
+    ) -> Result<Vec<String>> {
+        let bound = self.bind_expr(expression)?;
+        let Some(value) = try_const_eval(&bound) else {
+            return Err(Error::binder(format!(
+                "Argument {position} of {function} must be a constant LIST<STRING>."
+            )));
+        };
+        let value = value?;
+        let Value::List(values) = value else {
+            return Err(Error::binder(format!(
+                "Argument {position} of {function} must be LIST<STRING>, but {} was provided.",
+                value.logical_type()
+            )));
+        };
+        values
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| match value {
+                Value::String(name) => Ok(name),
+                other => Err(Error::binder(format!(
+                    "Element {} of argument {position} to {function} must be STRING, but {} was provided.",
+                    index + 1,
+                    other.logical_type()
+                ))),
+            })
+            .collect()
+    }
+
+    fn bind_graph_selection(
+        &self,
+        node_names: &[String],
+        rel_names: &[String],
+    ) -> Result<BoundGraphSelection> {
+        let mut seen = HashSet::new();
+        let mut node_tables = Vec::with_capacity(node_names.len());
+        for name in node_names {
+            if !seen.insert(name.to_ascii_lowercase()) {
+                return Err(Error::binder(format!(
+                    "Duplicate node table in graph selection: {name}."
+                )));
+            }
+            let table = self
+                .catalog
+                .node_table_by_name(name)
+                .ok_or_else(|| Error::binder(format!("Node table {name} does not exist.")))?;
+            self.ensure_table_readable(table.id())?;
+            node_tables.push(table.id());
+        }
+
+        seen.clear();
+        let mut rel_tables = Vec::new();
+        for name in rel_names {
+            if !seen.insert(name.to_ascii_lowercase()) {
+                return Err(Error::binder(format!(
+                    "Duplicate relationship table in graph selection: {name}."
+                )));
+            }
+            let group = self.catalog.rel_table_by_name(name).ok_or_else(|| {
+                Error::binder(format!("Relationship table {name} does not exist."))
+            })?;
+            for pair in group.pairs() {
+                let source_domain = node_tables
+                    .iter()
+                    .position(|&table| table == pair.from)
+                    .ok_or_else(|| {
+                        let endpoint = self.catalog.node_table(pair.from).unwrap().name();
+                        Error::binder(format!(
+                            "Relationship table {} references node table {endpoint}, which is not in the graph selection.",
+                            group.name()
+                        ))
+                    })?;
+                let destination_domain = node_tables
+                    .iter()
+                    .position(|&table| table == pair.to)
+                    .ok_or_else(|| {
+                        let endpoint = self.catalog.node_table(pair.to).unwrap().name();
+                        Error::binder(format!(
+                            "Relationship table {} references node table {endpoint}, which is not in the graph selection.",
+                            group.name()
+                        ))
+                    })?;
+                rel_tables.push(BoundRelSelection {
+                    group: group.id(),
+                    table: pair.member,
+                    source_domain: u32::try_from(source_domain).map_err(|_| {
+                        Error::binder("Graph selection contains too many node tables.")
+                    })?,
+                    destination_domain: u32::try_from(destination_domain).map_err(|_| {
+                        Error::binder("Graph selection contains too many node tables.")
+                    })?,
+                });
+            }
+        }
+        Ok(BoundGraphSelection {
+            node_tables,
+            rel_tables,
+        })
+    }
+}
+
+fn table_argument_name(expression: &ast::Expr) -> String {
+    match expression {
+        ast::Expr::Property { base, name } => {
+            format!("{}.{name}", table_argument_name(base))
+        }
+        ast::Expr::Variable(name) => name.clone(),
+        ast::Expr::Function { name, .. } => format!("{}()", name.to_uppercase()),
+        _ => expr_to_cypher(expression),
+    }
+}
+
+fn table_argument_kind(expression: &ast::Expr) -> &'static str {
+    match expression {
+        ast::Expr::Property { .. } => "PROPERTY",
+        ast::Expr::Variable(_) => "VARIABLE",
+        ast::Expr::Function { .. } => "FUNCTION",
+        ast::Expr::Parameter(_) => "PARAMETER",
+        _ => "EXPRESSION",
     }
 }
 
@@ -634,6 +1073,8 @@ struct Binder<'catalog, 'bind> {
     /// `nextval`/`currval` calls staged during this part's expression binding,
     /// drained into the part's `sequence_calls` (ids are per-part indices).
     pending_sequence_calls: Vec<BoundSequenceCall>,
+    /// Next statement-local whole-graph algorithm scan identity.
+    next_graph_algorithm_scan_id: u32,
 }
 
 impl<'catalog, 'bind> Binder<'catalog, 'bind> {
@@ -659,6 +1100,7 @@ impl<'catalog, 'bind> Binder<'catalog, 'bind> {
             subquery_count: 0,
             pending_subqueries: Vec::new(),
             pending_sequence_calls: Vec::new(),
+            next_graph_algorithm_scan_id: 0,
         }
     }
 
@@ -1261,63 +1703,6 @@ fn assignable(src: &LogicalType, dst: &LogicalType) -> bool {
     koko_common::types::implicitly_castable(src, dst)
 }
 
-/// Rewrite `… OPTIONAL MATCH p MATCH q …` so the required MATCH starts a new
-/// implicit `WITH *` part. Sequential Cypher semantics: the optional's output
-/// (with NULLs) is the required MATCH's input; planning both in one part would
-/// instead run the required match FIRST.
-fn split_required_after_optional(q: &ast::SingleQuery) -> ast::SingleQuery {
-    fn star_with() -> ast::WithClause {
-        ast::WithClause {
-            projection: ast::ReturnClause {
-                distinct: false,
-                items: vec![ast::ProjectionItem::Star],
-                order_by: Vec::new(),
-                skip: None,
-                limit: None,
-            },
-            where_clause: None,
-        }
-    }
-    fn split_reading(
-        reading: &[ast::ReadingClause],
-        new_parts: &mut Vec<ast::QueryPart>,
-    ) -> Vec<ast::ReadingClause> {
-        let mut current: Vec<ast::ReadingClause> = Vec::new();
-        let mut seen_optional = false;
-        for rc in reading {
-            if matches!(rc, ast::ReadingClause::Match(m) if !m.optional) && seen_optional {
-                new_parts.push(ast::QueryPart {
-                    reading: std::mem::take(&mut current),
-                    updating: Vec::new(),
-                    with: star_with(),
-                });
-                seen_optional = false;
-            }
-            if matches!(rc, ast::ReadingClause::Match(m) if m.optional) {
-                seen_optional = true;
-            }
-            current.push(rc.clone());
-        }
-        current
-    }
-    let mut new_parts = Vec::new();
-    for qp in &q.parts {
-        let tail = split_reading(&qp.reading, &mut new_parts);
-        new_parts.push(ast::QueryPart {
-            reading: tail,
-            updating: qp.updating.clone(),
-            with: qp.with.clone(),
-        });
-    }
-    let reading = split_reading(&q.reading, &mut new_parts);
-    ast::SingleQuery {
-        parts: new_parts,
-        reading,
-        updating: q.updating.clone(),
-        ret: q.ret.clone(),
-    }
-}
-
 fn combine_and(mut preds: Vec<BoundExpr>) -> Option<BoundExpr> {
     match preds.len() {
         0 => None,
@@ -1799,6 +2184,16 @@ fn try_const_eval(e: &BoundExpr) -> Option<Result<Value>> {
     fn eval(e: &BoundExpr) -> Option<Result<Value>> {
         match e {
             BoundExpr::Literal(v) => Some(Ok(v.clone())),
+            BoundExpr::Scalar { op, args, .. } => {
+                let mut values = Vec::with_capacity(args.len());
+                for argument in args {
+                    match eval(argument)? {
+                        Ok(value) => values.push(value),
+                        error => return Some(error),
+                    }
+                }
+                Some(koko_function::eval_scalar(*op, &values))
+            }
             BoundExpr::Cast { expr, target } => match eval(expr)? {
                 Ok(v) => {
                     // C++ resolves STRUCT→STRUCT casts against the DECLARED

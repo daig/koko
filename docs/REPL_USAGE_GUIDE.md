@@ -902,18 +902,30 @@ Properties:
 - `:describe` reports kind, columns, types, primary keys or endpoints, and source information.
 - Ambiguous object names produce candidates rather than silently selecting one.
 
-Engine table functions are also queryable when you want to filter/project their logical rows:
+Engine table functions are also queryable when you want to filter or project their logical rows:
 
 ```cypher
 CALL show_tables() RETURN *;
-CALL show_indexes() RETURN *;
 CALL show_macros() RETURN *;
 CALL show_warnings() RETURN *;
 CALL current_setting('threads') RETURN *;
+
+CALL show_indexes()
+YIELD index_type AS kind, index_name AS idx
+WHERE idx = 'person_name_idx'
+RETURN idx, kind;
 ```
 
-Use `:functions` to discover the currently visible scalar, aggregate, and table functions and their
-signatures.
+A row-producing `CALL` without `YIELD` imports every declared output in declaration order. An
+explicit `YIELD output [AS alias], ...` imports any nonempty named subset in caller-written order:
+aliases replace their source names, omitted outputs do not enter scope, and the immediate `WHERE`
+can reference incoming variables plus the yielded names. `YIELD` does not filter source rows or
+change their order or cardinality; `RETURN`, `WITH`, and `WHERE` retain those responsibilities.
+Duplicate or unknown outputs, duplicate exposed names, and collisions with incoming variables are
+binder errors. `YIELD *` is not supported; omitting the clause already imports the complete schema.
+
+Use `:functions` to discover the currently visible scalar, aggregate, algorithm, and table
+functions and their signatures.
 
 ## 7. Parameters
 
@@ -1295,11 +1307,13 @@ creation rather than merely validating it.
 :functions date
 ```
 
-You can also query table functions:
+You can also query table functions; section 6 defines their name-based `YIELD` behavior:
 
 ```cypher
 CALL show_tables() RETURN *;
-CALL show_indexes() RETURN index_name, index_type;
+CALL show_indexes()
+YIELD index_name, index_type
+RETURN index_name, index_type;
 ```
 
 ### 12.4 Scalar macros
