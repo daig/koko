@@ -1,6 +1,6 @@
 # Koko: current product and roadmap
 
-> **Current as of 2026-08-08.** This is the single authority for Koko's current product boundary,
+> **Current as of 2026-08-09.** This is the single authority for Koko's current product boundary,
 > architecture map, active work, known limitations, candidate feature tracks, intentional semantic
 > decisions, and verification policy. It does not retain completed milestone checklists or fixed-bug
 > inventories; the implementation and regression suite are the record of completed work.
@@ -43,7 +43,7 @@ Four rules govern current work:
 | Local data movement | CSV and gzip CSV, Parquet and NPY input, native Rust `arrow-rs::RecordBatch` import/export for supported logical types, COPY, CSV/Parquet output, atomic database-wide logical export/import and validated local read-only `icebug-disk` scans |
 | Embedded Rust API | `Database`, `Connection`, exclusively borrowing `Transaction`, `PreparedStatement`, owned `Parameter`, connection-local `ScalarFunction`, `InterruptHandle`, `QueryResult`, borrowed `Row`/cell/column views, structured diagnostics and immutable tooling snapshots |
 | First-party CLI | Interactive and batch `koko`; parser-aware editing/completion, parameters, graph/transaction status, human and machine formats, atomic output files, cancellation, progress, history and portable logical save/restore |
-| Regression surfaces | Workspace unit/integration/doctests, manifested end-to-end Cypher product fixtures with bundled datasets, public API and CLI process/PTY tests, plus optional compatibility/performance evidence |
+| Regression surfaces | Workspace unit/integration/doctests, manifested end-to-end Cypher product fixtures with bundled datasets, public API and CLI process/PTY tests, a provider-neutral executable Text2Koko evaluation corpus, plus optional compatibility/performance evidence |
 
 The product is intentionally eager at its public result boundary: a `QueryResult` owns materialized
 columnar buffers, while rows, cells and typed columns borrow them. Koko does not currently expose a
@@ -139,7 +139,32 @@ ambiguous parse of list-comprehension-like syntax or its unbound-new-variable fa
 Until that design lands, pattern comprehensions remain a categorized clean rejection; the specific
 new-variable behavior is recorded as an intentional boundary in section 4.
 
-### 3.4 Supported built-in whole-graph algorithms
+### 3.4 Evidence gate: agent-generated query syntax
+
+Koko may evolve beyond inherited Ladybug/Kùzu syntax, but a language change justified by coding-agent
+reliability must be measured rather than selected by aesthetic preference. The executable Text2Koko
+surface in `benchmarks/text2koko/` holds natural-language tasks, focused schemas, parameters and
+semantic or mutation-state oracles stable while dialects, canonical examples or validation
+protocols change. `scripts/text2koko_bench.py` owns provider-neutral generation/replay, staged
+envelope/parse/bind/runtime scoring, read-only admission, result equivalence, focused plus
+schema-wide mutation-state equivalence, one-diagnostic repair and paired report comparison.
+[`docs/TESTING.md`](docs/TESTING.md) owns its commands and adapter contract.
+
+Before accepting a breaking or canonical-syntax change for model usability:
+
+1. validate every checked-in reference oracle through the real Koko CLI;
+2. record both prior-only and production-guidance baselines with fixed case selection, model
+   versions, sampling settings, repetitions and repair policy;
+3. compare at least three frontier-model families and one smaller coding model;
+4. categorize failures by schema linking, direction, scope, aggregation, path, parameter, dialect,
+   envelope and safety rather than counting parse success alone; and
+5. require improved semantic/repair accuracy without a safety regression, then retain ordinary
+   parser/binder/execution product regressions for the chosen contract.
+
+Model calls remain nondeterministic evaluation evidence, not a universal landing gate or a training
+corpus. Deterministic corpus structure, runner contracts and reference-oracle execution are tested.
+
+### 3.5 Supported built-in whole-graph algorithms
 
 Koko supports six built-in graph-algorithm scans over explicit node/relationship table selections:
 
@@ -169,7 +194,7 @@ This surface does not activate `PROJECT_GRAPH`, a named projected-graph registry
 extension/plugin lifecycle or an `algo` module. Algorithms bind directly to one captured Koko graph
 and MVCC statement view; reusable named selections remain a separate product decision.
 
-### 3.5 Evidence-gated performance work
+### 3.6 Evidence-gated performance work
 
 These are not correctness bugs or scheduled implementation. A landing requires a representative
 Koko workload, before/after profiles, fixed result checks and a workload-owned regression threshold.

@@ -42,6 +42,7 @@ quality checks on Linux with the declared Rust 1.85 minimum toolchain.
 | Cypher product fixtures | `crates/koko-test-runner/tests/product/*.test` | End-to-end accepted Cypher, results, errors, ordering, transactions, planning safety, and loader behavior |
 | Public examples and doctests | Public crate documentation | User-visible compile-time usage contracts |
 | Focused gate scripts | `scripts/` | Aggregation or external protocols that are not naturally one Rust test target |
+| Text2Koko evaluation | `benchmarks/text2koko/`, `scripts/text2koko_bench.py` | Model-generated query envelope, parse/bind/runtime funnels, semantic and mutation-state equivalence, read-only safety, and one-diagnostic repair |
 
 A behavior has one primary owner. Duplicate it at another layer only when that layer adds a distinct
 observable boundary—for example, an engine error fixture plus a CLI exit-status assertion.
@@ -108,6 +109,98 @@ When adding or changing a fixture:
 4. Add or update the manifest row in the same change. Do not add `-SKIP` to the product directory.
 5. Use a crate unit test instead when the contract is a private invariant, a Rust integration test
    for a public API boundary, and a CLI integration test for terminal/process behavior.
+
+## Text2Koko model evaluation
+
+Text2Koko is the executable evaluation surface for query-language or agent-interface changes whose
+claim is improved frontier-model reliability. It is not training data and model calls are not a
+standing deterministic merge gate. The checked-in corpus currently contains 101 natural-language
+intents over representative people, source-code, task-dependency, and schemaless note graphs. Every
+case owns a compact schema, parameters, operation class, canonical reference query, semantic tags,
+and either a result oracle or post-write graph-state verification.
+
+Build the first-party CLI, run the Python contract tests, and execute every reference query before
+using the corpus with a model:
+
+```bash
+cargo build -p koko-cli
+python3 -m unittest scripts/test_text2koko_bench.py
+python3 scripts/text2koko_bench.py validate
+```
+
+`validate` executes each reference query through the real `koko --format json` process against a
+fresh in-memory database. Read cases run inside an explicit read-only transaction. Write cases are
+scored through focused post-write queries plus schema-wide node and relationship snapshots rather
+than status text, so an unrelated mutation also fails state equivalence. Unordered cases
+canonicalize row order; ordered cases preserve it; explicitly declared floating tolerances apply
+recursively.
+
+Model messages expose each parameter's name and derived logical shape, not its oracle value. The
+runner still binds the real synthetic values during execution and marks a candidate incorrect when
+it does not reference every supplied `$name`; this prevents hard-coded values from passing a single
+fixture instance.
+
+The runner has three generation adapters:
+
+```bash
+# End-to-end runner and oracle smoke test.
+python3 scripts/text2koko_bench.py run \
+  --generator reference --profile guided --model reference \
+  --output /tmp/reference.json
+
+# Provider-neutral model adapter.
+python3 scripts/text2koko_bench.py run \
+  --generator-command 'python3 path/to/model_adapter.py' \
+  --profile prior --model MODEL_NAME --repetitions 3 --repair-turns 1 \
+  --generation-timeout 120 \
+  --metadata-json '{"provider":"PROVIDER","temperature":0,"max_output_tokens":2048}' \
+  --output /tmp/model.json
+
+# Re-execute queries already captured in a report or response file.
+python3 scripts/text2koko_bench.py run \
+  --replay /tmp/model.json --profile prior --model MODEL_NAME \
+  --repetitions 3 --repair-turns 1 --output /tmp/replayed.json
+```
+
+For baseline runs, the adapter should honor the recorded `temperature: 0` and
+`max_output_tokens: 2048`; the runner defaults to a 120-second generation-process deadline and a
+15-second Koko execution deadline. Hold these settings fixed across a comparison or record any
+intentional change in `--metadata-json`.
+
+A generator command receives one JSON request on stdin for each case and attempt. The request
+contains `version`, `case_id`, `model`, `profile`, `repetition`, `run_metadata`, chat-style
+`messages`, and the strict model `response_schema`. It must exit successfully and write exactly one
+JSON object to stdout. `usage` is optional adapter metadata:
+
+```json
+{
+  "query": "MATCH (f:File) RETURN f.path AS path ORDER BY path",
+  "usage": {"input_tokens": 812, "output_tokens": 24, "cached_input_tokens": 0}
+}
+```
+
+Accepted usage fields are non-negative integer `input_tokens`, `output_tokens`,
+`cached_input_tokens`, and `reasoning_tokens`. Provider logs belong on stderr. The runner rejects
+response keys other than `query` and `usage`, unknown usage fields, prose, empty queries, and
+multiple Koko statements as envelope failures. With `--repair-turns 1`, only an actual generation
+or engine diagnostic triggers one correction request; a semantically wrong but executable result
+does not receive oracle information.
+
+Reports retain every attempted query and separately score envelope, parser, binder, runtime,
+semantic, write-state, safety, first-attempt, and repaired correctness. They also aggregate measured
+generation/execution latency and adapter-reported token usage; `--metadata-json` records provider,
+sampling, or harness settings without embedding them in a model name. `compare` requires matching
+intent/schema/parameter fingerprints, case/repetition keys, and per-sample semantic/state oracle
+hashes:
+
+```bash
+python3 scripts/text2koko_bench.py compare \
+  /tmp/baseline.json /tmp/candidate.json --output /tmp/comparison.json
+```
+
+Use `--case 'code.*'`, repeatable `--tag`, or `--limit` for diagnosis. A language comparison must
+hold corpus selection, prompt profile, model version, sampling settings, repetition count, repair
+policy, and Koko build fixed. Score result and state equivalence, not reference-query text equality.
 
 ## Optional compatibility, robustness, and performance evidence
 
